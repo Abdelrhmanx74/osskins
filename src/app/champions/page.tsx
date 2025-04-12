@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { ChampionCard } from '@/components/ChampionCard';
-import { SkinCard } from '@/components/SkinCard';
-import { useChampions } from '@/lib/hooks/use-champions';
-import type { Champion, Skin } from '@/lib/hooks/use-champions';
-import { Button } from '@/components/ui/button';
-import { useDataUpdate } from '@/lib/hooks/use-data-update';
-import { Toaster } from 'sonner';
+import { useState, useEffect } from "react";
+import { ChampionCard } from "@/components/ChampionCard";
+import { SkinCard } from "@/components/SkinCard";
+import { useChampions } from "@/lib/hooks/use-champions";
+import type { Champion, Skin } from "@/lib/hooks/use-champions";
+import { Button } from "@/components/ui/button";
+import { useDataUpdate } from "@/lib/hooks/use-data-update";
+import { Toaster } from "sonner";
 
 export default function ChampionsPage() {
   const { champions, loading, error, hasData } = useChampions();
@@ -15,10 +15,10 @@ export default function ChampionsPage() {
   const [selectedChampion, setSelectedChampion] = useState<number | null>(null);
 
   useEffect(() => {
-    console.log('Champions data:', champions);
-    console.log('Loading state:', loading);
-    console.log('Has data:', hasData);
-    console.log('Error:', error);
+    console.log("Champions data:", champions);
+    console.log("Loading state:", loading);
+    console.log("Has data:", hasData);
+    console.log("Error:", error);
   }, [champions, loading, hasData, error]);
 
   if (error) {
@@ -26,9 +26,7 @@ export default function ChampionsPage() {
       <div className="flex flex-col items-center justify-center h-screen gap-4">
         <div className="text-destructive">Error: {error}</div>
         {!hasData && (
-          <Button onClick={() => void updateData()}>
-            Update Data
-          </Button>
+          <Button onClick={() => void updateData()}>Update Data</Button>
         )}
         <Toaster />
       </div>
@@ -48,9 +46,7 @@ export default function ChampionsPage() {
     return (
       <div className="flex flex-col items-center justify-center h-screen gap-4">
         <div className="text-muted-foreground">No champion data found</div>
-        <Button onClick={() => void updateData()}>
-          Update Data
-        </Button>
+        <Button onClick={() => void updateData()}>Update Data</Button>
         <Toaster />
       </div>
     );
@@ -69,7 +65,6 @@ export default function ChampionsPage() {
     <div className="flex h-screen bg-background">
       {/* Left side - Champions grid */}
       <div className="w-1/3 p-4 overflow-y-auto border-r">
-        <h2 className="text-lg font-semibold mb-4">Champions</h2>
         <div className="grid grid-cols-3 gap-4">
           {champions.map((champion: Champion) => (
             <ChampionCard
@@ -86,7 +81,6 @@ export default function ChampionsPage() {
 
       {/* Right side - Skins grid */}
       <div className="w-2/3 p-4 overflow-y-auto">
-        <h2 className="text-lg font-semibold mb-4">Skins</h2>
         {selectedChampion ? (
           <div className="grid grid-cols-3 gap-4">
             {champions
@@ -112,4 +106,4 @@ export default function ChampionsPage() {
       <Toaster />
     </div>
   );
-} 
+}

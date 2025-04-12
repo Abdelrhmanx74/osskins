@@ -45,17 +45,17 @@ pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResul
 #[tauri::command]
 pub async fn update_champion_data(
     app: tauri::AppHandle,
-    champion_id: u32,
+    champion_name: String,
     data: String,
 ) -> Result<(), String> {
     let app_data_dir = app.path().app_data_dir()
         .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
     
-    let champions_dir = app_data_dir.join("champions");
-    fs::create_dir_all(&champions_dir)
-        .map_err(|e| format!("Failed to create champions directory: {}", e))?;
+    let champion_dir = app_data_dir.join("champions").join(&champion_name);
+    fs::create_dir_all(&champion_dir)
+        .map_err(|e| format!("Failed to create champion directory: {}", e))?;
 
-    let champion_file = champions_dir.join(format!("{}.json", champion_id));
+    let champion_file = champion_dir.join(format!("{}.json", champion_name));
     fs::write(champion_file, data)
         .map_err(|e| format!("Failed to write champion data: {}", e))?;
 
@@ -65,19 +65,38 @@ pub async fn update_champion_data(
 #[tauri::command]
 pub async fn save_fantome_file(
     app: tauri::AppHandle,
-    champion_id: u32,
-    skin_index: u32,
-    content: String,
+    champion_name: String,
+    skin_name: String,
+    is_chroma: bool,
+    chroma_id: Option<u32>,
+    content: Vec<u8>,
 ) -> Result<(), String> {
     let app_data_dir = app.path().app_data_dir()
         .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
     
-    let champion_dir = app_data_dir.join("champions").join(champion_id.to_string());
+    // Create champions directory if it doesn't exist
+    let champions_dir = app_data_dir.join("champions");
+    fs::create_dir_all(&champions_dir)
+        .map_err(|e| format!("Failed to create champions directory: {}", e))?;
+    
+    // Create champion directory if it doesn't exist
+    let champion_dir = champions_dir.join(&champion_name);
     fs::create_dir_all(&champion_dir)
         .map_err(|e| format!("Failed to create champion directory: {}", e))?;
-
-    let fantome_file = champion_dir.join(format!("{}.fantome", skin_index));
-    fs::write(fantome_file, content)
+    
+    let fantome_file = if is_chroma {
+        champion_dir.join(format!("{}_chroma_{}.fantome", skin_name, chroma_id.unwrap_or(0)))
+    } else {
+        champion_dir.join(format!("{}.fantome", skin_name))
+    };
+    
+    // Ensure parent directory exists
+    if let Some(parent) = fantome_file.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+    }
+    
+    fs::write(&fantome_file, content)
         .map_err(|e| format!("Failed to write fantome file: {}", e))?;
 
     Ok(())
@@ -103,23 +122,42 @@ pub async fn get_champion_data(
             .map_err(|e| format!("Failed to read champions directory: {}", e))? {
             let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
             let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                let data = fs::read_to_string(&path)
-                    .map_err(|e| format!("Failed to read champion file: {}", e))?;
-                all_champions.push(data);
+            if path.is_dir() {
+                // Look for JSON files in the champion directory
+                for champion_file in fs::read_dir(path)
+                    .map_err(|e| format!("Failed to read champion directory: {}", e))? {
+                    let champion_file = champion_file.map_err(|e| format!("Failed to read champion file: {}", e))?;
+                    let file_path = champion_file.path();
+                    if file_path.extension().and_then(|s| s.to_str()) == Some("json") {
+                        let data = fs::read_to_string(&file_path)
+                            .map_err(|e| format!("Failed to read champion file: {}", e))?;
+                        all_champions.push(data);
+                    }
+                }
             }
         }
         return Ok(format!("[{}]", all_champions.join(",")));
     }
 
     // Otherwise, return data for specific champion
-    let champion_file = champions_dir.join(format!("{}.json", champion_id));
-    if !champion_file.exists() {
-        return Err(format!("Champion data not found for ID: {}", champion_id));
+    // We need to search through all champion directories to find the one with matching ID
+    for entry in fs::read_dir(champions_dir)
+        .map_err(|e| format!("Failed to read champions directory: {}", e))? {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let path = entry.path();
+        if path.is_dir() {
+            let champion_name = path.file_name()
+                .and_then(|n| n.to_str())
+                .ok_or_else(|| format!("Invalid champion directory name"))?;
+            let champion_file = path.join(format!("{}.json", champion_name));
+            if champion_file.exists() {
+                return fs::read_to_string(champion_file)
+                    .map_err(|e| format!("Failed to read champion data: {}", e));
+            }
+        }
     }
 
-    fs::read_to_string(champion_file)
-        .map_err(|e| format!("Failed to read champion data: {}", e))
+    Err(format!("Champion data not found for ID: {}", champion_id))
 }
 
 #[tauri::command]
@@ -132,13 +170,21 @@ pub async fn check_champions_data(app: tauri::AppHandle) -> Result<bool, String>
         return Ok(false);
     }
 
-    // Check if there are any JSON files in the directory
+    // Check if there are any champion directories with JSON files
     let has_data = fs::read_dir(champions_dir)
         .map_err(|e| format!("Failed to read champions directory: {}", e))?
-        .any(|entry| {
-            entry.map_or(false, |e| {
-                e.path().extension().and_then(|s| s.to_str()) == Some("json")
-            })
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path().is_dir())
+        .any(|champion_dir| {
+            fs::read_dir(champion_dir.path())
+                .ok()
+                .map_or(false, |mut entries| {
+                    entries.any(|entry| {
+                        entry.map_or(false, |e| {
+                            e.path().extension().and_then(|s| s.to_str()) == Some("json")
+                        })
+                    })
+                })
         });
 
     Ok(has_data)
