@@ -52,7 +52,7 @@ export default function ChampionsPage() {
     );
   }
 
-  if (!champions || champions.length === 0) {
+  if (champions.length === 0) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-muted-foreground">No champions found</div>
@@ -72,7 +72,9 @@ export default function ChampionsPage() {
               id={champion.id}
               name={champion.name}
               iconSrc={champion.iconSrc}
-              onClick={() => setSelectedChampion(champion.id)}
+              onClick={() => {
+                setSelectedChampion(champion.id);
+              }}
               isSelected={selectedChampion === champion.id}
             />
           ))}

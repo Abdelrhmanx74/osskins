@@ -38,12 +38,12 @@ export interface DataUpdateProgress {
   currentChampion: string;
   totalChampions: number;
   processedChampions: number;
-  status: 'checking' | 'downloading' | 'processing';
+  status: "checking" | "downloading" | "processing";
   progress: number;
 }
 
 export interface DataUpdateResult {
   success: boolean;
   error?: string;
-  updatedChampions: string[];
-} 
+  updatedChampions?: string[];
+}

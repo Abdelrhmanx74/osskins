@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useDataUpdate } from '@/lib/hooks/use-data-update';
-import { DataUpdateModal } from '@/components/DataUpdateModal';
-import { Toaster } from 'sonner';
-import { useRouter } from 'next/navigation';
+import { useEffect } from "react";
+import { useDataUpdate } from "@/lib/hooks/use-data-update";
+import { DataUpdateModal } from "@/components/DataUpdateModal";
+import { Toaster } from "sonner";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
   const { isUpdating, progress, updateData } = useDataUpdate();
@@ -16,12 +16,12 @@ export default function Home() {
     async function initialize() {
       try {
         // Limit to first 10 champions for initial load
-        await updateData(10);
+        await updateData();
         if (mounted) {
-          router.push('/champions');
+          router.push("/champions");
         }
       } catch (error) {
-        console.error('Failed to initialize:', error);
+        console.error("Failed to initialize:", error);
       }
     }
 

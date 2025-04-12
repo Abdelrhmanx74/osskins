@@ -27,9 +27,9 @@ export function useDataUpdate() {
       // Check for updates
       const updateResult = await invoke<DataUpdateResult>("check_data_updates");
 
-      // If no data exists or updates are needed, proceed with update
+      // If updates are needed, proceed with update
       if (
-        !updateResult?.updatedChampions ||
+        updateResult.updatedChampions &&
         updateResult.updatedChampions.length > 0
       ) {
         // Fetch champion summaries
