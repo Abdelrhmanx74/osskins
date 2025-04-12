@@ -16,7 +16,7 @@ interface LoadingModalProps {
 export function LoadingModal({ status, currentDownload }: LoadingModalProps) {
   return (
     <Dialog defaultOpen>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Loading...</DialogTitle>
         </DialogHeader>

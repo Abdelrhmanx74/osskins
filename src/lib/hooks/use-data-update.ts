@@ -37,6 +37,13 @@ export function useDataUpdate() {
         // Process each champion
         for (let i = 0; i < limitedSummaries.length; i++) {
           const summary = limitedSummaries[i];
+          
+          // Skip champions with invalid IDs
+          if (summary.id <= 0) {
+            console.warn(`Skipping champion with invalid ID: ${summary.name} (ID: ${summary.id})`);
+            continue;
+          }
+
           setProgress(prev => ({
             ...prev!,
             currentChampion: summary.name,

@@ -12,14 +12,17 @@ interface ChampionCardProps {
 export function ChampionCard({ id, name, iconSrc, onClick, isSelected }: ChampionCardProps) {
   return (
     <Button
-      variant={isSelected ? "outline" : "ghost"}
-      onClick={onClick}
+    className="py-0 px-0 size-fit"
+    variant={isSelected ? "outline" : "ghost"}
+    onClick={onClick}
+    asChild
     >
           <Image
             src={iconSrc}
             alt={`${name} icon`}
             width={64}
             height={64}
+            className="object-contain"
           />
     </Button>
   );

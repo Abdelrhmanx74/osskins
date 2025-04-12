@@ -51,10 +51,6 @@ export function ChromaSelector({ chromas, onSelect, selectedChromaId }: ChromaSe
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {/* Chroma name display */}
-      <div className="absolute -top-8 left-0 right-0 h-6 text-center text-sm font-medium text-white/90 transition-opacity">
-        {hoveredChroma?.name ?? (selectedChromaId && chromas.find(c => c.id === selectedChromaId)?.name)}
-      </div>
       
       {/* Main circular selector */}
       <div 
@@ -160,37 +156,20 @@ export function ChromaSelector({ chromas, onSelect, selectedChromaId }: ChromaSe
                 }}
               >
                 {/* Two-color display with 45-degree tilt and black divider */}
-                <div className="absolute inset-0 overflow-hidden rounded-full">
+                <div className="size-full flex bg-black gap-[1px] inset-0 overflow-hidden rounded-full rotate-45">
                   <div 
-                    className="absolute inset-0 w-1/2" 
+                    className="size-full" 
                     style={{ 
                       background: mainColor,
-                      transform: 'skewX(-45deg)',
-                      transformOrigin: 'left'
                     }}
                   />
                   <div 
-                    className="absolute inset-0 w-1/2 right-0" 
+                    className="size-full" 
                     style={{ 
                       background: secondaryColor,
-                      transform: 'skewX(-45deg)',
-                      transformOrigin: 'right'
                     }}
                   />
-                  <div 
-                    className="absolute inset-0 w-0.5 left-1/2 transform -translate-x-1/2" 
-                    style={{ background: 'black' }}
-                  />
                 </div>
-                
-                <Image
-                  src={chroma.skinChromaPath}
-                  alt={chroma.name}
-                  width={32}
-                  height={32}
-                  className="w-full h-full object-cover rounded-full opacity-0 hover:opacity-100 transition-opacity absolute inset-0"
-                  loading="lazy"
-                />
               </button>
             );
           })}
