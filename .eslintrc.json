@@ -1,0 +1,7 @@
+{
+    "extends": "next/core-web-vitals",
+    "rules": {
+        "@typescript-eslint/no-unsafe-assignment": "off",
+        "@typescript-eslint/no-unnecessary-condition": "off"
+    }
+}
