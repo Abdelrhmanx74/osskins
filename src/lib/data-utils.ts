@@ -93,7 +93,7 @@ export function transformChampionData(
         colors: chroma.colors,
         description: chroma.description,
         rarity: chroma.rarity,
-        fandom: `${summary.name.toLowerCase().replace(/\s+/g, "_")}/${skin.name
+        fantome: `${summary.name.toLowerCase().replace(/\s+/g, "_")}/${skin.name
           .toLowerCase()
           .replace(/\s+/g, "_")}_chroma_${chroma.id}.fantome`,
       };
@@ -107,7 +107,7 @@ export function transformChampionData(
       skinType: skin.skinType,
       rarity: skin.rarity || "kNoRarity",
       featuresText: skin.featuresText ?? null,
-      fandom: `${summary.name.toLowerCase().replace(/\s+/g, "_")}/${skin.name
+      fantome: `${summary.name.toLowerCase().replace(/\s+/g, "_")}/${skin.name
         .toLowerCase()
         .replace(/\s+/g, "_")}.fantome`,
       chromas,

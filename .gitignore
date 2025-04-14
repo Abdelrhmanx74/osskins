@@ -37,3 +37,6 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# cslol manager
+/cslol-manager-2024-10-27-401067d-prerelease

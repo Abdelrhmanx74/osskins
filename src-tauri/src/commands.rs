@@ -1,6 +1,11 @@
 use tauri::Manager;
+use tauri::command;
+use tauri::AppHandle;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use crate::injection::{Skin, inject_skins as inject_skins_impl};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DataUpdateProgress {
@@ -17,6 +22,21 @@ pub struct DataUpdateResult {
     pub error: Option<String>,
     #[serde(default)]
     pub updated_champions: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SkinInjectionRequest {
+    pub league_path: String,
+    pub skins: Vec<Skin>,
+}
+
+// Add a new structure to match the JSON data for skins
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkinData {
+    pub champion_id: u32,
+    pub skin_id: u32,
+    pub chroma_id: Option<u32>,
+    pub fantome: Option<String>, // Add fantome path from the JSON
 }
 
 #[tauri::command]
@@ -188,4 +208,113 @@ pub async fn check_champions_data(app: tauri::AppHandle) -> Result<bool, String>
         });
 
     Ok(has_data)
-} 
+}
+
+#[tauri::command]
+pub async fn select_league_directory() -> Result<String, String> {
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.OpenFileDialog; $dialog.Filter = 'League of Legends|League of Legends.exe'; $dialog.Title = 'Select League of Legends.exe'; $dialog.ShowDialog() | Out-Null; $dialog.FileName",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute powershell command: {}", e))?;
+
+    if !output.status.success() {
+        return Err("Failed to select file".to_string());
+    }
+
+    let path = String::from_utf8(output.stdout)
+        .map_err(|e| format!("Failed to parse file path: {}", e))?
+        .trim()
+        .to_string();
+
+    if path.is_empty() {
+        return Err("No file selected".to_string());
+    }
+
+    // Get the directory path from the file path
+    let game_path = PathBuf::from(&path);
+    if !game_path.exists() {
+        return Err("Selected file does not exist".to_string());
+    }
+
+    // Return the directory path
+    Ok(game_path.parent()
+        .ok_or_else(|| "Failed to get parent directory".to_string())?
+        .to_str()
+        .ok_or_else(|| "Failed to convert path to string".to_string())?
+        .to_string())
+}
+
+#[tauri::command]
+pub async fn inject_skins(
+    app: tauri::AppHandle,
+    request: SkinInjectionRequest,
+) -> Result<(), String> {
+    println!("Starting skin injection process");
+    println!("League path: {}", request.league_path);
+    println!("Number of skins to inject: {}", request.skins.len());
+    
+    // Get the app data directory (where champion data is stored)
+    let app_data_dir = app.path().app_data_dir()
+        .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
+    
+    // Get the path to the champions directory where fantome files are stored
+    let fantome_files_dir = app_data_dir.join("champions");
+    println!("Fantome files directory: {}", fantome_files_dir.display());
+    
+    // Call the native Rust implementation of skin injection using our new SkinInjector
+    inject_skins_impl(
+        &app,
+        &request.league_path,
+        &request.skins,
+        &fantome_files_dir,
+    )?;
+    
+    println!("Skin injection completed");
+    Ok(())
+}
+
+// The ensure_mod_tools command is no longer needed since we're not using external tools
+#[tauri::command]
+pub async fn ensure_mod_tools(_app: tauri::AppHandle) -> Result<(), String> {
+    // This function now does nothing since we don't need external tools anymore
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn inject_game_skins(
+    app_handle: AppHandle,
+    game_path: String,
+    skins: Vec<SkinData>, 
+    fantome_files_dir: String
+) -> Result<String, String> {
+    println!("Starting skin injection process");
+    println!("League path: {}", game_path);
+    println!("Number of skins to inject: {}", skins.len());
+    println!("Fantome files directory: {}", fantome_files_dir);
+
+    // Convert SkinData to the internal Skin type, preserving the fantome path
+    let internal_skins: Vec<Skin> = skins.iter().map(|s| Skin {
+        champion_id: s.champion_id,
+        skin_id: s.skin_id,
+        chroma_id: s.chroma_id,
+        fantome_path: s.fantome.clone(),
+    }).collect();
+    
+    // Create the path for the fantome files directory
+    let base_path = Path::new(&fantome_files_dir);
+    
+    // Call the injection function directly instead of using the async version
+    match inject_skins_impl(
+        &app_handle,
+        &game_path,
+        &internal_skins,
+        base_path
+    ) {
+        Ok(_) => Ok("Skin injection completed".to_string()),
+        Err(e) => Err(format!("Skin injection failed: {}", e)),
+    }
+}

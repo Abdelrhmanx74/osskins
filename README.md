@@ -37,7 +37,7 @@ After cloning for the first time, change your app identifier inside
 {
   // ...
   // The default "com.tauri.dev" will prevent you from building in release mode
-  "identifier": "com.my-application-name.app",
+  "identifier": "com.my-application-name.app"
   // ...
 }
 ```

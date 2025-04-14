@@ -3,4 +3,4 @@ export interface CachedChroma {
   name: string;
   colors: string[];
   skinChromaPath: string;
-} 
+}
