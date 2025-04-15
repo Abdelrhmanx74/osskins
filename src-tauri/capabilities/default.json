@@ -7,19 +7,58 @@
   ],
   "permissions": [
     "fs:default",
-    "fs:allow-exists",
-    "fs:allow-read",
-    "fs:allow-write",
-    "fs:allow-mkdir",
-    "fs:allow-read-dir",
-    "fs:allow-read-file",
-    "fs:allow-write-file",
-    "fs:scope",
     {
-      "identifier": "fs:scope-app",
+      "identifier": "fs:allow-exists",
       "allow": [
         {
           "path": "$APPDATA/*"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-read",
+      "allow": [
+        {
+          "path": "$APPDATA/*"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write",
+      "allow": [
+        {
+          "path": "$APPDATA/*"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-remove",
+      "allow": [
+        {
+          "path": "$APPDATA/*"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        {
+          "path": "$APPDATA"
+        },
+        {
+          "path": "$APPDATA/**"
+        }
+      ]
+    },
+    "core:path:default",
+    {
+      "identifier": "core:path:allow-resolve-directory",
+      "allow": [
+        {
+          "path": "$APPDATA"
+        },
+        {
+          "path": "$APPDATA/**"
         }
       ]
     }

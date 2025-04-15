@@ -1,5 +1,4 @@
 use tauri::Manager;
-use tauri::command;
 use tauri::AppHandle;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -284,6 +283,51 @@ pub async fn ensure_mod_tools(_app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// Add functions to save and load game path
+#[tauri::command]
+pub async fn save_league_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    println!("Saving League path: {}", path);
+    
+    let app_data_dir = app.path().app_data_dir()
+        .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
+    
+    // Create config directory if it doesn't exist
+    let config_dir = app_data_dir.join("config");
+    fs::create_dir_all(&config_dir)
+        .map_err(|e| format!("Failed to create config directory: {}", e))?;
+    
+    // Save path to config file
+    let config_file = config_dir.join("league_path.txt");
+    fs::write(&config_file, &path)
+        .map_err(|e| format!("Failed to write league path: {}", e))?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn load_league_path(app: tauri::AppHandle) -> Result<String, String> {
+    let app_data_dir = app.path().app_data_dir()
+        .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
+    
+    let config_file = app_data_dir.join("config").join("league_path.txt");
+    
+    if !config_file.exists() {
+        return Ok(String::new()); // Return empty string if no saved path
+    }
+    
+    let path = fs::read_to_string(&config_file)
+        .map_err(|e| format!("Failed to read league path: {}", e))?;
+    
+    // Verify the path still exists and contains League of Legends.exe
+    let game_path = Path::new(&path);
+    if !game_path.exists() || !game_path.join("League of Legends.exe").exists() {
+        return Ok(String::new()); // Return empty if path is no longer valid
+    }
+    
+    println!("Loaded League path: {}", path);
+    Ok(path)
+}
+
 #[tauri::command]
 pub async fn inject_game_skins(
     app_handle: AppHandle,
@@ -296,16 +340,35 @@ pub async fn inject_game_skins(
     println!("Number of skins to inject: {}", skins.len());
     println!("Fantome files directory: {}", fantome_files_dir);
 
-    // Convert SkinData to the internal Skin type, preserving the fantome path
-    let internal_skins: Vec<Skin> = skins.iter().map(|s| Skin {
-        champion_id: s.champion_id,
-        skin_id: s.skin_id,
-        chroma_id: s.chroma_id,
-        fantome_path: s.fantome.clone(),
-    }).collect();
+    // Validate game path exists
+    if !Path::new(&game_path).exists() {
+        return Err(format!("League of Legends directory not found: {}", game_path));
+    }
     
-    // Create the path for the fantome files directory
+    // Validate fantome directory exists
     let base_path = Path::new(&fantome_files_dir);
+    if !base_path.exists() {
+        // Create the directory if it doesn't exist
+        println!("Creating fantome files directory: {}", base_path.display());
+        fs::create_dir_all(base_path)
+            .map_err(|e| format!("Failed to create fantome directory: {}", e))?;
+    }
+
+    // Save the league path for future use
+    save_league_path(app_handle.clone(), game_path.clone()).await?;
+
+    // Convert SkinData to the internal Skin type, preserving the fantome path
+    let internal_skins: Vec<Skin> = skins.iter().map(|s| {
+        let skin = Skin {
+            champion_id: s.champion_id,
+            skin_id: s.skin_id,
+            chroma_id: s.chroma_id,
+            fantome_path: s.fantome.clone(),
+        };
+        println!("Skin to inject: champion_id={}, skin_id={}, chroma_id={:?}, fantome_path={:?}",
+            skin.champion_id, skin.skin_id, skin.chroma_id, skin.fantome_path);
+        skin
+    }).collect();
     
     // Call the injection function directly instead of using the async version
     match inject_skins_impl(
@@ -314,7 +377,13 @@ pub async fn inject_game_skins(
         &internal_skins,
         base_path
     ) {
-        Ok(_) => Ok("Skin injection completed".to_string()),
-        Err(e) => Err(format!("Skin injection failed: {}", e)),
+        Ok(_) => {
+            println!("Skin injection completed successfully");
+            Ok("Skin injection completed successfully".to_string())
+        },
+        Err(e) => {
+            println!("Skin injection failed: {}", e);
+            Err(format!("Skin injection failed: {}", e))
+        },
     }
 }

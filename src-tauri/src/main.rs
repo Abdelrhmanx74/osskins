@@ -5,10 +5,26 @@ mod commands;
 mod injection;
 
 use commands::*;
+use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_path::init())
+        .setup(|app| {
+            // Check for mod-tools.exe when app starts
+            match app.path().resource_dir() {
+                Ok(resource_dir) => {
+                    let mod_tools_path = resource_dir.join("mod-tools.exe");
+                    if !mod_tools_path.exists() {
+                        println!("Note: mod-tools.exe not found in resources directory. Skins may not appear in-game.");
+                    }
+                }
+                Err(e) => {
+                    println!("Warning: Could not check for mod-tools.exe: {}", e);
+                }
+            }
+            Ok(())
+        })
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             check_champions_data,
             check_data_updates,
@@ -18,6 +34,9 @@ fn main() {
             select_league_directory,
             inject_skins,
             ensure_mod_tools,
+            inject_game_skins,
+            save_league_path,  // Register the new command
+            load_league_path,  // Register the new command
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())

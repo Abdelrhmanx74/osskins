@@ -42,6 +42,9 @@
       "scope": [
         "*"
       ]
+    },
+    "shell": {
+      "open": true
     }
   }
 }

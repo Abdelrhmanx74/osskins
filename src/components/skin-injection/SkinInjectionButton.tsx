@@ -7,21 +7,30 @@ import { useEffect } from "react";
 import { appDataDir } from "@tauri-apps/api/path";
 
 export function SkinInjectionButton() {
-  const { isInjecting, setInjecting, selectedSkins, leaguePath } =
-    useGameStore();
+  const {
+    isInjecting,
+    setInjecting,
+    selectedSkins,
+    leaguePath,
+    setLeaguePath,
+  } = useGameStore();
 
-  // Ensure mod-tools are in place when component mounts
+  // Load saved League path when component mounts
   useEffect(() => {
-    async function ensureModTools() {
+    async function loadLeaguePath() {
       try {
-        await invoke("ensure_mod_tools");
+        const savedPath = await invoke<string>("load_league_path");
+        if (savedPath) {
+          console.log("Loaded saved League path:", savedPath);
+          setLeaguePath(savedPath);
+        }
       } catch (error) {
-        console.error("Failed to ensure mod-tools:", error);
+        console.error("Failed to load League path:", error);
       }
     }
 
-    ensureModTools();
-  }, []);
+    loadLeaguePath();
+  }, [setLeaguePath]);
 
   const handleInject = async () => {
     if (!leaguePath) {
@@ -40,7 +49,11 @@ export function SkinInjectionButton() {
       const toastId = toast.loading("Preparing skin injection...");
 
       // Get app data directory for the fantome files
-      const appDir = await appDataDir();
+      let appDir = await appDataDir();
+
+      // Format path based on platform - backslashes on Windows
+      // Tauri should handle this automatically, but it's good to be safe
+      const championsPath = `${appDir}/champions`;
 
       const skins = Array.from(selectedSkins.values()).map((skin) => ({
         champion_id: skin.championId,
@@ -51,13 +64,17 @@ export function SkinInjectionButton() {
 
       // Log what we're sending for debugging
       console.log("Injecting skins:", JSON.stringify(skins, null, 2));
+      console.log("League path:", leaguePath);
+      console.log("Champions path:", championsPath);
 
       // Use new inject_game_skins command that supports fantome paths
-      await invoke("inject_game_skins", {
-        game_path: leaguePath,
+      const result = await invoke("inject_game_skins", {
+        gamePath: leaguePath,
         skins: skins,
-        fantome_files_dir: `${appDir}/champions`,
+        fantomeFilesDir: championsPath,
       });
+
+      console.log("Injection result:", result);
 
       toast.dismiss(toastId);
       toast.success("Skins injected successfully");
