@@ -697,41 +697,33 @@ impl SkinInjector {
     fn copy_mod_to_game(&mut self, mod_dir: &Path) -> Result<(), InjectionError> {
         self.log(&format!("Copying mod to game directory: {}", mod_dir.display()));
 
-        let game_mods_dir = self.game_path.join("mods");
-        let game_wad_dir = game_mods_dir.join("WAD");
-        let game_meta_dir = game_mods_dir.join("META");
+        // Use the mod directory name as the subfolder
+        let mod_name = mod_dir.file_name().unwrap();
+        let game_mod_dir = self.game_path.join("mods").join(mod_name);
 
-        fs::create_dir_all(&game_wad_dir)?;
-        fs::create_dir_all(&game_meta_dir)?;
+        // Remove any existing mod with the same name
+        if game_mod_dir.exists() {
+            fs::remove_dir_all(&game_mod_dir)?;
+        }
+        fs::create_dir_all(&game_mod_dir)?;
 
-        // Copy WAD files
-        let mod_wad_dir = mod_dir.join("WAD");
-        if mod_wad_dir.exists() {
-            for entry in WalkDir::new(&mod_wad_dir) {
-                let entry = entry?;
-                let path = entry.path();
-                if path.is_file() {
-                    let file_name = path.file_name().unwrap();
-                    let target_path = game_wad_dir.join(file_name);
-                    fs::copy(path, &target_path)?;
+        // Copy everything from mod_dir into game_mod_dir
+        for entry in WalkDir::new(mod_dir) {
+            let entry = entry?;
+            let path = entry.path();
+            let rel_path = path.strip_prefix(mod_dir)
+                .map_err(|e| InjectionError::ProcessError(format!("Path error: {}", e)))?;
+            let target_path = game_mod_dir.join(rel_path);
+
+            if path.is_dir() {
+                fs::create_dir_all(&target_path)?;
+            } else if path.is_file() {
+                if let Some(parent) = target_path.parent() {
+                    fs::create_dir_all(parent)?;
                 }
+                fs::copy(path, &target_path)?;
             }
         }
-
-        // Copy META files
-        let mod_meta_dir = mod_dir.join("META");
-        if mod_meta_dir.exists() {
-            for entry in WalkDir::new(&mod_meta_dir) {
-                let entry = entry?;
-                let path = entry.path();
-                if path.is_file() {
-                    let file_name = path.file_name().unwrap();
-                    let target_path = game_meta_dir.join(file_name);
-                    fs::copy(path, &target_path)?;
-                }
-            }
-        }
-
         Ok(())
     }
     
