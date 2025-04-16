@@ -3,4 +3,5 @@ export interface CachedChroma {
   name: string;
   colors: string[];
   skinChromaPath: string;
+  fantome?: string; // Path to the chroma's fantome file
 }

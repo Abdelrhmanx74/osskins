@@ -29,7 +29,7 @@ export function SkinInjectionButton() {
       }
     }
 
-    loadLeaguePath();
+    void loadLeaguePath();
   }, [setLeaguePath]);
 
   const handleInject = async () => {
@@ -49,7 +49,7 @@ export function SkinInjectionButton() {
       const toastId = toast.loading("Preparing skin injection...");
 
       // Get app data directory for the fantome files
-      let appDir = await appDataDir();
+      const appDir = await appDataDir();
 
       // Format path based on platform - backslashes on Windows
       // Tauri should handle this automatically, but it's good to be safe
@@ -80,7 +80,7 @@ export function SkinInjectionButton() {
       toast.success("Skins injected successfully");
     } catch (error) {
       console.error("Failed to inject skins:", error);
-      toast.error(`Failed to inject skins: ${error}`);
+      toast.error(`Failed to inject skins: ${error as any}`);
     } finally {
       setInjecting(false);
     }
@@ -88,7 +88,9 @@ export function SkinInjectionButton() {
 
   return (
     <Button
-      onClick={handleInject}
+      onClick={() => {
+        void handleInject();
+      }}
       disabled={isInjecting || !leaguePath || selectedSkins.size === 0}
       variant="default"
       className="flex items-center gap-2"

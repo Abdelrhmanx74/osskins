@@ -30,13 +30,15 @@ export function GameDirectorySelector() {
       <div className="flex items-center gap-4">
         <Input
           type="text"
-          value={leaguePath || ""}
+          value={leaguePath ?? ""}
           placeholder="League of Legends directory"
           readOnly
           className="flex-1"
         />
         <Button
-          onClick={handleSelectDirectory}
+          onClick={() => {
+            void handleSelectDirectory();
+          }}
           disabled={isLoading}
           variant="outline"
         >

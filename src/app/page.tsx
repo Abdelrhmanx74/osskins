@@ -97,7 +97,11 @@ export default function Home() {
           <p className="text-muted-foreground">
             Click the button below to proceed to champion selection
           </p>
-          <Button onClick={() => router.push("/champions")}>
+          <Button
+            onClick={() => {
+              router.push("/champions");
+            }}
+          >
             View Champions
           </Button>
         </div>

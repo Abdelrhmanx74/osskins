@@ -1,6 +1,6 @@
 # Back End ---------------------
 
-- [ ] Fix build issues
+- [x] Fix build issues
 - [ ] State for user selects
 - [ ] Cache update with github / the json's update when there is a git commit
 - [ ] Refine LCU integration: Detect game state (champ select, in-game) for context-aware actions (e.g., auto-inject on game start, pre-game pop up).

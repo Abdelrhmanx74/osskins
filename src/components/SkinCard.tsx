@@ -28,7 +28,7 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
       clearSelection(championId);
     } else {
       // Pass the fantome path from the skin data
-      const fantomePath = selectedChroma?.fantome || skin.fantome;
+      const fantomePath = selectedChroma?.fantome ?? skin.fantome;
       selectSkin(championId, skin.id, selectedChroma?.id, fantomePath);
     }
   };
@@ -37,7 +37,7 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
     setSelectedChroma(chroma);
     if (isSelected) {
       // Pass the fantome path from the selected chroma or base skin
-      const fantomePath = chroma?.fantome || skin.fantome;
+      const fantomePath = chroma?.fantome ?? skin.fantome;
       selectSkin(championId, skin.id, chroma?.id, fantomePath);
     }
   };

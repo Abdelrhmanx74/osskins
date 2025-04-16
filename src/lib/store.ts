@@ -28,9 +28,13 @@ export const useGameStore = create<GameState>((set) => ({
   leaguePath: null,
   isInjecting: false,
   selectedSkins: new Map(),
-  setLeaguePath: (path) => set({ leaguePath: path }),
-  setInjecting: (isInjecting) => set({ isInjecting }),
-  selectSkin: (championId, skinId, chromaId, fantome) =>
+  setLeaguePath: (path) => {
+    set({ leaguePath: path });
+  },
+  setInjecting: (isInjecting) => {
+    set({ isInjecting });
+  },
+  selectSkin: (championId, skinId, chromaId, fantome) => {
     set((state) => {
       const newSelectedSkins = new Map(state.selectedSkins);
       newSelectedSkins.set(championId, {
@@ -40,12 +44,16 @@ export const useGameStore = create<GameState>((set) => ({
         fantome,
       });
       return { selectedSkins: newSelectedSkins };
-    }),
-  clearSelection: (championId) =>
+    });
+  },
+  clearSelection: (championId) => {
     set((state) => {
       const newSelectedSkins = new Map(state.selectedSkins);
       newSelectedSkins.delete(championId);
       return { selectedSkins: newSelectedSkins };
-    }),
-  clearAllSelections: () => set({ selectedSkins: new Map() }),
+    });
+  },
+  clearAllSelections: () => {
+    set({ selectedSkins: new Map() });
+  },
 }));
