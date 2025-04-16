@@ -1,10 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { useGameStore } from "@/lib/store";
 import { invoke } from "@tauri-apps/api/core";
-import { toast } from "sonner";
 import { Play, Square } from "lucide-react";
 import { useEffect } from "react";
 import { appDataDir } from "@tauri-apps/api/path";
+import { toast } from "sonner";
 
 export function SkinInjectionButton() {
   const {
@@ -46,7 +46,7 @@ export function SkinInjectionButton() {
     try {
       setInjecting(true);
 
-      const toastId = toast.loading("Preparing skin injection...");
+      const toastId = toast("Preparing skin injection...");
 
       // Get app data directory for the fantome files
       const appDir = await appDataDir();
@@ -77,7 +77,11 @@ export function SkinInjectionButton() {
       console.log("Injection result:", result);
 
       toast.dismiss(toastId);
-      toast.success("Skins injected successfully");
+      toast.success(
+        `${selectedSkins.size} skin${
+          selectedSkins.size > 1 ? "s" : ""
+        } injected successfully`
+      );
     } catch (error) {
       console.error("Failed to inject skins:", error);
       toast.error(`Failed to inject skins: ${error as any}`);
@@ -93,7 +97,7 @@ export function SkinInjectionButton() {
       }}
       disabled={isInjecting || !leaguePath || selectedSkins.size === 0}
       variant="default"
-      className="flex items-center gap-2"
+      className="flex items-center gap-2 inject-button"
     >
       {isInjecting ? (
         <>

@@ -115,6 +115,7 @@ pub struct SkinInjector {
     status: String,
     log_file: Option<File>,
     mod_tools_path: Option<PathBuf>, // Add mod_tools path
+    champion_names: std::collections::HashMap<u32, String>, // Add cache for champion names
 }
 
 impl SkinInjector {
@@ -136,6 +137,9 @@ impl SkinInjector {
         // Create log file
         let log_path = app_dir.join("log.txt");
         let log_file = File::create(&log_path)?;
+
+        // Initialize empty champion names cache
+        let champion_names = std::collections::HashMap::new();
 
         // Look for mod-tools executable in multiple locations
         let mut mod_tools_path = None;
@@ -187,6 +191,7 @@ impl SkinInjector {
             status: String::new(),
             log_file: Some(log_file),
             mod_tools_path,
+            champion_names,
         })
     }
     
@@ -225,175 +230,51 @@ impl SkinInjector {
         Ok(())
     }
 
-    // Helper function to get champion name from ID
-    fn get_champion_name(&self, champion_id: u32) -> Option<&'static str> {
-        // This is a mapping of champion IDs to their names
-        // We need this because the directory structure might use champion names instead of IDs
-        match champion_id {
-            1 => Some("annie"),
-            2 => Some("olaf"),
-            3 => Some("galio"),
-            4 => Some("twistedfate"),
-            5 => Some("xinzhao"),
-            6 => Some("urgot"),
-            7 => Some("leblanc"),
-            8 => Some("vladimir"),
-            9 => Some("fiddlesticks"),
-            10 => Some("kayle"),
-            11 => Some("masteryi"),
-            12 => Some("alistar"),
-            13 => Some("ryze"),
-            14 => Some("sion"),
-            15 => Some("sivir"),
-            16 => Some("soraka"),
-            17 => Some("teemo"),
-            18 => Some("tristana"),
-            19 => Some("warwick"),
-            20 => Some("nunu"),
-            21 => Some("missfortune"),
-            22 => Some("ashe"),
-            23 => Some("tryndamere"),
-            24 => Some("jax"),
-            25 => Some("morgana"),
-            26 => Some("zilean"),
-            27 => Some("singed"),
-            28 => Some("evelynn"),
-            29 => Some("twitch"),
-            30 => Some("karthus"),
-            31 => Some("chogath"),
-            32 => Some("amumu"),
-            33 => Some("rammus"),
-            34 => Some("anivia"),
-            35 => Some("shaco"),
-            36 => Some("drmundo"),
-            37 => Some("sona"),
-            38 => Some("kassadin"),
-            39 => Some("irelia"),
-            40 => Some("janna"),
-            41 => Some("gangplank"),
-            42 => Some("corki"),
-            43 => Some("karma"),
-            44 => Some("taric"),
-            45 => Some("veigar"),
-            48 => Some("trundle"),
-            50 => Some("swain"),
-            51 => Some("caitlyn"),
-            53 => Some("blitzcrank"),
-            54 => Some("malphite"),
-            55 => Some("katarina"),
-            56 => Some("nocturne"),
-            57 => Some("maokai"),
-            58 => Some("renekton"),
-            59 => Some("jarvaniv"),
-            60 => Some("elise"),
-            61 => Some("orianna"),
-            62 => Some("wukong"),
-            63 => Some("brand"),
-            64 => Some("leesin"),
-            67 => Some("vayne"),
-            68 => Some("rumble"),
-            69 => Some("cassiopeia"),
-            72 => Some("skarner"),
-            74 => Some("heimerdinger"),
-            75 => Some("nasus"),
-            76 => Some("nidalee"),
-            77 => Some("udyr"),
-            78 => Some("poppy"),
-            79 => Some("gragas"),
-            80 => Some("pantheon"),
-            81 => Some("ezreal"),
-            82 => Some("mordekaiser"),
-            83 => Some("yorick"),
-            84 => Some("akali"),
-            85 => Some("kennen"),
-            86 => Some("garen"),
-            89 => Some("leona"),
-            90 => Some("malzahar"),
-            91 => Some("talon"),
-            92 => Some("riven"),
-            96 => Some("kogmaw"),
-            98 => Some("shen"),
-            99 => Some("lux"),
-            101 => Some("xerath"),
-            102 => Some("shyvana"),
-            103 => Some("ahri"),
-            104 => Some("graves"),
-            105 => Some("fizz"),
-            106 => Some("volibear"),
-            107 => Some("rengar"),
-            110 => Some("varus"),
-            111 => Some("nautilus"),
-            112 => Some("viktor"),
-            113 => Some("sejuani"),
-            114 => Some("fiora"),
-            115 => Some("ziggs"),
-            117 => Some("lulu"),
-            119 => Some("draven"),
-            120 => Some("hecarim"),
-            121 => Some("khazix"),
-            122 => Some("darius"),
-            126 => Some("jayce"),
-            127 => Some("lissandra"),
-            131 => Some("diana"),
-            133 => Some("quinn"),
-            134 => Some("syndra"),
-            136 => Some("aurelionsol"),
-            141 => Some("kayn"),
-            142 => Some("zoe"),
-            143 => Some("zyra"),
-            145 => Some("kaisa"),
-            147 => Some("seraphine"),
-            150 => Some("gnar"),
-            154 => Some("zac"),
-            157 => Some("yasuo"),
-            161 => Some("velkoz"),
-            163 => Some("taliyah"),
-            164 => Some("camille"),
-            201 => Some("braum"),
-            202 => Some("jhin"),
-            203 => Some("kindred"),
-            222 => Some("jinx"),
-            223 => Some("tahmkench"),
-            234 => Some("viego"),
-            235 => Some("senna"),
-            236 => Some("lucian"),
-            238 => Some("zed"),
-            240 => Some("kled"),
-            245 => Some("ekko"),
-            246 => Some("qiyana"),
-            254 => Some("vi"),
-            266 => Some("aatrox"),
-            267 => Some("nami"),
-            268 => Some("azir"),
-            350 => Some("yuumi"),
-            360 => Some("samira"),
-            412 => Some("thresh"),
-            420 => Some("illaoi"),
-            421 => Some("reksai"),
-            427 => Some("ivern"),
-            429 => Some("kalista"),
-            432 => Some("bard"),
-            497 => Some("rakan"),
-            498 => Some("xayah"),
-            516 => Some("ornn"),
-            517 => Some("sylas"),
-            518 => Some("neeko"),
-            523 => Some("aphelios"),
-            526 => Some("rell"),
-            555 => Some("pyke"),
-            711 => Some("vex"),
-            777 => Some("yone"),
-            875 => Some("sett"),
-            876 => Some("lillia"),
-            887 => Some("gwen"),
-            888 => Some("renata"),
-            895 => Some("nilah"),
-            897 => Some("ksante"),
-            902 => Some("milio"),
-            950 => Some("naafiri"),
-            // Add more mappings as needed
-            _ => None,
+    // Replace the hardcoded get_champion_name with a function that uses JSON data
+    fn get_champion_name(&mut self, champion_id: u32) -> Option<String> {
+        // Check cache first
+        if let Some(name) = self.champion_names.get(&champion_id) {
+            return Some(name.clone());
         }
+
+        // If not in cache, look up in the champions directory
+        let champions_dir = self.app_dir.join("champions");
+        if !champions_dir.exists() {
+            return None;
+        }
+
+        // Look through all champion directories
+        if let Ok(entries) = fs::read_dir(&champions_dir) {
+            for entry in entries.filter_map(Result::ok) {
+                if !entry.path().is_dir() {
+                    continue;
+                }
+
+                let champion_file = entry.path().join(format!("{}.json", 
+                    entry.file_name().to_string_lossy()));
+
+                if let Ok(content) = fs::read_to_string(&champion_file) {
+                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
+                        // Check if this JSON contains the champion ID we're looking for
+                        if let Some(id) = data.get("id").and_then(|v| v.as_u64()) {
+                            if id as u32 == champion_id {
+                                // Found the champion, get their name
+                                if let Some(name) = data.get("name")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_lowercase().replace(" ", "")) 
+                                {
+                                    // Cache it for future lookups
+                                    self.champion_names.insert(champion_id, name.clone());
+                                    return Some(name);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        None
     }
     
     // Extract .fantome file (similar to utility::unzip in CSLOL Manager)

@@ -21,6 +21,8 @@ export function useDataUpdate() {
       return;
     }
 
+    const loadingToastId = toast("Updating data...");
+
     try {
       setIsUpdating(true);
       setProgress({
@@ -51,6 +53,10 @@ export function useDataUpdate() {
           totalChampions,
           status: "downloading",
         }));
+
+        // Update loading toast with download info
+        toast.dismiss(loadingToastId);
+        const downloadToastId = toast("Downloading champion data");
 
         // Process champions in larger batches
         const BATCH_SIZE = 10;
@@ -120,10 +126,10 @@ export function useDataUpdate() {
                       );
                       await Promise.all(chromaPromises);
                     }
-                  } catch (error) {
+                  } catch (err) {
                     console.error(
                       `Failed to process fantome file for ${summary.name} ${skin.name}:`,
-                      error
+                      err
                     );
                   }
                 });
@@ -156,8 +162,19 @@ export function useDataUpdate() {
                 status: "processing",
                 progress: (processedCount / totalChampions) * 100,
               }));
-            } catch (error) {
-              console.error(`Failed to process ${summary.name}:`, error);
+
+              // Update the download toast every 5 champions
+              if (processedCount % 5 === 0) {
+                toast.dismiss(downloadToastId);
+                const progressPercentage = Math.floor(
+                  (processedCount / totalChampions) * 100
+                );
+                const newToastId = toast(
+                  `${processedCount}/${totalChampions} (${progressPercentage}%) - Current: ${summary.name}`
+                );
+              }
+            } catch (err) {
+              console.error(`Failed to process ${summary.name}:`, err);
               toast.error(`Failed to process ${summary.name}`);
             }
           });
@@ -176,14 +193,15 @@ export function useDataUpdate() {
           );
         }
 
-        toast.success(
-          `Data update completed successfully (${processedCount}/${totalChampions} champions processed)`
-        );
+        toast.dismiss(downloadToastId);
+        toast.success("Data updated successfully");
       } else {
-        toast.success("Data is up to date");
+        toast.dismiss(loadingToastId);
+        toast.success("Champion data is already up to date");
       }
-    } catch (error) {
-      console.error("Data update failed:", error);
+    } catch (err) {
+      toast.dismiss(loadingToastId);
+      console.error("Data update failed:", err);
       toast.error("Failed to update data");
     } finally {
       setIsUpdating(false);

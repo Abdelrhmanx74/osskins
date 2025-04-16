@@ -15,11 +15,11 @@ export function GameDirectorySelector() {
       const path = await invoke<string>("select_league_directory");
       if (path) {
         setLeaguePath(path);
-        toast.success("League directory selected successfully");
+        toast.success("League of Legends directory selected successfully");
       }
-    } catch (error) {
-      toast.error("Failed to select League directory");
-      console.error("Failed to select League directory:", error);
+    } catch (err) {
+      console.error("Failed to select League directory:", err);
+      toast.error("Failed to select directory");
     } finally {
       setIsLoading(false);
     }
