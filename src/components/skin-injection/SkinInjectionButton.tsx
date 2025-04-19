@@ -68,7 +68,7 @@ export function SkinInjectionButton() {
       console.log("Champions path:", championsPath);
 
       // Use new inject_game_skins command that supports fantome paths
-      const result = await invoke("inject_game_skins", {
+      const result: string = await invoke("inject_game_skins", {
         gamePath: leaguePath,
         skins: skins,
         fantomeFilesDir: championsPath,
@@ -77,11 +77,12 @@ export function SkinInjectionButton() {
       console.log("Injection result:", result);
 
       toast.dismiss(toastId);
-      toast.success(
-        `${selectedSkins.size} skin${
-          selectedSkins.size > 1 ? "s" : ""
-        } injected successfully`
-      );
+      // Show returned message: success or detailed error
+      if (result.toLowerCase().includes("failed")) {
+        toast.error(result);
+      } else {
+        toast.success(result);
+      }
     } catch (error) {
       console.error("Failed to inject skins:", error);
       toast.error(`Failed to inject skins: ${error as any}`);

@@ -164,20 +164,12 @@ export function ChromaSelector({
                 }}
               >
                 {/* Two-color display with 45-degree tilt and black divider */}
-                <div className="size-full flex bg-black gap-[1px] inset-0 overflow-hidden rounded-full rotate-45">
-                  <div
-                    className="size-full"
-                    style={{
-                      background: mainColor,
-                    }}
-                  />
-                  <div
-                    className="size-full"
-                    style={{
-                      background: secondaryColor,
-                    }}
-                  />
-                </div>
+                <div
+                  className="size-full rounded-full rotate-45"
+                  style={{
+                    background: `linear-gradient(90deg, ${mainColor} 0%, ${secondaryColor} 100%)`,
+                  }}
+                />
               </button>
             );
           })}

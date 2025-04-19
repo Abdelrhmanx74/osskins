@@ -79,8 +79,8 @@ export default function Home() {
       const storedFavorites = localStorage.getItem("championFavorites");
       if (storedFavorites) {
         try {
-          const parsedFavorites = JSON.parse(storedFavorites);
-          setFavorites(new Set(parsedFavorites));
+          const parsedFavorites = JSON.parse(storedFavorites) as number[];
+          setFavorites(new Set<number>(parsedFavorites));
         } catch (err) {
           console.error("Failed to parse favorites:", err);
         }
@@ -202,13 +202,17 @@ export default function Home() {
                 className="pl-8"
                 placeholder="Search champions..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                }}
               />
             </div>
             <Button
               variant="outline"
               size="icon"
-              onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
+              onClick={() => {
+                setShowOnlyFavorites(!showOnlyFavorites);
+              }}
               className={showOnlyFavorites ? "bg-primary/20" : ""}
             >
               <Heart
@@ -240,8 +244,12 @@ export default function Home() {
                   champion={champion}
                   isSelected={selectedChampion === champion.id}
                   isFavorite={favorites.has(champion.id)}
-                  onToggleFavorite={() => toggleFavorite(champion.id)}
-                  onClick={() => setSelectedChampion(champion.id)}
+                  onToggleFavorite={() => {
+                    toggleFavorite(champion.id);
+                  }}
+                  onClick={() => {
+                    setSelectedChampion(champion.id);
+                  }}
                   className="champion-card"
                 />
               ))}
@@ -252,7 +260,9 @@ export default function Home() {
                 {showOnlyFavorites && (
                   <Button
                     variant="link"
-                    onClick={() => setShowOnlyFavorites(false)}
+                    onClick={() => {
+                      setShowOnlyFavorites(false);
+                    }}
                   >
                     Clear favorites filter
                   </Button>

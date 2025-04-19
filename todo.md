@@ -7,9 +7,7 @@
 - [ ] Handle errors gracefully and provide user feedback on a prod level.
 
 - [ ] Optimize performance for large champion/skin datasets.
-- [ ] Add tests
-- [ ] Add CI/CD steps for automated build, test, and release.
-- [ ] Ensure `mod-tools.exe` is compiled on build and not placed manually
+- [x] Ensure `mod-tools.exe` is compiled on build and not placed manually
 - [ ] app cosmetics and name, icon, etc...
 - [ ] Consider using a structured format (like JSON) for configuration instead of `league_path.txt` if more settings are planned.
 
@@ -22,6 +20,6 @@
 
 # UX ---------------------
 
-- [ ] Favorites champs logic
-- [ ] Add search/filtering capabilities for the champion/skin list.
+- [x] Favorites champs logic
+- [x] Add search/filtering capabilities for the champion/skin list.
 - [ ] Animations baby!
