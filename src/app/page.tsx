@@ -6,10 +6,10 @@ import { DataUpdateModal } from "@/components/DataUpdateModal";
 import { ChampionCard } from "@/components/ChampionCard";
 import { SkinCard } from "@/components/SkinCard";
 import { useChampions } from "@/lib/hooks/use-champions";
-import { SkinInjectionButton } from "@/components/skin-injection/SkinInjectionButton";
 import { GameDirectorySelector } from "@/components/game-directory/GameDirectorySelector";
 import { useGameStore } from "@/lib/store";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Search, Heart } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,14 @@ const ChampionsLoader = () => (
 export default function Home() {
   const { isUpdating, progress, updateData } = useDataUpdate();
   const { champions, loading, error, hasData } = useChampions();
-  const { leaguePath, setLeaguePath } = useGameStore();
+  const {
+    leaguePath,
+    setLeaguePath,
+    selectSkin,
+    setLcuStatus,
+    lcuStatus,
+    selectedSkins,
+  } = useGameStore();
   const [isInitialized, setIsInitialized] = useState(false);
   const [hasStartedUpdate, setHasStartedUpdate] = useState(false);
   const [selectedChampion, setSelectedChampion] = useState<number | null>(null);
@@ -39,11 +46,20 @@ export default function Home() {
 
     async function initialize() {
       try {
-        // Load saved league path first
-        const savedPath = await invoke<string>("load_league_path");
-        if (savedPath && mounted) {
-          console.log("Loaded saved League path:", savedPath);
-          setLeaguePath(savedPath);
+        // Load saved config (path + skins)
+        const cfg = await invoke<unknown>("load_config");
+        const { league_path, skins } = cfg as {
+          league_path?: string;
+          skins?: Array<any>;
+        };
+        if (league_path && mounted) {
+          setLeaguePath(league_path);
+          // preload skin selections
+          skins?.forEach((s: any) => {
+            selectSkin(s.champion_id, s.skin_id, s.chroma_id, s.fantome);
+          });
+          // start watcher
+          void invoke("start_auto_inject", { leaguePath: league_path }); // Use camelCase parameter name
         }
 
         // Only check for updates if we haven't already started
@@ -87,10 +103,40 @@ export default function Home() {
       }
     }
 
+    // listen for LCU status events
+    const unlisten = listen<string>("lcu-status", (event) => {
+      console.log(`LCU status changed to: ${event.payload}`);
+      setLcuStatus(event.payload);
+    });
+
     return () => {
       mounted = false;
+      unlisten.then((f) => f());
     };
-  }, [isInitialized, updateData, setLeaguePath, hasStartedUpdate]);
+  }, [
+    isInitialized,
+    updateData,
+    setLeaguePath,
+    hasStartedUpdate,
+    selectSkin,
+    setLcuStatus,
+  ]);
+
+  // Persist configuration (league path + selected skins) on change
+  useEffect(() => {
+    if (!leaguePath) return;
+    // prepare skins array from Map
+    const skins = Array.from(selectedSkins.values()).map((s) => ({
+      champion_id: s.championId,
+      skin_id: s.skinId,
+      chroma_id: s.chromaId,
+      fantome: s.fantome,
+    }));
+    invoke("save_selected_skins", {
+      leaguePath: leaguePath, // Fix: use camelCase to match what Rust expects
+      skins,
+    }).catch((err) => console.error(err));
+  }, [leaguePath, selectedSkins]);
 
   // Save favorites to localStorage when they change
   useEffect(() => {
@@ -193,7 +239,7 @@ export default function Home() {
   return (
     <Suspense fallback={<ChampionsLoader />}>
       <div className="flex flex-col h-screen bg-background">
-        {/* Top bar with search and injection button */}
+        {/* Top bar with search and injection status dot */}
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-4 flex-1 max-w-md">
             <div className="relative flex-1">
@@ -229,7 +275,19 @@ export default function Home() {
               <RefreshCw className="h-4 w-4" />
               Update Data
             </Button>
-            <SkinInjectionButton />
+            {/* status dot */}
+            <div
+              className={`h-3 w-3 rounded-full ${
+                lcuStatus === "ChampSelect"
+                  ? "bg-yellow-500"
+                  : lcuStatus === "InProgress"
+                  ? "bg-green-500"
+                  : lcuStatus === "Queue"
+                  ? "bg-yellow-300"
+                  : "bg-red-500"
+              }`}
+              title={lcuStatus || "Unknown"}
+            />
           </div>
         </div>
 
@@ -248,6 +306,9 @@ export default function Home() {
                     toggleFavorite(champion.id);
                   }}
                   onClick={() => {
+                    console.log(
+                      `Selected champion: ${champion.name} (ID: ${champion.id})`
+                    );
                     setSelectedChampion(champion.id);
                   }}
                   className="champion-card"

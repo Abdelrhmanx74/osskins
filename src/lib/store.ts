@@ -10,9 +10,11 @@ interface SelectedSkin {
 
 interface GameState {
   leaguePath: string | null;
+  lcuStatus: string | null; // add LCU status
   isInjecting: boolean;
   selectedSkins: Map<number, SelectedSkin>; // Map of championId to selected skin
   setLeaguePath: (path: string) => void;
+  setLcuStatus: (status: string) => void; // add setter
   setInjecting: (isInjecting: boolean) => void;
   selectSkin: (
     championId: number,
@@ -26,10 +28,15 @@ interface GameState {
 
 export const useGameStore = create<GameState>((set) => ({
   leaguePath: null,
+  lcuStatus: null, // default no status
   isInjecting: false,
   selectedSkins: new Map(),
   setLeaguePath: (path) => {
     set({ leaguePath: path });
+  },
+  setLcuStatus: (status) => {
+    // implementation
+    set({ lcuStatus: status });
   },
   setInjecting: (isInjecting) => {
     set({ isInjecting });

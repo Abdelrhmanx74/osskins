@@ -61,6 +61,8 @@
           "path": "$APPDATA/**"
         }
       ]
-    }
+    },
+    "core:event:default",
+    "core:event:allow-listen"
   ]
 }

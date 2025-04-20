@@ -9,19 +9,8 @@ use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
-        .setup(|app| {
-            // Check for mod-tools.exe when app starts
-            match app.path().resource_dir() {
-                Ok(resource_dir) => {
-                    let mod_tools_path = resource_dir.join("mod-tools.exe");
-                    if !mod_tools_path.exists() {
-                        println!("Note: mod-tools.exe not found in resources directory. Skins may not appear in-game.");
-                    }
-                }
-                Err(e) => {
-                    println!("Warning: Could not check for mod-tools.exe: {}", e);
-                }
-            }
+        .setup(|_app| {
+            // Native injection is now used - no need to check for mod-tools.exe
             Ok(())
         })
         .plugin(tauri_plugin_shell::init())
@@ -35,8 +24,11 @@ fn main() {
             inject_skins,
             ensure_mod_tools,
             inject_game_skins,
-            save_league_path,  // Register the new command
-            load_league_path,  // Register the new command
+            save_league_path,
+            load_league_path,
+            save_selected_skins,
+            start_auto_inject,
+            load_config,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
