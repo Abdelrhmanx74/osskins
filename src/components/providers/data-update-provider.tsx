@@ -15,7 +15,6 @@ import { invoke } from "@tauri-apps/api/core";
 interface DataUpdateContextType {
   isUpdating: boolean;
   progress: DataUpdateProgress | null;
-  updateData: () => Promise<void>;
 }
 
 const DataUpdateContext = createContext<DataUpdateContextType | null>(null);
@@ -143,7 +142,6 @@ export function DataUpdateProvider({
   const value = {
     isUpdating: isUpdating || isPending || formPending,
     progress,
-    updateData,
   };
 
   return (

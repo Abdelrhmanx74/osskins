@@ -212,6 +212,5 @@ export function useDataUpdate() {
   return {
     isUpdating,
     progress,
-    updateData,
   };
 }
