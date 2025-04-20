@@ -21,10 +21,16 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
   const [isHovering, setIsHovering] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
+  // Determine if this card is selected and if a chroma is selected
+  const selected = selectedSkins.get(championId);
   const isSelected =
     selectedSkins.has(championId) &&
-    selectedSkins.get(championId)?.skinId === skin.id;
+    selectedSkins.get(championId)?.skinId === skin.id &&
+    (selectedChroma
+      ? selectedSkins.get(championId)?.chromaId === selectedChroma.id
+      : true);
 
+  // Show chroma image if selected, otherwise skin image
   const currentImageSrc = selectedChroma?.skinChromaPath ?? skin.skinSrc;
 
   const handleMouseEnter = () => {
@@ -35,20 +41,24 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
     setIsHovering(false);
   };
 
+  // Select skin or chroma in one click
   const handleClick = () => {
     if (isSelected) {
       clearSelection(championId);
     } else {
-      // Pass the fantome path from the skin data
       const fantomePath = selectedChroma?.fantome ?? skin.fantome;
       selectSkin(championId, skin.id, selectedChroma?.id, fantomePath);
     }
   };
 
+  // When a chroma is selected, immediately update selection and image
   const handleChromaSelect = (chroma: CachedChroma | null) => {
-    setSelectedChroma(chroma);
-    if (isSelected) {
-      // Pass the fantome path from the selected chroma or base skin
+    if (selectedChroma && chroma && selectedChroma.id === chroma.id) {
+      // If clicking the already-selected chroma, reset to base skin
+      setSelectedChroma(null);
+      selectSkin(championId, skin.id, undefined, skin.fantome);
+    } else {
+      setSelectedChroma(chroma);
       const fantomePath = chroma?.fantome ?? skin.fantome;
       selectSkin(championId, skin.id, chroma?.id, fantomePath);
     }
@@ -58,7 +68,7 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
     <Card
       ref={cardRef}
       className={cn(
-        "relative cursor-pointer w-full h-80 p-0 overflow-hidden transition-all duration-300",
+        "relative cursor-pointer size-full p-0 overflow-hidden transition-all duration-300",
         isSelected ? "ring-2 ring-primary" : ""
       )}
       onClick={handleClick}
@@ -70,17 +80,17 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
           <Image
             src={currentImageSrc}
             alt={selectedChroma?.name ?? skin.name}
-            fill
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            className="object-cover object-top"
+            width={308}
+            height={560}
+            className="object-cover"
             priority
           />
         )}
 
         {isSelected && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10">
-            <div className="bg-primary/20 p-4 rounded-full">
-              <Check className="h-10 w-10 text-primary" />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-10">
+            <div className="bg-primary/20 p-2 rounded-full">
+              <Check className="size-8 text-primary" />
             </div>
           </div>
         )}
@@ -88,8 +98,8 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
         {/* Play button overlay on hover */}
         {!isSelected && isHovering && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-10">
-            <div className="bg-primary/20 p-3 rounded-full">
-              <Play className="h-8 w-8 text-white" fill="white" />
+            <div className="bg-primary/20 p-2 rounded-full">
+              <Play className="size-8" />
             </div>
           </div>
         )}

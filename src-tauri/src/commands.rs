@@ -447,14 +447,16 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
             let mut token = None;
             
             // Try each directory, looking for lockfiles
+            let mut found_any_lockfile = false;
             for dir in &search_dirs {
                 println!("[LCU Watcher] Looking for lockfiles in: {}", dir.display());
-                
                 // Check each possible lockfile name
                 for name in ["lockfile", "LeagueClientUx.lockfile", "LeagueClient.lockfile"] {
                     let path = dir.join(name);
-                    println!("[LCU Watcher] Checking for lockfile: {} (exists={})", path.display(), path.exists());
-                    
+                    if path.exists() {
+                        found_any_lockfile = true;
+                        println!("[LCU Watcher] Found lockfile: {}", path.display());
+                    }
                     if let Ok(content) = fs::read_to_string(&path) {
                         let parts: Vec<&str> = content.split(':').collect();
                         if parts.len() >= 5 {
@@ -473,8 +475,9 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
                 }
             }
             
-            if port.is_none() || token.is_none() {
-                println!("[LCU Watcher] No valid lockfile found. Is League running? The lockfile should be at: D:\\Mana\\Riot Games\\League of Legends\\lockfile");
+            if !found_any_lockfile {
+                // Only print a single message if no lockfile is found, and sleep
+                println!("[LCU Watcher] No valid lockfile found. Is League running? The lockfile should be at: {}", league_path_clone);
                 thread::sleep(Duration::from_secs(5));
                 continue;
             }
