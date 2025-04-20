@@ -16,6 +16,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             check_champions_data,
+            check_data_updates,
             get_champion_data,
             update_champion_data,
             save_fantome_file,
@@ -28,7 +29,6 @@ fn main() {
             save_selected_skins,
             start_auto_inject,
             load_config,
-            update_github_and_cdragon_data,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())

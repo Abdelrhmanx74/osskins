@@ -42,6 +42,29 @@ pub struct SkinData {
 }
 
 #[tauri::command]
+pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResult, String> {
+    let app_data_dir = app.path().app_data_dir()
+        .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
+    
+    let champions_dir = app_data_dir.join("champions");
+    if (!champions_dir.exists()) {
+        return Ok(DataUpdateResult {
+            success: true,
+            error: None,
+            updated_champions: vec!["all".to_string()],
+        });
+    }
+
+    // TODO: Implement actual update checking logic
+    // For now, we'll just return that no updates are needed
+    Ok(DataUpdateResult {
+        success: true,
+        error: None,
+        updated_champions: Vec::new(),
+    })
+}
+
+#[tauri::command]
 pub async fn update_champion_data(
     app: tauri::AppHandle,
     champion_name: String,
@@ -424,16 +447,14 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
             let mut token = None;
             
             // Try each directory, looking for lockfiles
-            let mut found_any_lockfile = false;
             for dir in &search_dirs {
                 println!("[LCU Watcher] Looking for lockfiles in: {}", dir.display());
+                
                 // Check each possible lockfile name
                 for name in ["lockfile", "LeagueClientUx.lockfile", "LeagueClient.lockfile"] {
                     let path = dir.join(name);
-                    if path.exists() {
-                        found_any_lockfile = true;
-                        println!("[LCU Watcher] Found lockfile: {}", path.display());
-                    }
+                    println!("[LCU Watcher] Checking for lockfile: {} (exists={})", path.display(), path.exists());
+                    
                     if let Ok(content) = fs::read_to_string(&path) {
                         let parts: Vec<&str> = content.split(':').collect();
                         if parts.len() >= 5 {
@@ -452,9 +473,8 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
                 }
             }
             
-            if !found_any_lockfile {
-                // Only print a single message if no lockfile is found, and sleep
-                println!("[LCU Watcher] No valid lockfile found. Is League running? The lockfile should be at: {}", league_path_clone);
+            if port.is_none() || token.is_none() {
+                println!("[LCU Watcher] No valid lockfile found. Is League running? The lockfile should be at: D:\\Mana\\Riot Games\\League of Legends\\lockfile");
                 thread::sleep(Duration::from_secs(5));
                 continue;
             }
@@ -653,100 +673,4 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
     
     println!("LCU status watcher thread started");
     Ok(())
-}
-
-#[tauri::command]
-pub async fn update_github_and_cdragon_data(app: tauri::AppHandle) -> Result<DataUpdateResult, String> {
-    use std::io::Write;
-    use std::fs::{self, File};
-    use std::process::Command;
-    use std::path::PathBuf;
-
-    // 1. Get app data dir
-    let app_data_dir = app.path().app_data_dir()
-        .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
-    let cache_dir = app_data_dir.join("cache");
-    fs::create_dir_all(&cache_dir).map_err(|e| format!("Failed to create cache dir: {}", e))?;
-    let sha_file = cache_dir.join("last_commit_sha.txt");
-    let repo_dir = cache_dir.join("lol-skins-developer");
-
-    // 2. Download latest commit SHA from GitHub
-    let sha_url = "https://api.github.com/repos/darkseal-org/lol-skins-developer/commits/main";
-    let client = reqwest::blocking::Client::builder()
-        .user_agent("lol-skins-updater")
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
-    let resp = client.get(sha_url).send().map_err(|e| format!("Failed to fetch commit info: {}", e))?;
-    let json: serde_json::Value = resp.json().map_err(|e| format!("Failed to parse commit info: {}", e))?;
-    let latest_sha = json["sha"].as_str().ok_or("No sha in commit info")?.to_string();
-
-    // 3. Read cached SHA
-    let cached_sha = fs::read_to_string(&sha_file).unwrap_or_default();
-    let needs_update = cached_sha.trim() != latest_sha.trim();
-
-    // 4. If update needed, pull just the new commit(s)
-    if needs_update {
-        if repo_dir.exists() {
-            // Repo exists, fetch and reset to latest
-            let output = Command::new("git")
-                .arg("-C").arg(&repo_dir)
-                .arg("fetch").arg("origin").arg("main")
-                .output().map_err(|e| format!("Failed to run git fetch: {}", e))?;
-            if !output.status.success() {
-                return Err(format!("git fetch failed: {}", String::from_utf8_lossy(&output.stderr)));
-            }
-            let output = Command::new("git")
-                .arg("-C").arg(&repo_dir)
-                .arg("reset").arg("--hard").arg(&latest_sha)
-                .output().map_err(|e| format!("Failed to run git reset: {}", e))?;
-            if !output.status.success() {
-                return Err(format!("git reset failed: {}", String::from_utf8_lossy(&output.stderr)));
-            }
-        } else {
-            // Clone repo at the specific commit (shallow)
-            let output = Command::new("git")
-                .arg("clone")
-                .arg("--depth=1")
-                .arg("--branch=main")
-                .arg("https://github.com/darkseal-org/lol-skins-developer.git")
-                .arg(&repo_dir)
-                .output().map_err(|e| format!("Failed to run git clone: {}", e))?;
-            if !output.status.success() {
-                return Err(format!("git clone failed: {}", String::from_utf8_lossy(&output.stderr)));
-            }
-        }
-        // Save new SHA
-        let mut f = File::create(&sha_file).map_err(|e| format!("Failed to write sha file: {}", e))?;
-        f.write_all(latest_sha.as_bytes()).map_err(|e| format!("Failed to write sha: {}", e))?;
-    }
-
-    // 5. Fetch latest CommunityDragon data (real logic, not mock)
-    // Download champion summaries
-    let cdragon_url = "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-summary.json";
-    let resp = client.get(cdragon_url).send().map_err(|e| format!("Failed to fetch champion summaries: {}", e))?;
-    let summaries: Vec<serde_json::Value> = resp.json().map_err(|e| format!("Failed to parse champion summaries: {}", e))?;
-    let total_champions = summaries.len();
-    let mut processed_champions = 0;
-    for summary in summaries.iter() {
-        let champ_id = summary["id"].as_u64().unwrap_or(0);
-        let champ_name = summary["name"].as_str().unwrap_or("");
-        if champ_id == 0 || champ_name.is_empty() { continue; }
-        // Download champion details
-        let details_url = format!("https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champions/{}.json", champ_id);
-        let resp = client.get(&details_url).send().map_err(|e| format!("Failed to fetch details for champion {}: {}", champ_id, e))?;
-        let details: serde_json::Value = resp.json().map_err(|e| format!("Failed to parse details for champion {}: {}", champ_id, e))?;
-        // Save champion data
-        let app_data_dir = app.path().app_data_dir().map_err(|e| format!("Failed to get app data directory: {}", e))?;
-        let champion_dir = app_data_dir.join("champions").join(champ_name.to_lowercase().replace(" ", "_"));
-        fs::create_dir_all(&champion_dir).map_err(|e| format!("Failed to create champion directory: {}", e))?;
-        let champion_file = champion_dir.join(format!("{}.json", champ_name.to_lowercase().replace(" ", "_")));
-        fs::write(&champion_file, serde_json::to_string_pretty(&details).unwrap_or_default()).map_err(|e| format!("Failed to write champion data: {}", e))?;
-        processed_champions += 1;
-    }
-
-    Ok(DataUpdateResult {
-        success: true,
-        error: None,
-        updated_champions: if needs_update { vec!["all".to_string()] } else { vec![] },
-    })
 }

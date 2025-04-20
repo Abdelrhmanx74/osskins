@@ -2,11 +2,11 @@
 
 - [x] Fix build issues
 - [x] State for user selects
-- [x] Cache update with github / the json's update when there is a git commit
+- [ ] Cache update with github / the json's update when there is a git commit
 - [x] Refine LCU integration: Detect game state (champ select, in-game) for context-aware actions (e.g., auto-inject on game start, pre-game pop up).
 - [ ] Handle errors gracefully and provide user feedback on a prod level.
 
-- [-] Optimize performance for large champion/skin datasets.
+- [ ] Optimize performance for large champion/skin datasets.
 - [x] Ensure `mod-tools.exe` is compiled on build and not placed manually
 - [ ] app cosmetics and name, icon, etc...
 - [x] Consider using a structured format (like JSON) for configuration instead of `league_path.txt` if more settings are planned.

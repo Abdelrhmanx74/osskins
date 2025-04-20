@@ -13,7 +13,6 @@ interface GameState {
   lcuStatus: string | null; // add LCU status
   isInjecting: boolean;
   selectedSkins: Map<number, SelectedSkin>; // Map of championId to selected skin
-  favorites: Set<number>;
   setLeaguePath: (path: string) => void;
   setLcuStatus: (status: string) => void; // add setter
   setInjecting: (isInjecting: boolean) => void;
@@ -25,8 +24,6 @@ interface GameState {
   ) => void;
   clearSelection: (championId: number) => void;
   clearAllSelections: () => void;
-  toggleFavorite: (championId: number) => void;
-  setFavorites: (favorites: Set<number>) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -34,7 +31,6 @@ export const useGameStore = create<GameState>((set) => ({
   lcuStatus: null, // default no status
   isInjecting: false,
   selectedSkins: new Map(),
-  favorites: new Set(),
   setLeaguePath: (path) => {
     set({ leaguePath: path });
   },
@@ -66,26 +62,5 @@ export const useGameStore = create<GameState>((set) => ({
   },
   clearAllSelections: () => {
     set({ selectedSkins: new Map() });
-  },
-  toggleFavorite: (championId) => {
-    set((state) => {
-      const newFavorites = new Set(state.favorites);
-      if (newFavorites.has(championId)) {
-        newFavorites.delete(championId);
-      } else {
-        newFavorites.add(championId);
-      }
-      // Persist to localStorage
-      if (typeof window !== "undefined") {
-        localStorage.setItem(
-          "championFavorites",
-          JSON.stringify(Array.from(newFavorites))
-        );
-      }
-      return { favorites: newFavorites };
-    });
-  },
-  setFavorites: (favorites) => {
-    set({ favorites });
   },
 }));

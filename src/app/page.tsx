@@ -23,7 +23,7 @@ const ChampionsLoader = () => (
 );
 
 export default function Home() {
-  const { isUpdating, progress } = useDataUpdate();
+  const { isUpdating, progress, updateData } = useDataUpdate();
   const { champions, loading, error, hasData } = useChampions();
   const {
     leaguePath,
@@ -32,14 +32,13 @@ export default function Home() {
     setLcuStatus,
     lcuStatus,
     selectedSkins,
-    favorites,
-    toggleFavorite,
-    setFavorites,
   } = useGameStore();
   const [isInitialized, setIsInitialized] = useState(false);
   const [hasStartedUpdate, setHasStartedUpdate] = useState(false);
   const [selectedChampion, setSelectedChampion] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [favorites, setFavorites] = useState<Set<number>>(new Set());
+  const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
 
   // Handle initial setup
   useEffect(() => {
@@ -56,29 +55,23 @@ export default function Home() {
         if (league_path && mounted) {
           setLeaguePath(league_path);
           // preload skin selections
-          (skins ?? []).forEach((s: unknown) => {
-            if (
-              typeof s === "object" &&
-              s !== null &&
-              "champion_id" in s &&
-              "skin_id" in s
-            ) {
-              const skinObj = s as {
-                champion_id: number;
-                skin_id: number;
-                chroma_id?: number;
-                fantome?: string;
-              };
-              selectSkin(
-                skinObj.champion_id,
-                skinObj.skin_id,
-                skinObj.chroma_id,
-                skinObj.fantome
-              );
-            }
+          skins?.forEach((s: any) => {
+            selectSkin(s.champion_id, s.skin_id, s.chroma_id, s.fantome);
           });
           // start watcher
-          void invoke("start_auto_inject", { leaguePath: league_path });
+          void invoke("start_auto_inject", { leaguePath: league_path }); // Use camelCase parameter name
+        }
+
+        // Only check for updates if we haven't already started
+        if (!hasStartedUpdate && mounted) {
+          const needsUpdate = !(await invoke<boolean>("check_champions_data"));
+          console.log("Needs update:", needsUpdate);
+
+          if (needsUpdate) {
+            console.log("Starting data update...");
+            setHasStartedUpdate(true);
+            await updateData();
+          }
         }
 
         if (mounted) {
@@ -116,20 +109,17 @@ export default function Home() {
       setLcuStatus(event.payload);
     });
 
-    // prepare cleanup
     return () => {
       mounted = false;
-      void unlisten.then((f) => {
-        f();
-      });
+      unlisten.then((f) => f());
     };
   }, [
     isInitialized,
+    updateData,
     setLeaguePath,
     hasStartedUpdate,
     selectSkin,
     setLcuStatus,
-    setFavorites,
   ]);
 
   // Persist configuration (league path + selected skins) on change
@@ -142,13 +132,10 @@ export default function Home() {
       chroma_id: s.chromaId,
       fantome: s.fantome,
     }));
-
-    void invoke("save_selected_skins", {
-      leaguePath: leaguePath,
+    invoke("save_selected_skins", {
+      leaguePath: leaguePath, // Fix: use camelCase to match what Rust expects
       skins,
-    }).catch((error: unknown) => {
-      console.error(error);
-    });
+    }).catch((err) => console.error(err));
   }, [leaguePath, selectedSkins]);
 
   // Save favorites to localStorage when they change
@@ -161,18 +148,27 @@ export default function Home() {
     }
   }, [favorites]);
 
-  // Sort champions: favorites at the top, then alphabetically
-  const filteredChampions = champions
-    .filter((champion) =>
-      champion.name.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-    .sort((a, b) => {
-      const aFav = favorites.has(a.id);
-      const bFav = favorites.has(b.id);
-      if (aFav && !bFav) return -1;
-      if (!aFav && bFav) return 1;
-      return a.name.localeCompare(b.name);
+  // Toggle champion favorite status
+  const toggleFavorite = (championId: number) => {
+    setFavorites((prev) => {
+      const newFavorites = new Set(prev);
+      if (newFavorites.has(championId)) {
+        newFavorites.delete(championId);
+      } else {
+        newFavorites.add(championId);
+      }
+      return newFavorites;
     });
+  };
+
+  // Filter champions based on search and favorites
+  const filteredChampions = champions.filter((champion) => {
+    const matchesSearch = champion.name
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase());
+    const matchesFavorites = !showOnlyFavorites || favorites.has(champion.id);
+    return matchesSearch && matchesFavorites;
+  });
 
   // If updating, show the modal
   if (isUpdating) {
@@ -244,7 +240,7 @@ export default function Home() {
     <Suspense fallback={<ChampionsLoader />}>
       <div className="flex flex-col h-screen bg-background">
         {/* Top bar with search and injection status dot */}
-        <div className="flex items-center justify-between p-4 border-b max-w-7xl w-full mx-auto">
+        <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-4 flex-1 max-w-md">
             <div className="relative flex-1">
               <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -257,10 +253,28 @@ export default function Home() {
                 }}
               />
             </div>
-            {/* Removed favorites filter button */}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                setShowOnlyFavorites(!showOnlyFavorites);
+              }}
+              className={showOnlyFavorites ? "bg-primary/20" : ""}
+            >
+              <Heart
+                className={`h-4 w-4 ${showOnlyFavorites ? "fill-primary" : ""}`}
+              />
+            </Button>
           </div>
           <div className="flex items-center gap-4">
-            {/* Removed Update Data button */}
+            <Button
+              onClick={() => void updateData()}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Update Data
+            </Button>
             {/* status dot */}
             <div
               className={`h-3 w-3 rounded-full ${
@@ -272,16 +286,16 @@ export default function Home() {
                   ? "bg-yellow-300"
                   : "bg-red-500"
               }`}
-              title={lcuStatus ?? "Unknown"}
+              title={lcuStatus || "Unknown"}
             />
           </div>
         </div>
 
         {/* Main content */}
-        <div className="flex flex-1 overflow-hidden p-2 max-w-7xl w-full mx-auto">
+        <div className="flex flex-1 overflow-hidden">
           {/* Left side - Champions grid */}
-          <div className="w-1/4 xl:w-1/5 overflow-y-auto border-r min-w-[220px]">
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-4">
+          <div className="w-1/3 p-4 overflow-y-auto border-r">
+            <div className="grid grid-cols-3 gap-4">
               {filteredChampions.map((champion) => (
                 <ChampionCard
                   key={champion.id}
@@ -304,14 +318,24 @@ export default function Home() {
             {filteredChampions.length === 0 && (
               <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
                 <p>No champions found</p>
+                {showOnlyFavorites && (
+                  <Button
+                    variant="link"
+                    onClick={() => {
+                      setShowOnlyFavorites(false);
+                    }}
+                  >
+                    Clear favorites filter
+                  </Button>
+                )}
               </div>
             )}
           </div>
 
           {/* Right side - Skins grid */}
-          <div className="w-3/4 xl:w-4/5 p-4 overflow-y-auto">
+          <div className="w-2/3 p-4 overflow-y-auto">
             {selectedChampionData ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-8">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-6">
                 {selectedChampionData.skins
                   .filter((skin) => !skin.isBase)
                   .map((skin) => (
