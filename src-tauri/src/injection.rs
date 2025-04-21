@@ -634,7 +634,7 @@ impl SkinInjector {
         // Check if mod-tools.exe exists
         let mod_tools_path = match &self.mod_tools_path {
             Some(path) => {
-                if (!path.exists()) {
+                if !path.exists() {
                     return Err(InjectionError::OverlayError(format!(
                         "mod-tools.exe was found during initialization but is no longer at path: {}. Please reinstall the application or obtain mod-tools.exe from CSLOL Manager.",
                         path.display()
@@ -686,43 +686,80 @@ impl SkinInjector {
         #[cfg(target_os = "windows")]
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-        let mut command = std::process::Command::new(&mod_tools_path);
-        command.args([
-            "mkoverlay",
-            game_mods_dir.to_str().unwrap(),
-            overlay_dir.to_str().unwrap(),
-            &format!("--game:{}", self.game_path.to_str().unwrap()),
-            &format!("--mods:{}", mods_arg),
-            "--noTFT",
-            "--ignoreConflict"
-        ]);
+        // Try the mkoverlay command with retries for access violation errors (0xc0000005)
+        let max_retries = 3;
+        let mut retry_count = 0;
+        let mut last_error = None;
         
-        #[cfg(target_os = "windows")]
-        command.creation_flags(CREATE_NO_WINDOW);
-        
-        let output = match command.output() {
-            Ok(out) => out,
-            Err(e) => {
-                return Err(InjectionError::ProcessError(format!(
-                    "Failed to create overlay: {}. The mod-tools.exe might be missing or incompatible.", e
-                )));
+        while retry_count < max_retries {
+            // Small delay between retries to let resources free up
+            if retry_count > 0 {
+                self.log(&format!("Retrying overlay creation (attempt {}/{})", retry_count + 1, max_retries));
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                
+                // Make sure any lingering processes are killed
+                self.cleanup_mod_tools_processes();
             }
-        };
-
-        if !output.status.success() {
-            let stderr_output = String::from_utf8_lossy(&output.stderr).into_owned();
-            let stdout_output = String::from_utf8_lossy(&output.stdout).into_owned();
-            let error_message = if stderr_output.is_empty() { 
-                stdout_output 
-            } else { 
-                stderr_output 
-            };
             
-            return Err(InjectionError::ProcessError(format!(
-                "mkoverlay command failed: {}. Exit code: {}", 
-                error_message,
-                output.status
-            )));
+            let mut command = std::process::Command::new(&mod_tools_path);
+            command.args([
+                "mkoverlay",
+                game_mods_dir.to_str().unwrap(),
+                overlay_dir.to_str().unwrap(),
+                &format!("--game:{}", self.game_path.to_str().unwrap()),
+                &format!("--mods:{}", mods_arg),
+                "--noTFT",
+                "--ignoreConflict"
+            ]);
+            
+            #[cfg(target_os = "windows")]
+            command.creation_flags(CREATE_NO_WINDOW);
+            
+            match command.output() {
+                Ok(output) => {
+                    if output.status.success() {
+                        // Success - break out of retry loop
+                        break;
+                    } else {
+                        // Command ran but had error status
+                        let stderr_output = String::from_utf8_lossy(&output.stderr).into_owned();
+                        let stdout_output = String::from_utf8_lossy(&output.stdout).into_owned();
+                        let error_message = if stderr_output.is_empty() { stdout_output } else { stderr_output };
+                        
+                        // Check if it's an access violation error
+                        if output.status.to_string().contains("0xc0000005") {
+                            self.log(&format!("Access violation error in attempt {}/{}. Retrying...", 
+                                retry_count + 1, max_retries));
+                            last_error = Some(InjectionError::ProcessError(format!(
+                                "mkoverlay command failed: {}. Exit code: {}", 
+                                error_message, output.status
+                            )));
+                            retry_count += 1;
+                            continue;
+                        } else {
+                            // Other error, no retry
+                            return Err(InjectionError::ProcessError(format!(
+                                "mkoverlay command failed: {}. Exit code: {}", 
+                                error_message, output.status
+                            )));
+                        }
+                    }
+                },
+                Err(e) => {
+                    // Command couldn't be started
+                    return Err(InjectionError::ProcessError(format!(
+                        "Failed to create overlay: {}. The mod-tools.exe might be missing or incompatible.", e
+                    )));
+                }
+            }
+        }
+        
+        // Check if we exhausted our retries
+        if retry_count >= max_retries {
+            if let Some(err) = last_error {
+                return Err(err);
+            }
+            return Err(InjectionError::ProcessError("Failed to create overlay after multiple attempts".into()));
         }
 
         // Create config.json
@@ -735,53 +772,123 @@ impl SkinInjector {
         // Important: Set state to Running BEFORE spawning process
         self.set_state(ModState::Running);
 
-        // Run the overlay process - EXACT format from CSLOL
-        let mut command = std::process::Command::new(&mod_tools_path);
-        command.args([
-            "runoverlay",
-            overlay_dir.to_str().unwrap(),
-            config_path.to_str().unwrap(),
-            &format!("--game:{}", self.game_path.to_str().unwrap()),
-            "--opts:configless"
-        ]);
+        // Try running the overlay, with retries
+        let max_run_retries = 2;
+        let mut run_retry_count = 0;
+        let mut last_run_error = None;
         
-        #[cfg(target_os = "windows")]
-        command.creation_flags(CREATE_NO_WINDOW);
+        while run_retry_count < max_run_retries {
+            if run_retry_count > 0 {
+                self.log(&format!("Retrying overlay run (attempt {}/{})", run_retry_count + 1, max_run_retries));
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                
+                // Make sure any lingering processes are killed
+                self.cleanup_mod_tools_processes();
+            }
+            
+            // Run the overlay process - EXACT format from CSLOL
+            let mut command = std::process::Command::new(&mod_tools_path);
+            command.args([
+                "runoverlay",
+                overlay_dir.to_str().unwrap(),
+                config_path.to_str().unwrap(),
+                &format!("--game:{}", self.game_path.to_str().unwrap()),
+                "--opts:configless"
+            ]);
+            
+            #[cfg(target_os = "windows")]
+            command.creation_flags(CREATE_NO_WINDOW);
 
-        match command.spawn() {
-            Ok(_) => {
-                self.log("Overlay process started successfully");
-                Ok(())
-            },
-            Err(e) => {
-                self.set_state(ModState::Idle); // Reset state on error
-                self.log(&format!("Failed to start overlay process: {}", e));
-                
-                let error_msg = match e.kind() {
-                    io::ErrorKind::NotFound => format!(
-                        "mod-tools.exe not found or is inaccessible at path: {}. Please install CSLOL Manager or copy the correct mod-tools.exe to the application directory.", 
-                        mod_tools_path.display()
-                    ),
-                    io::ErrorKind::PermissionDenied => format!(
-                        "Permission denied when trying to run mod-tools.exe. Try running the application as administrator."
-                    ),
-                    _ => format!(
-                        "Error running mod-tools.exe: {}. Please ensure it's correctly installed and compatible with your system.", 
-                        e
-                    )
-                };
-                
-                Err(InjectionError::OverlayError(error_msg))
+            match command.spawn() {
+                Ok(_) => {
+                    self.log("Overlay process started successfully");
+                    return Ok(());
+                },
+                Err(e) => {
+                    run_retry_count += 1;
+                    
+                    // Store error for potential later use
+                    last_run_error = Some(match e.kind() {
+                        io::ErrorKind::NotFound => InjectionError::OverlayError(format!(
+                            "mod-tools.exe not found or is inaccessible at path: {}. Please install CSLOL Manager or copy the correct mod-tools.exe to the application directory.", 
+                            mod_tools_path.display()
+                        )),
+                        io::ErrorKind::PermissionDenied => InjectionError::OverlayError(format!(
+                            "Permission denied when trying to run mod-tools.exe. Try running the application as administrator."
+                        )),
+                        _ => InjectionError::OverlayError(format!(
+                            "Error running mod-tools.exe: {}. Please ensure it's correctly installed and compatible with your system.", 
+                            e
+                        ))
+                    });
+                    
+                    if run_retry_count < max_run_retries {
+                        self.log(&format!("Failed to start overlay process: {}. Retrying...", e));
+                        continue;
+                    }
+                }
+            }
+        }
+        
+        // If we got here, all retries failed
+        self.set_state(ModState::Idle); // Reset state on error
+        
+        if let Some(err) = last_run_error {
+            self.log(&format!("Failed to start overlay process after {} attempts", max_run_retries));
+            Err(err)
+        } else {
+            Err(InjectionError::OverlayError("Failed to start overlay process after multiple attempts".into()))
+        }
+    }
+    
+    // Helper function to kill mod-tools processes - extracted from cleanup for reuse
+    fn cleanup_mod_tools_processes(&self) {
+        #[cfg(target_os = "windows")]
+        {
+            // First try normal taskkill
+            let mut command = std::process::Command::new("taskkill");
+            command.args(["/F", "/IM", "mod-tools.exe"]);
+            
+            #[cfg(target_os = "windows")]
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            #[cfg(target_os = "windows")]
+            command.creation_flags(CREATE_NO_WINDOW);
+            
+            let _ = command.output();
+            
+            // Then check if any processes are still running with wmic (more reliable)
+            let mut check_command = std::process::Command::new("wmic");
+            check_command.args(["process", "where", "name='mod-tools.exe'", "get", "processid"]);
+            #[cfg(target_os = "windows")]
+            check_command.creation_flags(CREATE_NO_WINDOW);
+            
+            // If we find any processes still running, use taskkill with /PID for each one
+            if let Ok(output) = check_command.output() {
+                if output.status.success() {
+                    let output_str = String::from_utf8_lossy(&output.stdout);
+                    for line in output_str.lines() {
+                        let line = line.trim();
+                        if line != "ProcessId" && !line.is_empty() && line.chars().all(|c| c.is_digit(10)) {
+                            // Found a PID, kill it specifically
+                            let mut kill_pid = std::process::Command::new("taskkill");
+                            kill_pid.args(["/F", "/PID", line]);
+                            #[cfg(target_os = "windows")]
+                            kill_pid.creation_flags(CREATE_NO_WINDOW);
+                            let _ = kill_pid.output();
+                        }
+                    }
+                }
             }
         }
     }
 
     // Main injection method that does all steps
     pub fn inject_skins(&mut self, skins: &[Skin], fantome_files_dir: &Path) -> Result<(), InjectionError> {
-        if self.state != ModState::Idle {
-            return Err(InjectionError::ProcessError("Injector is not in idle state".into()));
-        }
+        // First, ensure that we clean up any existing running processes
+        // We do this even if we're not in Running state to avoid issues with orphaned processes
+        self.cleanup()?;
         
+        // Now we can properly initialize for a new injection
         self.set_state(ModState::Busy);
         self.log("Starting skin injection process...");
         
@@ -842,17 +949,12 @@ impl SkinInjector {
 
     // Add a cleanup method to stop the injection
     pub fn cleanup(&mut self) -> Result<(), InjectionError> {
-        if self.state != ModState::Running {
-            // Nothing to do if we're not running
-            return Ok(());
-        }
-        
         self.log("Stopping skin injection process...");
         
-        // Find and kill the mod-tools processes
+        // Find and kill the mod-tools processes - more aggressive approach
         #[cfg(target_os = "windows")]
         {
-            // Use taskkill to terminate mod-tools.exe processes
+            // First try normal taskkill
             let mut command = std::process::Command::new("taskkill");
             command.args(["/F", "/IM", "mod-tools.exe"]);
             
@@ -861,17 +963,49 @@ impl SkinInjector {
             #[cfg(target_os = "windows")]
             command.creation_flags(CREATE_NO_WINDOW);
             
-            // We don't really care about the result - it might fail if no processes exist
             let _ = command.output();
+            
+            // Then check if any processes are still running with wmic (more reliable)
+            let mut check_command = std::process::Command::new("wmic");
+            check_command.args(["process", "where", "name='mod-tools.exe'", "get", "processid"]);
+            #[cfg(target_os = "windows")]
+            check_command.creation_flags(CREATE_NO_WINDOW);
+            
+            // If we find any processes still running, use taskkill with /PID for each one
+            if let Ok(output) = check_command.output() {
+                if output.status.success() {
+                    let output_str = String::from_utf8_lossy(&output.stdout);
+                    for line in output_str.lines() {
+                        let line = line.trim();
+                        if line != "ProcessId" && !line.is_empty() && line.chars().all(|c| c.is_digit(10)) {
+                            // Found a PID, kill it specifically
+                            let mut kill_pid = std::process::Command::new("taskkill");
+                            kill_pid.args(["/F", "/PID", line]);
+                            #[cfg(target_os = "windows")]
+                            kill_pid.creation_flags(CREATE_NO_WINDOW);
+                            let _ = kill_pid.output();
+                        }
+                    }
+                }
+            }
         }
         
         // Clean up the overlay directory
         let overlay_dir = self.app_dir.join("overlay");
         if overlay_dir.exists() {
-            let _ = fs::remove_dir_all(&overlay_dir);
+            // Try multiple times if needed - sometimes Windows file locks take time to release
+            for _ in 0..3 {
+                match fs::remove_dir_all(&overlay_dir) {
+                    Ok(_) => break,
+                    Err(_) => {
+                        // Sleep briefly to allow file locks to clear
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                }
+            }
         }
         
-        // Reset the state
+        // Reset the state regardless of previous state to ensure cleanup
         self.set_state(ModState::Idle);
         self.log("Skin injection stopped");
         

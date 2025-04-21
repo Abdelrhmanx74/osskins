@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import {
   GameStatusDot,
   // InjectionStatusDot,
-} from "@/components/skin-injection/InjectionStatusDot";
+} from "@/components/skin-injection/GameStatusDot";
 import { toast } from "sonner";
 
 // Loading component using React 19 suspense

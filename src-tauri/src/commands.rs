@@ -442,14 +442,10 @@ pub async fn inject_game_skins(
     ) {
         Ok(_) => {
             println!("Skin injection completed successfully");
-            // Emit the success event BEFORE setting status to false
-            let _ = app_handle.emit("injection-success", ()); // New success event
             Ok("Skin injection completed successfully".to_string())
         },
         Err(e) => {
             println!("Skin injection failed: {}", e);
-            // Emit the error event
-            let _ = app_handle.emit("skin-injection-error", e.to_string());
             Err(format!("Skin injection failed: {}", e))
         },
     };
