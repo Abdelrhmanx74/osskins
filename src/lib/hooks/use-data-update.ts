@@ -56,7 +56,7 @@ export function useDataUpdate() {
 
         // Update loading toast with download info
         toast.dismiss(loadingToastId);
-        const downloadToastId = toast("Downloading champion data");
+        const downloadToastId = toast("Downloading champions data");
 
         // Process champions in larger batches
         const BATCH_SIZE = 10;

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useGameStore } from "@/lib/store";
 
 export interface Champion {
   id: number;
@@ -27,12 +28,16 @@ export interface CachedChroma {
 }
 
 export function useChampions() {
+  const { leaguePath } = useGameStore();
   const [champions, setChampions] = useState<Champion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasData, setHasData] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (!leaguePath) return;
+    setLoading(true);
+    setError(null);
     async function checkData() {
       try {
         const dataExists = await invoke<boolean>("check_champions_data");
@@ -74,7 +79,7 @@ export function useChampions() {
     }
 
     void checkData();
-  }, []);
+  }, [leaguePath]);
 
   return { champions, loading, error, hasData };
 }

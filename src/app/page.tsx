@@ -11,7 +11,7 @@ import { useGameStore } from "@/lib/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Search } from "lucide-react";
+import { Loader2, RefreshCw, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   GameStatusDot,
@@ -22,8 +22,7 @@ import { toast } from "sonner";
 // Loading component using React 19 suspense
 const ChampionsLoader = () => (
   <div className="flex flex-col items-center justify-center h-screen">
-    <div className="text-2xl font-bold mb-4">Loading Champions</div>
-    <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full"></div>
+    <Loader2 className="animate-spin size-20 text-muted-foreground" />
   </div>
 );
 
@@ -58,7 +57,7 @@ export default function Home() {
           skins?: Array<any>;
           favorites?: number[];
         };
-        if (league_path && mounted) {
+        if (league_path) {
           setLeaguePath(league_path);
           // preload skin selections
           (skins ?? []).forEach((s: unknown) => {
@@ -83,7 +82,7 @@ export default function Home() {
             }
           });
           // Load favorites
-          if (favorites && mounted) {
+          if (favorites) {
             setFavorites(new Set(favorites));
           }
           // start watcher
@@ -208,7 +207,7 @@ export default function Home() {
     return <ChampionsLoader />;
   }
 
-  if (!hasData) {
+  if (hasData === false) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-muted-foreground">Updating champion data...</div>
