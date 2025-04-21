@@ -29,6 +29,8 @@ fn main() {
             save_selected_skins,
             start_auto_inject,
             load_config,
+            delete_champions_cache,
+            auto_detect_league,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())

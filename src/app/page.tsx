@@ -13,6 +13,11 @@ import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import {
+  GameStatusDot,
+  // InjectionStatusDot,
+} from "@/components/skin-injection/InjectionStatusDot";
+import { toast } from "sonner";
 
 // Loading component using React 19 suspense
 const ChampionsLoader = () => (
@@ -30,7 +35,6 @@ export default function Home() {
     setLeaguePath,
     selectSkin,
     setLcuStatus,
-    lcuStatus,
     selectedSkins,
     favorites,
     toggleFavorite,
@@ -47,11 +51,12 @@ export default function Home() {
 
     async function initialize() {
       try {
-        // Load saved config (path + skins)
+        // Load saved config (path + skins + favorites)
         const cfg = await invoke<unknown>("load_config");
-        const { league_path, skins } = cfg as {
+        const { league_path, skins, favorites } = cfg as {
           league_path?: string;
           skins?: Array<any>;
+          favorites?: number[];
         };
         if (league_path && mounted) {
           setLeaguePath(league_path);
@@ -77,6 +82,10 @@ export default function Home() {
               );
             }
           });
+          // Load favorites
+          if (favorites && mounted) {
+            setFavorites(new Set(favorites));
+          }
           // start watcher
           void invoke("start_auto_inject", { leaguePath: league_path }); // Use camelCase parameter name
         }
@@ -109,30 +118,8 @@ export default function Home() {
       void initialize();
     }
 
-    // Load favorites from localStorage
-    if (typeof window !== "undefined") {
-      const storedFavorites = localStorage.getItem("championFavorites");
-      if (storedFavorites) {
-        try {
-          const parsedFavorites = JSON.parse(storedFavorites) as number[];
-          setFavorites(new Set<number>(parsedFavorites));
-        } catch (err) {
-          console.error("Failed to parse favorites:", err);
-        }
-      }
-    }
-
-    // listen for LCU status events
-    const unlistenPromise = listen<string>("lcu-status", (event) => {
-      console.log(`LCU status changed to: ${event.payload}`);
-      setLcuStatus(event.payload);
-    });
-
     return () => {
       mounted = false;
-      void unlistenPromise.then((f) => {
-        f();
-      });
     };
   }, [
     isInitialized,
@@ -144,7 +131,7 @@ export default function Home() {
     setFavorites,
   ]);
 
-  // Persist configuration (league path + selected skins) on change
+  // Persist configuration (league path + selected skins + favorites) on change
   useEffect(() => {
     if (!leaguePath) return;
     // prepare skins array from Map
@@ -155,22 +142,13 @@ export default function Home() {
       fantome: s.fantome,
     }));
     invoke("save_selected_skins", {
-      leaguePath: leaguePath, // Fix: use camelCase to match what Rust expects
+      leaguePath: leaguePath,
       skins,
+      favorites: Array.from(favorites),
     }).catch((err: unknown) => {
       console.error(err);
     });
-  }, [leaguePath, selectedSkins]);
-
-  // Save favorites to localStorage when they change
-  useEffect(() => {
-    if (typeof window !== "undefined" && favorites.size > 0) {
-      localStorage.setItem(
-        "championFavorites",
-        JSON.stringify(Array.from(favorites))
-      );
-    }
-  }, [favorites]);
+  }, [leaguePath, selectedSkins, favorites]);
 
   // Sort champions: favorites at the top, then alphabetically
   const filteredChampions = champions
@@ -251,6 +229,21 @@ export default function Home() {
       ? champions.find((c) => c.id === selectedChampion)
       : null;
 
+  function handleUpdateDataClick() {
+    void (async () => {
+      try {
+        // Delete the existing cache
+        await invoke("delete_champions_cache");
+
+        // Force a data update
+        await updateData();
+      } catch (error) {
+        console.error("Failed to update data:", error);
+        toast.error("Failed to update data");
+      }
+    })();
+  }
+
   return (
     <Suspense fallback={<ChampionsLoader />}>
       <div className="flex flex-col h-screen bg-background">
@@ -268,11 +261,10 @@ export default function Home() {
                 }}
               />
             </div>
-            {/* Removed favorites filter button */}
           </div>
           <div className="flex items-center gap-4">
             <Button
-              onClick={() => void updateData()}
+              onClick={handleUpdateDataClick}
               variant="outline"
               className="flex items-center gap-2"
             >
@@ -280,18 +272,7 @@ export default function Home() {
               Update Data
             </Button>
             {/* status dot */}
-            <div
-              className={`h-3 w-3 rounded-full ${
-                lcuStatus === "ChampSelect"
-                  ? "bg-yellow-500"
-                  : lcuStatus === "InProgress"
-                  ? "bg-green-500"
-                  : lcuStatus === "Queue"
-                  ? "bg-yellow-300"
-                  : "bg-red-500"
-              }`}
-              title={lcuStatus ?? "Unknown"}
-            />
+            <GameStatusDot />
           </div>
         </div>
 

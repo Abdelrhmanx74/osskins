@@ -6,6 +6,8 @@ use tauri::{AppHandle, Manager};
 use walkdir::WalkDir;
 use zip::ZipArchive;
 use std::env;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 // Error handling similar to CS LOL Manager
 #[derive(Debug)]
@@ -258,7 +260,7 @@ impl SkinInjector {
 
         // If not in cache, look up in the champions directory
         let champions_dir = self.app_dir.join("champions");
-        if !champions_dir.exists() {
+        if (!champions_dir.exists()) {
             return None;
         }
 
@@ -627,13 +629,23 @@ impl SkinInjector {
         Ok(())
     }
     
-    // Run the overlay process using mod-tools.exe - this is the critical function that was missing!
+    // Run the overlay process using mod-tools.exe
     fn run_overlay(&mut self) -> Result<(), InjectionError> {
-        // Validate mod-tools.exe exists
-        let mod_tools_path = self.mod_tools_path
-            .as_ref()
-            .map(|path| path.clone())
-            .ok_or_else(|| InjectionError::ProcessError("mod-tools.exe not found".into()))?;
+        // Check if mod-tools.exe exists
+        let mod_tools_path = match &self.mod_tools_path {
+            Some(path) => {
+                if (!path.exists()) {
+                    return Err(InjectionError::OverlayError(format!(
+                        "mod-tools.exe was found during initialization but is no longer at path: {}. Please reinstall the application or obtain mod-tools.exe from CSLOL Manager.",
+                        path.display()
+                    )));
+                }
+                path.clone()
+            },
+            None => return Err(InjectionError::OverlayError(
+                "mod-tools.exe not found. Please install CSLOL Manager or copy mod-tools.exe to the application directory.".into()
+            )),
+        };
 
         self.log(&format!("Using mod-tools.exe from: {}", mod_tools_path.display()));
 
@@ -659,27 +671,58 @@ impl SkinInjector {
             }
         }
 
+        // Check if we have any valid mods
+        if mod_names.is_empty() {
+            self.log("No valid mods found in game directory");
+        } else {
+            self.log(&format!("Found {} mods to include in overlay", mod_names.len()));
+        }
+
         // Join mod names with / as CSLOL expects
         let mods_arg = mod_names.join("/");
 
         self.log("Creating mod overlay...");
-        let output = std::process::Command::new(&mod_tools_path)
-            .args([
-                "mkoverlay",
-                game_mods_dir.to_str().unwrap(),
-                overlay_dir.to_str().unwrap(),
-                &format!("--game:{}", self.game_path.to_str().unwrap()),
-                &format!("--mods:{}", mods_arg),
-                "--noTFT",
-                "--ignoreConflict"
-            ])
-            .output()
-            .map_err(|e| InjectionError::ProcessError(format!("Failed to create overlay: {}", e)))?;
+        
+        #[cfg(target_os = "windows")]
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let mut command = std::process::Command::new(&mod_tools_path);
+        command.args([
+            "mkoverlay",
+            game_mods_dir.to_str().unwrap(),
+            overlay_dir.to_str().unwrap(),
+            &format!("--game:{}", self.game_path.to_str().unwrap()),
+            &format!("--mods:{}", mods_arg),
+            "--noTFT",
+            "--ignoreConflict"
+        ]);
+        
+        #[cfg(target_os = "windows")]
+        command.creation_flags(CREATE_NO_WINDOW);
+        
+        let output = match command.output() {
+            Ok(out) => out,
+            Err(e) => {
+                return Err(InjectionError::ProcessError(format!(
+                    "Failed to create overlay: {}. The mod-tools.exe might be missing or incompatible.", e
+                )));
+            }
+        };
 
         if !output.status.success() {
-            return Err(InjectionError::ProcessError(
-                String::from_utf8_lossy(&output.stderr).into_owned()
-            ));
+            let stderr_output = String::from_utf8_lossy(&output.stderr).into_owned();
+            let stdout_output = String::from_utf8_lossy(&output.stdout).into_owned();
+            let error_message = if stderr_output.is_empty() { 
+                stdout_output 
+            } else { 
+                stderr_output 
+            };
+            
+            return Err(InjectionError::ProcessError(format!(
+                "mkoverlay command failed: {}. Exit code: {}", 
+                error_message,
+                output.status
+            )));
         }
 
         // Create config.json
@@ -701,6 +744,9 @@ impl SkinInjector {
             &format!("--game:{}", self.game_path.to_str().unwrap()),
             "--opts:configless"
         ]);
+        
+        #[cfg(target_os = "windows")]
+        command.creation_flags(CREATE_NO_WINDOW);
 
         match command.spawn() {
             Ok(_) => {
@@ -710,9 +756,22 @@ impl SkinInjector {
             Err(e) => {
                 self.set_state(ModState::Idle); // Reset state on error
                 self.log(&format!("Failed to start overlay process: {}", e));
-                Err(InjectionError::OverlayError(format!(
-                    "Failed to start overlay process: {}. See documentation for obtaining mod-tools.exe", e
-                )))
+                
+                let error_msg = match e.kind() {
+                    io::ErrorKind::NotFound => format!(
+                        "mod-tools.exe not found or is inaccessible at path: {}. Please install CSLOL Manager or copy the correct mod-tools.exe to the application directory.", 
+                        mod_tools_path.display()
+                    ),
+                    io::ErrorKind::PermissionDenied => format!(
+                        "Permission denied when trying to run mod-tools.exe. Try running the application as administrator."
+                    ),
+                    _ => format!(
+                        "Error running mod-tools.exe: {}. Please ensure it's correctly installed and compatible with your system.", 
+                        e
+                    )
+                };
+                
+                Err(InjectionError::OverlayError(error_msg))
             }
         }
     }
@@ -768,13 +827,54 @@ impl SkinInjector {
         // Start the overlay process - THIS is the key part that makes skins actually show in-game!
         if let Err(e) = self.run_overlay() {
             self.log(&format!("WARNING: Failed to start overlay process: {}. The mods have been copied but the overlay could not be started. You need to obtain mod-tools.exe from CSLOL Manager.", e));
-            // Still consider it a success as we've copied the mods
+            // Changed: Return error instead of success
             self.set_state(ModState::Idle);
-            return Ok(());
+            return Err(InjectionError::OverlayError(format!(
+                "Failed to start overlay process: {}. The mods have been copied but the overlay could not be started.",
+                e
+            )));
         }
         
         self.log("Skin injection completed successfully");
         // Note: We don't set state to Idle because we're now in Running state with the overlay active
+        Ok(())
+    }
+
+    // Add a cleanup method to stop the injection
+    pub fn cleanup(&mut self) -> Result<(), InjectionError> {
+        if self.state != ModState::Running {
+            // Nothing to do if we're not running
+            return Ok(());
+        }
+        
+        self.log("Stopping skin injection process...");
+        
+        // Find and kill the mod-tools processes
+        #[cfg(target_os = "windows")]
+        {
+            // Use taskkill to terminate mod-tools.exe processes
+            let mut command = std::process::Command::new("taskkill");
+            command.args(["/F", "/IM", "mod-tools.exe"]);
+            
+            #[cfg(target_os = "windows")]
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            #[cfg(target_os = "windows")]
+            command.creation_flags(CREATE_NO_WINDOW);
+            
+            // We don't really care about the result - it might fail if no processes exist
+            let _ = command.output();
+        }
+        
+        // Clean up the overlay directory
+        let overlay_dir = self.app_dir.join("overlay");
+        if overlay_dir.exists() {
+            let _ = fs::remove_dir_all(&overlay_dir);
+        }
+        
+        // Reset the state
+        self.set_state(ModState::Idle);
+        self.log("Skin injection stopped");
+        
         Ok(())
     }
 }
@@ -797,4 +897,18 @@ pub fn inject_skins(
     // Inject skins
     injector.inject_skins(skins, fantome_files_dir)
         .map_err(|e| format!("Failed to inject skins: {}", e))
+}
+
+// New function to clean up the injection when needed
+pub fn cleanup_injection(
+    app_handle: &AppHandle,
+    game_path: &str
+) -> Result<(), String> {
+    // Create injector
+    let mut injector = SkinInjector::new(app_handle, game_path)
+        .map_err(|e| format!("Failed to create injector: {}", e))?;
+    
+    // Call cleanup
+    injector.cleanup()
+        .map_err(|e| format!("Failed to stop skin injection: {}", e))
 }

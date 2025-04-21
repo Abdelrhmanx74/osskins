@@ -13,6 +13,9 @@ fn main() {
   // Build mod-tools C++ binary from cslol-tools source
   let dst = cmake::Config::new("../cslol-manager-2024-10-27-401067d-prerelease/cslol-tools")
     .profile("Release")
+    // Add policy to handle older CMake configurations
+    .define("CMAKE_POLICY_DEFAULT_CMP0048", "NEW")
+    .define("CMAKE_POLICY_VERSION_MINIMUM", "3.5")
     // Build only the mod-tools executable target (skip install step)
     .build_target("mod-tools")
     .build();

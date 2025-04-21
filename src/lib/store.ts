@@ -8,15 +8,18 @@ interface SelectedSkin {
   fantome?: string; // Add fantome path
 }
 
+// Define the possible injection statuses
+export type InjectionStatus = "idle" | "injecting" | "success" | "error";
+
 interface GameState {
   leaguePath: string | null;
-  lcuStatus: string | null; // add LCU status
-  isInjecting: boolean;
-  selectedSkins: Map<number, SelectedSkin>; // Map of championId to selected skin
+  lcuStatus: string | null;
+  injectionStatus: InjectionStatus; // Add this
+  selectedSkins: Map<number, SelectedSkin>;
   favorites: Set<number>;
   setLeaguePath: (path: string) => void;
-  setLcuStatus: (status: string) => void; // add setter
-  setInjecting: (isInjecting: boolean) => void;
+  setLcuStatus: (status: string) => void;
+  setInjectionStatus: (status: InjectionStatus) => void; // Add this
   selectSkin: (
     championId: number,
     skinId: number,
@@ -31,19 +34,19 @@ interface GameState {
 
 export const useGameStore = create<GameState>((set) => ({
   leaguePath: null,
-  lcuStatus: null, // default no status
-  isInjecting: false,
+  lcuStatus: null,
+  injectionStatus: "idle", // Default status
   selectedSkins: new Map(),
   favorites: new Set(),
   setLeaguePath: (path) => {
     set({ leaguePath: path });
   },
   setLcuStatus: (status) => {
-    // implementation
     set({ lcuStatus: status });
   },
-  setInjecting: (isInjecting) => {
-    set({ isInjecting });
+  setInjectionStatus: (status) => {
+    // Add implementation
+    set({ injectionStatus: status });
   },
   selectSkin: (championId, skinId, chromaId, fantome) => {
     set((state) => {
@@ -74,13 +77,6 @@ export const useGameStore = create<GameState>((set) => ({
         newFavorites.delete(championId);
       } else {
         newFavorites.add(championId);
-      }
-      // Persist to localStorage
-      if (typeof window !== "undefined") {
-        localStorage.setItem(
-          "championFavorites",
-          JSON.stringify(Array.from(newFavorites))
-        );
       }
       return { favorites: newFavorites };
     });

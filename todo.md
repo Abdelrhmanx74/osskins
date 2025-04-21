@@ -10,7 +10,7 @@
 - [x] Ensure `mod-tools.exe` is compiled on build and not placed manually
 - [ ] app cosmetics and name, icon, etc...
 - [x] Consider using a structured format (like JSON) for configuration instead of `league_path.txt` if more settings are planned.
-- [ ] It shouldnt stop the injecting if the user closed the game (waiting to reconnect) it should close when it turn from in game to lobby, etc..
+- [x?] It shouldnt stop the injecting if the user closed the game (waiting to reconnect) it should close when it turn from in game to lobby, etc..
 - [ ] The terminals that opens!! it shouldnt!
 
 # Front End ---------------------
