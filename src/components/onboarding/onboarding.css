@@ -1,0 +1,36 @@
+.onboarding-highlight {
+  position: relative;
+  z-index: 50;
+  animation: pulse 2s infinite;
+  box-shadow: 0 0 0 0 rgba(200, 170, 110, 0.7);
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(200, 170, 110, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(200, 170, 110, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(200, 170, 110, 0);
+  }
+}
+
+/* Make the overlay for the onboarding more prominent */
+.onboarding-active [data-slot="dialog-overlay"] {
+  background-color: rgba(0, 0, 0, 0.7);
+}
+
+/* Style the dialog for onboarding */
+.onboarding-dialog [data-slot="dialog-content"] {
+  border: 1px solid var(--primary);
+  background: linear-gradient(to bottom, var(--card) 0%, var(--background) 100%);
+}
+
+/* Style the target element that's currently being explained */
+.target-highlight {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  transition: outline 0.3s ease;
+}

@@ -18,6 +18,8 @@ import {
   // InjectionStatusDot,
 } from "@/components/skin-injection/GameStatusDot";
 import { toast } from "sonner";
+import { OnboardingTour } from "@/components/onboarding/OnboardingTour";
+import { HelpButton } from "@/components/onboarding/HelpButton";
 
 // Loading component using React 19 suspense
 const ChampionsLoader = () => (
@@ -246,6 +248,9 @@ export default function Home() {
   return (
     <Suspense fallback={<ChampionsLoader />}>
       <div className="flex flex-col h-screen bg-background">
+        {/* Onboarding component */}
+        <OnboardingTour />
+
         {/* Top bar with search and injection status dot */}
         <div className="flex items-center justify-between p-4 border-b max-w-7xl w-full mx-auto">
           <div className="flex items-center gap-4 flex-1 max-w-md">
@@ -262,6 +267,7 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <HelpButton />
             <Button
               onClick={handleUpdateDataClick}
               variant="outline"
@@ -279,7 +285,7 @@ export default function Home() {
         <div className="flex flex-1 overflow-hidden p-2 max-w-7xl w-full mx-auto">
           {/* Left side - Champions grid */}
           <div className="w-1/4 xl:w-1/5 overflow-y-auto border-r min-w-[220px]">
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-4">
+            <div className="w-fit mx-auto grid grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-4">
               {filteredChampions.map((champion) => (
                 <ChampionCard
                   key={champion.id}
@@ -307,7 +313,7 @@ export default function Home() {
           </div>
 
           {/* Right side - Skins grid */}
-          <div className="w-3/4 xl:w-4/5 p-4 overflow-y-auto">
+          <div className="w-3/4 xl:w-4/5 flex justify-center p-4 overflow-y-auto">
             {selectedChampionData ? (
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-8">
                 {selectedChampionData.skins

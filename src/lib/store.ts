@@ -17,6 +17,7 @@ interface GameState {
   injectionStatus: InjectionStatus; // Add this
   selectedSkins: Map<number, SelectedSkin>;
   favorites: Set<number>;
+  hasCompletedOnboarding: boolean;
   setLeaguePath: (path: string) => void;
   setLcuStatus: (status: string) => void;
   setInjectionStatus: (status: InjectionStatus) => void; // Add this
@@ -30,6 +31,7 @@ interface GameState {
   clearAllSelections: () => void;
   toggleFavorite: (championId: number) => void;
   setFavorites: (favorites: Set<number>) => void;
+  setHasCompletedOnboarding: (completed: boolean) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -38,6 +40,7 @@ export const useGameStore = create<GameState>((set) => ({
   injectionStatus: "idle", // Default status
   selectedSkins: new Map(),
   favorites: new Set(),
+  hasCompletedOnboarding: false,
   setLeaguePath: (path) => {
     set({ leaguePath: path });
   },
@@ -83,5 +86,8 @@ export const useGameStore = create<GameState>((set) => ({
   },
   setFavorites: (favorites) => {
     set({ favorites });
+  },
+  setHasCompletedOnboarding: (completed) => {
+    set({ hasCompletedOnboarding: completed });
   },
 }));
