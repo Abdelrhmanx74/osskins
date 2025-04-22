@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Emitter};
 use walkdir::WalkDir;
 use zip::ZipArchive;
 use std::env;
@@ -114,23 +114,28 @@ impl PatcherMessage {
 pub struct SkinInjector {
     state: ModState,
     app_dir: PathBuf,
-    game_path: PathBuf,
+    root_path: PathBuf,  // Store the root League directory path
+    game_path: PathBuf,  // Store the Game subdirectory path
     status: String,
     log_file: Option<File>,
     mod_tools_path: Option<PathBuf>, // Add mod_tools path
     champion_names: std::collections::HashMap<u32, String>, // Add cache for champion names
+    app_handle: Option<AppHandle>,
 }
 
 impl SkinInjector {
-    pub fn new(app_handle: &AppHandle, game_path: &str) -> Result<Self, InjectionError> {
+    pub fn new(app_handle: &AppHandle, root_path: &str) -> Result<Self, InjectionError> {
         // Get the app directory
         let app_dir = app_handle.path().app_data_dir()
             .map_err(|e| InjectionError::IoError(io::Error::new(io::ErrorKind::NotFound, format!("{}", e))))?;
         
+        // Store both root and game paths
+        let root_path = PathBuf::from(root_path);
+        let game_path = root_path.join("Game");
+        
         // Validate game path
-        let game_path = PathBuf::from(game_path);
         if !game_path.join("League of Legends.exe").exists() {
-            return Err(InjectionError::InvalidGamePath("League of Legends.exe not found".into()));
+            return Err(InjectionError::InvalidGamePath("Game\\League of Legends.exe not found".into()));
         }
         
         // Create directories needed
@@ -208,22 +213,32 @@ impl SkinInjector {
         Ok(Self {
             state: ModState::Uninitialized,
             app_dir,
+            root_path,
             game_path,
             status: String::new(),
             log_file: Some(log_file),
             mod_tools_path,
             champion_names,
+            app_handle: Some(app_handle.clone()),
         })
     }
     
     fn log(&mut self, message: &str) {
         // Append timestamp and log message
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let log_message = format!("[{}] {}", timestamp, message);
+        
         if let Some(log_file) = &mut self.log_file {
-            let _ = writeln!(log_file, "[{}] {}", timestamp, message);
+            let _ = writeln!(log_file, "{}", log_message);
             let _ = log_file.flush();
         }
-        println!("[{}] {}", timestamp, message);
+        println!("{}", log_message);
+        
+        // Emit the log to the frontend
+        if let Some(app) = &self.app_handle {
+            let _ = app.emit("terminal-log", &log_message);
+        }
+        
         self.status = message.to_string();
     }
     
@@ -634,7 +649,7 @@ impl SkinInjector {
         // Check if mod-tools.exe exists
         let mod_tools_path = match &self.mod_tools_path {
             Some(path) => {
-                if !path.exists() {
+                if (!path.exists()) {
                     return Err(InjectionError::OverlayError(format!(
                         "mod-tools.exe was found during initialization but is no longer at path: {}. Please reinstall the application or obtain mod-tools.exe from CSLOL Manager.",
                         path.display()
@@ -649,11 +664,35 @@ impl SkinInjector {
 
         self.log(&format!("Using mod-tools.exe from: {}", mod_tools_path.display()));
 
+        // First, ensure no mod-tools processes are running before we start
+        self.cleanup_mod_tools_processes();
+        
         // First create the overlay
         let game_mods_dir = self.game_path.join("mods");
         let overlay_dir = self.app_dir.join("overlay");
         if overlay_dir.exists() {
-            fs::remove_dir_all(&overlay_dir)?;
+            // Try to remove the overlay dir multiple times with delays
+            // This helps with Windows file locks that might be causing access violations
+            let mut attempts = 0;
+            let max_attempts = 3;
+            while attempts < max_attempts {
+                match fs::remove_dir_all(&overlay_dir) {
+                    Ok(_) => break,
+                    Err(e) => {
+                        self.log(&format!("Failed to remove overlay directory (attempt {}/{}): {}", 
+                            attempts + 1, max_attempts, e));
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        attempts += 1;
+                    }
+                }
+            }
+            
+            // If still exists, return error
+            if overlay_dir.exists() && attempts >= max_attempts {
+                return Err(InjectionError::OverlayError(
+                    "Cannot remove existing overlay directory. It may be locked by another process.".into()
+                ));
+            }
         }
         fs::create_dir_all(&overlay_dir)?;
 
@@ -695,10 +734,37 @@ impl SkinInjector {
             // Small delay between retries to let resources free up
             if retry_count > 0 {
                 self.log(&format!("Retrying overlay creation (attempt {}/{})", retry_count + 1, max_retries));
-                std::thread::sleep(std::time::Duration::from_millis(500));
+                // Increased delay between retries
+                std::thread::sleep(std::time::Duration::from_millis(1000));
                 
                 // Make sure any lingering processes are killed
                 self.cleanup_mod_tools_processes();
+                
+                // For additional retries, recreate the overlay directory to ensure it's clean
+                if overlay_dir.exists() {
+                    match fs::remove_dir_all(&overlay_dir) {
+                        Ok(_) => fs::create_dir_all(&overlay_dir)?,
+                        Err(e) => {
+                            self.log(&format!("Could not clean overlay directory: {}", e));
+                            // Try to continue anyway
+                        }
+                    }
+                } else {
+                    fs::create_dir_all(&overlay_dir)?;
+                }
+            }
+            
+            // Add more explicit memory cleanup hint
+            #[cfg(target_os = "windows")]
+            {
+                use std::process::Command;
+                // Run a quick garbage collection via PowerShell to help free memory
+                if retry_count > 0 {
+                    let mut gc_cmd = Command::new("powershell");
+                    gc_cmd.args(["-Command", "[System.GC]::Collect()"]);
+                    gc_cmd.creation_flags(CREATE_NO_WINDOW);
+                    let _ = gc_cmd.output(); // Ignore output
+                }
             }
             
             let mut command = std::process::Command::new(&mod_tools_path);
@@ -706,7 +772,7 @@ impl SkinInjector {
                 "mkoverlay",
                 game_mods_dir.to_str().unwrap(),
                 overlay_dir.to_str().unwrap(),
-                &format!("--game:{}", self.game_path.to_str().unwrap()),
+                &format!("--game:{}", self.game_path.to_str().unwrap()),  // Use game_path which points to Game directory
                 &format!("--mods:{}", mods_arg),
                 "--noTFT",
                 "--ignoreConflict"
@@ -715,10 +781,22 @@ impl SkinInjector {
             #[cfg(target_os = "windows")]
             command.creation_flags(CREATE_NO_WINDOW);
             
+            // Added logging for better debugging
+            self.log(&format!("Running command: {} {} {} {} {} {} {}", 
+                mod_tools_path.display(),
+                "mkoverlay",
+                game_mods_dir.to_str().unwrap(),
+                overlay_dir.to_str().unwrap(),
+                &format!("--game:{}", self.game_path.to_str().unwrap()),
+                &format!("--mods:{}", mods_arg),
+                "--noTFT --ignoreConflict"
+            ));
+            
             match command.output() {
                 Ok(output) => {
                     if output.status.success() {
                         // Success - break out of retry loop
+                        self.log("Overlay creation succeeded!");
                         break;
                     } else {
                         // Command ran but had error status
@@ -780,7 +858,7 @@ impl SkinInjector {
         while run_retry_count < max_run_retries {
             if run_retry_count > 0 {
                 self.log(&format!("Retrying overlay run (attempt {}/{})", run_retry_count + 1, max_run_retries));
-                std::thread::sleep(std::time::Duration::from_millis(500));
+                std::thread::sleep(std::time::Duration::from_millis(1000));
                 
                 // Make sure any lingering processes are killed
                 self.cleanup_mod_tools_processes();
@@ -792,7 +870,7 @@ impl SkinInjector {
                 "runoverlay",
                 overlay_dir.to_str().unwrap(),
                 config_path.to_str().unwrap(),
-                &format!("--game:{}", self.game_path.to_str().unwrap()),
+                &format!("--game:{}", self.game_path.to_str().unwrap()),  // Use game_path which points to Game directory
                 "--opts:configless"
             ]);
             

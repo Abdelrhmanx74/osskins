@@ -31,140 +31,49 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 :root {
-  --radius: 0.625rem;
-
-  /* League of Legends color palette in OKLCH */
-  --background: oklch(0.07 0.01 260);
-  /* #010A13 - Dark blue background */
-  --foreground: oklch(0.85 0.07 83);
-  /* #F0E6D2 - Light gold text */
-
-  --card: oklch(0.12 0.02 260);
-  /* #091428 - Slightly lighter blue for cards */
-  --card-foreground: oklch(0.85 0.07 83);
-  /* #F0E6D2 - Light gold text */
-
-  --popover: oklch(0.12 0.02 260);
-  /* #091428 */
-  --popover-foreground: oklch(0.85 0.07 83);
-  /* #F0E6D2 */
-
-  --primary: oklch(0.7 0.12 83);
-  /* #C8AA6E - Gold primary */
-  --primary-foreground: oklch(0.12 0.02 260);
-  /* #091428 - Dark blue */
-
-  --secondary: oklch(0.18 0.02 260);
-  /* #1E2328 - Slightly lighter blue for secondary elements */
-  --secondary-foreground: oklch(0.85 0.07 83);
-  /* #F0E6D2 */
-
-  --muted: oklch(0.3 0.01 83);
-  /* #5B5A56 - Muted gray text */
-  --muted-foreground: oklch(0.6 0.05 83);
-  /* #A09B8C - Lighter muted text */
-
-  --accent: oklch(0.7 0.12 83);
-  /* #C8AA6E - Gold accent */
-  --accent-foreground: oklch(0.12 0.02 260);
-  /* #091428 */
-
+  --radius: 0.5rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.141 0.005 285.823);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.141 0.005 285.823);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.141 0.005 285.823);
+  --primary: oklch(0.21 0.006 285.885);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0.552 0.016 285.938);
+  --accent: oklch(0.967 0.001 286.375);
+  --accent-foreground: oklch(0.21 0.006 285.885);
   --destructive: oklch(0.577 0.245 27.325);
-  /* Red for errors */
-  --destructive-foreground: oklch(0.985 0 0);
-
-  --border: oklch(0.18 0.02 260);
-  /* #1E2328 - Border color */
-  --input: oklch(0.18 0.02 260);
-  /* #1E2328 */
-  --ring: oklch(0.7 0.12 83);
-  /* #C8AA6E */
-
-  /* LoL specific colors */
-  --lol-teal: oklch(0.7 0.2 195);
-  /* #0AC8B9 - Teal for ranks */
-  --lol-gold-light: oklch(0.85 0.07 83);
-  /* #F0E6D2 - Light gold */
-  --lol-gold: oklch(0.7 0.12 83);
-  /* #C8AA6E - Standard gold */
-  --lol-gold-dark: oklch(0.5 0.15 83);
-  /* #7A5C29 - Dark gold for gradients */
-
-  /* Chart colors */
-  --chart-1: oklch(0.7 0.12 83);
-  /* Gold */
-  --chart-2: oklch(0.7 0.2 195);
-  /* Teal */
-  --chart-3: oklch(0.5 0.15 83);
-  /* Dark gold */
-  --chart-4: oklch(0.3 0.01 83);
-  /* Gray */
-  --chart-5: oklch(0.18 0.02 260);
-  /* Dark blue */
+  --border: oklch(0.92 0.004 286.32);
+  --input: oklch(0.92 0.004 286.32);
+  --ring: oklch(0.705 0.015 286.067);
 }
 
 .dark {
-  /* League client is already dark-themed, so we keep the same colors */
-  --background: oklch(0.07 0.01 260);
-  /* #010A13 */
-  --foreground: oklch(0.85 0.07 83);
-  /* #F0E6D2 */
-
-  --card: oklch(0.12 0.02 260);
-  /* #091428 */
-  --card-foreground: oklch(0.85 0.07 83);
-  /* #F0E6D2 */
-
-  --popover: oklch(0.12 0.02 260);
-  /* #091428 */
-  --popover-foreground: oklch(0.85 0.07 83);
-  /* #F0E6D2 */
-
-  --primary: oklch(0.7 0.12 83);
-  /* #C8AA6E */
-  --primary-foreground: oklch(0.12 0.02 260);
-  /* #091428 */
-
-  --secondary: oklch(0.18 0.02 260);
-  /* #1E2328 */
-  --secondary-foreground: oklch(0.85 0.07 83);
-  /* #F0E6D2 */
-
-  --muted: oklch(0.3 0.01 83);
-  /* #5B5A56 */
-  --muted-foreground: oklch(0.6 0.05 83);
-  /* #A09B8C */
-
-  --accent: oklch(0.7 0.12 83);
-  /* #C8AA6E */
-  --accent-foreground: oklch(0.12 0.02 260);
-  /* #091428 */
-
+  --background: oklch(0.141 0.005 285.823);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.21 0.006 285.885);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.21 0.006 285.885);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.92 0.004 286.32);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.274 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --accent: oklch(0.274 0.006 286.033);
+  --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-
-  --border: oklch(0.18 0.02 260);
-  /* #1E2328 */
-  --input: oklch(0.18 0.02 260);
-  /* #1E2328 */
-  --ring: oklch(0.7 0.12 83);
-  /* #C8AA6E */
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.552 0.016 285.938);
 }
 
 

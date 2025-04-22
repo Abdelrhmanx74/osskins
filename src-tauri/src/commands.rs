@@ -222,17 +222,16 @@ pub async fn select_league_directory() -> Result<String, String> {
     let mut command = Command::new("powershell");
     
     #[cfg(target_os = "windows")]
-    command.creation_flags(0x08000000); // CREATE_NO_WINDOW flag
+    command.creation_flags(CREATE_NO_WINDOW); // CREATE_NO_WINDOW flag
 
     command
         .args([
             "-NoProfile",
             "-Command",
             r#"Add-Type -AssemblyName System.Windows.Forms; 
-            $dialog = New-Object System.Windows.Forms.OpenFileDialog; 
-            $dialog.Filter = 'League of Legends|League of Legends.exe|All executables|*.exe';
-            $dialog.Title = 'Select League Client'; 
-            if($dialog.ShowDialog() -eq 'OK') { $dialog.FileName }"#,
+            $dialog = New-Object System.Windows.Forms.FolderBrowserDialog; 
+            $dialog.Description = 'Select League of Legends Installation Directory'; 
+            if($dialog.ShowDialog() -eq 'OK') { $dialog.SelectedPath }"#,
         ]);
     
     let output = command
@@ -240,7 +239,7 @@ pub async fn select_league_directory() -> Result<String, String> {
         .map_err(|e| format!("Failed to execute powershell command: {}", e))?;
 
     if !output.status.success() {
-        return Err("File selection cancelled".to_string());
+        return Err("Directory selection cancelled".to_string());
     }
 
     let path = String::from_utf8(output.stdout)
@@ -249,16 +248,21 @@ pub async fn select_league_directory() -> Result<String, String> {
         .to_string();
 
     if path.is_empty() {
-        return Err("No file selected".to_string());
+        return Err("No directory selected".to_string());
     }
 
-    // Convert LeagueClient.exe path to game directory
-    let client_path = Path::new(&path);
-    if let Some(game_dir) = client_path.parent() {
-        return Ok(game_dir.to_string_lossy().to_string());
+    // Validate that this appears to be a League of Legends directory
+    // Check for either the Game\League of Legends.exe or LeagueClient.exe
+    let selected_dir = Path::new(&path);
+    let game_exe_path = selected_dir.join("Game").join("League of Legends.exe");
+    let client_exe_path = selected_dir.join("LeagueClient.exe");
+    
+    if !client_exe_path.exists() && !game_exe_path.exists() {
+        return Err("Selected directory does not appear to be a valid League of Legends installation".to_string());
     }
 
-    Err("Invalid game directory".to_string())
+    // Always return the root League directory path
+    Ok(path)
 }
 
 #[tauri::command]
@@ -370,16 +374,21 @@ pub async fn load_league_path(app: tauri::AppHandle) -> Result<String, String> {
     
     let config_file = app_data_dir.join("config").join("league_path.txt");
     
-    if !config_file.exists() {
+    if (!config_file.exists()) {
         return Ok(String::new()); // Return empty string if no saved path
     }
     
     let path = fs::read_to_string(&config_file)
         .map_err(|e| format!("Failed to read league path: {}", e))?;
     
-    // Verify the path still exists and contains League of Legends.exe
+    // Verify the path still exists and contains either:
+    // - Game/League of Legends.exe (game executable)
+    // - LeagueClient.exe (client executable)
     let game_path = Path::new(&path);
-    if !game_path.exists() || !game_path.join("League of Legends.exe").exists() {
+    let game_exe_path = game_path.join("Game").join("League of Legends.exe");
+    let client_exe_path = game_path.join("LeagueClient.exe");
+    
+    if !game_path.exists() || (!game_exe_path.exists() && !client_exe_path.exists()) {
         return Ok(String::new()); // Return empty if path is no longer valid
     }
     
@@ -502,22 +511,29 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
     Ok(cfg)
 }
 
-// In start_auto_inject: emit status change events
+fn emit_terminal_log(app: &AppHandle, message: &str) {
+    let _ = app.emit("terminal-log", message);
+}
+
 #[tauri::command]
-pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Result<(), String> {
+pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), String> {
     println!("Starting LCU status watcher for path: {}", leaguePath);
     let app_handle = app.clone();
     let league_path_clone = leaguePath.clone();
     
     thread::spawn(move || {
         let mut last_phase = String::new();
-        let mut was_in_game = false; // Track if we were previously in game
-        let mut was_reconnecting = false; // Track reconnect status
-        // Set an initial status to make the dot visible
+        let mut was_in_game = false;
+        let mut was_reconnecting = false;
         let _ = app_handle.emit("lcu-status", "None".to_string());
         
         loop {
-            println!("[LCU Watcher] Monitoring directory: {}", league_path_clone);
+            // Set a default sleep duration at the start of each loop
+            let mut sleep_duration = Duration::from_secs(5);
+            
+            let log_msg = format!("[LCU Watcher] Monitoring directory: {}", league_path_clone);
+            println!("{}", log_msg);
+            emit_terminal_log(&app_handle, &log_msg);
             
             // Check both current directory and parent directory for lockfile
             let search_dirs = [
@@ -527,17 +543,20 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
             
             let mut port = None;
             let mut token = None;
-            
-            // Try each directory, looking for lockfiles
             let mut found_any_lockfile = false;
+            
             for dir in &search_dirs {
-                println!("[LCU Watcher] Looking for lockfiles in: {}", dir.display());
+                let log_msg = format!("[LCU Watcher] Looking for lockfiles in: {}", dir.display());
+                println!("{}", log_msg);
+                emit_terminal_log(&app_handle, &log_msg);
+                
                 // Check each possible lockfile name
                 for name in ["lockfile", "LeagueClientUx.lockfile", "LeagueClient.lockfile"] {
                     let path = dir.join(name);
                     if path.exists() {
                         found_any_lockfile = true;
                         println!("[LCU Watcher] Found lockfile: {}", path.display());
+                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] Found lockfile: {}", path.display()));
                     }
                     if let Ok(content) = fs::read_to_string(&path) {
                         let parts: Vec<&str> = content.split(':').collect();
@@ -545,9 +564,12 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
                             port = Some(parts[2].to_string());
                             token = Some(parts[3].to_string());
                             println!("[LCU Watcher] Found valid lockfile at: {}", path.display());
+                            emit_terminal_log(&app_handle, &format!("[LCU Watcher] Found valid lockfile at: {}", path.display()));
+                            found_any_lockfile = true;
                             break;
                         } else {
                             println!("[LCU Watcher] Invalid lockfile format at: {}", path.display());
+                            emit_terminal_log(&app_handle, &format!("[LCU Watcher] Invalid lockfile format at: {}", path.display()));
                         }
                     }
                 }
@@ -562,19 +584,24 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
                 if was_in_game && (last_phase == "InProgress" || was_reconnecting) {
                     // Do not stop the injection as the player might be reconnecting
                     println!("[LCU Watcher] Client closed during active game! Maintaining state for reconnection.");
+                    emit_terminal_log(&app_handle, &"[LCU Watcher] Client closed during active game! Maintaining state for reconnection.");
                     thread::sleep(Duration::from_secs(5));
                     continue;
                 } else if was_in_game && last_phase == "None" {
                     // Game actually ended, clean up the injection
                     println!("[LCU Watcher] Game ended, cleaning up skin injection.");
+                    emit_terminal_log(&app_handle, &"[LCU Watcher] Game ended, cleaning up skin injection.");
                     if let Err(e) = crate::injection::cleanup_injection(&app_handle, &league_path_clone) {
                         println!("[LCU Watcher] Error cleaning up injection: {}", e);
+                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] Error cleaning up injection: {}", e));
                     }
                     was_in_game = false;
                 }
                 
                 // Only print a single message if no lockfile is found, and sleep
-                println!("[LCU Watcher] No valid lockfile found. Is League running? The lockfile should be at: {}", league_path_clone);
+                let log_msg = format!("[LCU Watcher] No valid lockfile found. Is League running? The lockfile should be at: {}", league_path_clone);
+                println!("{}", log_msg);
+                emit_terminal_log(&app_handle, &log_msg);
                 thread::sleep(Duration::from_secs(5));
                 continue;
             }
@@ -582,6 +609,7 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
             let port = port.unwrap();
             let token = token.unwrap();
             println!("[LCU Watcher] Successfully connected to LCU on port: {}", port);
+            emit_terminal_log(&app_handle, &format!("[LCU Watcher] Successfully connected to LCU on port: {}", port));
             
             // build client with error handling
             match reqwest::blocking::Client::builder()
@@ -600,7 +628,9 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
                     
                     for endpoint in endpoints {
                         let url = format!("https://127.0.0.1:{}{}", port, endpoint);
-                        println!("[LCU Watcher] Trying endpoint: {}", url);
+                        let log_msg = format!("[LCU Watcher] Trying endpoint: {}", url);
+                        println!("{}", log_msg);
+                        emit_terminal_log(&app_handle, &log_msg);
                         
                         // Define auth here using the token
                         let auth = base64::encode(format!("riot:{}", token));
@@ -621,14 +651,18 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
                                                 // The /gameflow-phase endpoint directly returns the phase as a string
                                                 if let Some(phase) = json.as_str() {
                                                     phase_value = Some(phase.to_string());
-                                                    println!("[LCU Watcher] Found phase via gameflow-phase: {}", phase);
+                                                    let log_msg = format!("[LCU Watcher] Found phase via gameflow-phase: {}", phase);
+                                                    println!("{}", log_msg);
+                                                    emit_terminal_log(&app_handle, &log_msg);
                                                     break;
                                                 }
                                             } else {
                                                 // The /session endpoint returns phase as a field
                                                 if let Some(phase) = json.get("phase").and_then(|v| v.as_str()) {
                                                     phase_value = Some(phase.to_string());
-                                                    println!("[LCU Watcher] Found phase via session: {}", phase);
+                                                    let log_msg = format!("[LCU Watcher] Found phase via session: {}", phase);
+                                                    println!("{}", log_msg);
+                                                    emit_terminal_log(&app_handle, &log_msg);
                                                     break;
                                                 }
                                             }
@@ -637,6 +671,7 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
                                     }
                                 } else {
                                     println!("[LCU Watcher] Endpoint {} returned status: {}", endpoint, resp.status());
+                                    emit_terminal_log(&app_handle, &format!("[LCU Watcher] Endpoint {} returned status: {}", endpoint, resp.status()));
                                 }
                             },
                             Err(e) => println!("[LCU Watcher] Failed to connect to endpoint {}: {}", endpoint, e),
@@ -645,39 +680,51 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
                     
                     if (!connected) {
                         println!("[LCU Watcher] Could not connect to any LCU API endpoint. Retrying in 5 seconds...");
+                        emit_terminal_log(&app_handle, &"[LCU Watcher] Could not connect to any LCU API endpoint. Retrying in 5 seconds...");
                         thread::sleep(Duration::from_secs(5));
                         continue;
                     }
                     
                     let phase = phase_value.unwrap_or_else(|| "None".to_string());
                     
-                    // Track if we're in a game for reconnection handling
-                    if phase == "InProgress" {
-                        was_in_game = true;
-                        was_reconnecting = false;
-                    } else if phase == "Reconnect" {
-                        was_reconnecting = true;
-                        // Keep was_in_game true during reconnect
-                    } else if phase == "Lobby" || phase == "None" {
-                        // Only handle cleanup if actually coming from a game to None (game ended)
-                        if (was_in_game || was_reconnecting) && !last_phase.is_empty() && last_phase != "None" && last_phase != "Lobby" {
-                            println!("[LCU Watcher] Game ended, cleaning up skin injection.");
-                            if let Err(e) = crate::injection::cleanup_injection(&app_handle, &league_path_clone) {
-                                println!("[LCU Watcher] Error cleaning up injection: {}", e);
-                            }
-                        }
-                        // Reset flags when returning to non-game states
-                        was_in_game = false;
-                        was_reconnecting = false;
-                    }
-                    
                     if (phase != last_phase) {
                         println!("[LCU Watcher] LCU status changed: {} -> {}", last_phase, phase);
-                        // emit status event to frontend
-                        let _ = app_handle.emit("lcu-status", phase.to_string());
+                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] LCU status changed: {} -> {}", last_phase, phase));
+                        
+                        // If entering ChampSelect, preload assets to speed up injection later
+                        if phase == "ChampSelect" {
+                            emit_terminal_log(&app_handle, "[LCU Watcher] Champion select started, preparing for skin injection");
+                            
+                            // Preload by ensuring the champions directory exists and overlay directory is clean
+                            let champions_dir = app_handle.path().app_data_dir()
+                                .unwrap_or_else(|_| PathBuf::from("."))
+                                .join("champions");
+                            
+                            if !champions_dir.exists() {
+                                if let Err(e) = fs::create_dir_all(&champions_dir) {
+                                    println!("[LCU Watcher] Failed to create champions directory: {}", e);
+                                }
+                            }
+                            
+                            // Clean up any existing overlay for faster injection later
+                            let app_dir = app_handle.path().app_data_dir()
+                                .unwrap_or_else(|_| PathBuf::from("."));
+                            let overlay_dir = app_dir.join("overlay");
+                            if overlay_dir.exists() {
+                                if let Err(e) = fs::remove_dir_all(&overlay_dir) {
+                                    println!("[LCU Watcher] Failed to clean overlay directory: {}", e);
+                                }
+                            }
+                        }
                     }
                     
+                    // Create a variable to track our sleep duration - we'll use shorter intervals during champion select
+                    let mut sleep_duration = Duration::from_secs(5);
+                    
                     if (phase == "ChampSelect") {
+                        // Use shorter polling interval during champion select (1.5 seconds instead of 5)
+                        sleep_duration = Duration::from_millis(1500);
+                        
                         // Get the current session to check selected champion
                         let session_url = format!("https://127.0.0.1:{}/lol-champ-select/v1/session", port);
                         let auth = base64::encode(format!("riot:{}", token));
@@ -690,26 +737,41 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
                                 if (resp.status().is_success()) {
                                     match resp.json::<serde_json::Value>() {
                                         Ok(json) => {
+                                            // Track if we already injected skins in this champion select session
+                                            // to avoid doing it repeatedly
+                                            static mut LAST_INJECTED_CHAMPION: i64 = -1;
+                                            
                                             // Get the local player's cell ID
                                             if let Some(local_player_cell_id) = json.get("localPlayerCellId").and_then(|v| v.as_i64()) {
-                                                // First check if the champion is locked in via actions
-                                                let mut is_locked_in = false;
+                                                // First look for locked in champions - highest priority
                                                 let mut selected_champion_id = 0;
+                                                let mut is_locked_in = false;
                                                 
                                                 if let Some(actions) = json.get("actions").and_then(|v| v.as_array()) {
                                                     for action_group in actions {
                                                         if let Some(actions) = action_group.as_array() {
                                                             for action in actions {
                                                                 if let Some(actor_cell_id) = action.get("actorCellId").and_then(|v| v.as_i64()) {
-                                                                    if (actor_cell_id == local_player_cell_id) {
+                                                                    if actor_cell_id == local_player_cell_id {
+                                                                        // Check if locked in
                                                                         if let Some(completed) = action.get("completed").and_then(|v| v.as_bool()) {
-                                                                            if (completed) {
+                                                                            if completed {
                                                                                 if let Some(champion_id) = action.get("championId").and_then(|v| v.as_i64()) {
-                                                                                    if (champion_id > 0) {
+                                                                                    if champion_id > 0 {
                                                                                         is_locked_in = true;
                                                                                         selected_champion_id = champion_id;
                                                                                         break;
                                                                                     }
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                        
+                                                                        // Even if not locked in, capture the selected champion
+                                                                        // so we can pre-inject skins when champion is just selected
+                                                                        if !is_locked_in {
+                                                                            if let Some(champion_id) = action.get("championId").and_then(|v| v.as_i64()) {
+                                                                                if champion_id > 0 {
+                                                                                    selected_champion_id = champion_id;
                                                                                 }
                                                                             }
                                                                         }
@@ -720,11 +782,33 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
                                                     }
                                                 }
                                                 
-                                                // Only proceed with injection if the champion is locked in
-                                                if (is_locked_in) {
-                                                    println!("[LCU Watcher] Champion {} locked in", selected_champion_id);
+                                                // If no champion found in actions, check in my selection directly
+                                                if selected_champion_id == 0 {
+                                                    if let Some(my_team) = json.get("myTeam").and_then(|v| v.as_array()) {
+                                                        for player in my_team {
+                                                            if let Some(cell_id) = player.get("cellId").and_then(|v| v.as_i64()) {
+                                                                if cell_id == local_player_cell_id {
+                                                                    if let Some(champion_id) = player.get("championId").and_then(|v| v.as_i64()) {
+                                                                        if champion_id > 0 {
+                                                                            selected_champion_id = champion_id;
+                                                                            break;
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                
+                                                // Only proceed with injection if we have a locked in champion and haven't already injected for this champion
+                                                if selected_champion_id > 0 && is_locked_in && unsafe { LAST_INJECTED_CHAMPION != selected_champion_id } {
+                                                    // Mark that we've processed this champion
+                                                    unsafe { LAST_INJECTED_CHAMPION = selected_champion_id };
                                                     
-                                                    // load saved skins from config.json
+                                                    println!("[LCU Watcher] Champion {} locked in", selected_champion_id);
+                                                    emit_terminal_log(&app_handle, &format!("[LCU Watcher] Champion {} locked in", selected_champion_id));
+                                                    
+                                                    // Load saved skins from config.json
                                                     let config_dir = app_handle.path().app_data_dir()
                                                         .unwrap_or_else(|_| PathBuf::from("."))
                                                         .join("config");
@@ -736,8 +820,11 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
                                                                 Ok(config) => {
                                                                     // Find the skin for the selected champion
                                                                     if let Some(skin) = config.skins.iter().find(|s| s.champion_id == selected_champion_id as u32) {
+                                                                        // Prepare skin injection
                                                                         println!("[LCU Watcher] Injecting skin for champion {}: skin_id={}", 
                                                                             selected_champion_id, skin.skin_id);
+                                                                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] Injecting skin for champion {}: skin_id={}", 
+                                                                            selected_champion_id, skin.skin_id));
                                                                         
                                                                         // Prepare the skin for injection
                                                                         let skins = vec![Skin {
@@ -759,15 +846,20 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
                                                                             &skins,
                                                                             &champions_dir
                                                                         ) {
-                                                                            Ok(_) => println!("[LCU Watcher] Successfully injected skin for champion {}", selected_champion_id),
+                                                                            Ok(_) => {
+                                                                                println!("[LCU Watcher] Successfully injected skin for champion {}", selected_champion_id);
+                                                                                emit_terminal_log(&app_handle, &format!("[LCU Watcher] Successfully injected skin for champion {}", selected_champion_id));
+                                                                            },
                                                                             Err(e) => {
                                                                                 println!("[LCU Watcher] Failed to inject skin: {}", e);
+                                                                                emit_terminal_log(&app_handle, &format!("[LCU Watcher] Failed to inject skin: {}", e));
                                                                                 // Emit an event that the frontend can show to the user
                                                                                 let _ = app_handle.emit("skin-injection-error", e.to_string());
                                                                             },
                                                                         }
                                                                     } else {
                                                                         println!("[LCU Watcher] No skin configured for champion {}", selected_champion_id);
+                                                                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] No skin configured for champion {}", selected_champion_id));
                                                                     }
                                                                 },
                                                                 Err(e) => println!("[LCU Watcher] Failed to parse config.json: {}", e),
@@ -775,6 +867,10 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
                                                         },
                                                         Err(e) => println!("[LCU Watcher] Failed to read config.json: {}", e),
                                                     }
+                                                } else if selected_champion_id > 0 && !is_locked_in {
+                                                    // Just log that a champion is selected but not locked in yet
+                                                    println!("[LCU Watcher] Champion {} selected but not locked in", selected_champion_id);
+                                                    emit_terminal_log(&app_handle, &format!("[LCU Watcher] Champion {} selected but not locked in", selected_champion_id));
                                                 }
                                             }
                                         },
@@ -784,14 +880,21 @@ pub async fn start_auto_inject(app: tauri::AppHandle, leaguePath: String) -> Res
                             },
                             Err(e) => println!("[LCU Watcher] Failed to get session data: {}", e),
                         }
+                    } else {
+                        // Reset the last injected champion ID when we leave champion select
+                        unsafe {
+                            static mut LAST_INJECTED_CHAMPION: i64 = -1;
+                            LAST_INJECTED_CHAMPION = -1;
+                        }
                     }
+                    
                     last_phase = phase.to_string();
                 },
                 Err(e) => println!("Failed to build HTTP client: {}", e),
             }
             
-            // Sleep for a bit before checking again
-            thread::sleep(Duration::from_secs(5));
+            // Sleep for the appropriate duration before checking again
+            thread::sleep(sleep_duration);
         }
     });
     
@@ -811,6 +914,16 @@ pub async fn delete_champions_cache(app: tauri::AppHandle) -> Result<(), String>
         fs::remove_dir_all(&champions_dir)
             .map_err(|e| format!("Failed to delete champions cache: {}", e))?;
     }
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn start_auto_inject(app: AppHandle, leaguePath: String) -> Result<(), String> {
+    println!("Starting auto-inject for path: {}", leaguePath);
+    
+    // Start the LCU watcher in a separate thread
+    start_lcu_watcher(app, leaguePath)?;
     
     Ok(())
 }

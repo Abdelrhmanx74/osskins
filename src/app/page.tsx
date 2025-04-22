@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { OnboardingTour } from "@/components/onboarding/OnboardingTour";
 import { HelpButton } from "@/components/onboarding/HelpButton";
+import { TerminalLogsDialog } from "@/components/TerminalLogsDialog";
 
 // Loading component using React 19 suspense
 const ChampionsLoader = () => (
@@ -268,6 +269,7 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-4">
             <HelpButton />
+            <TerminalLogsDialog />
             <Button
               onClick={handleUpdateDataClick}
               variant="outline"

@@ -21,15 +21,15 @@ export function InjectionStatusDot() {
       if (injecting) {
         setInjectionStatus("injecting");
         setErrorMessage(null); // Clear previous error/message on new injection start
+        toast.info("Starting skin injection...");
       }
-      // We don't set to 'idle' or 'success' here when false,
-      // rely on specific 'injection-success' or 'skin-injection-error' events.
     });
 
     // Listen for injection success event
     const unlistenSuccess = listen("injection-success", () => {
       setInjectionStatus("success");
       setErrorMessage(null); // Clear error message on success
+      toast.success("Skin injection completed successfully");
     });
 
     // Listen for injection error events
@@ -38,7 +38,7 @@ export function InjectionStatusDot() {
       setErrorMessage(errorMsg);
       setInjectionStatus("error"); // Set status to error
 
-      // Show error toast
+      // Show error toast with more details
       toast.error("Skin Injection Failed", {
         description: errorMsg,
         duration: 5000,
@@ -49,8 +49,17 @@ export function InjectionStatusDot() {
     const unlistenLcu = listen("lcu-status", (event) => {
       const status = event.payload as string;
       setLcuStatus(status); // Update LCU status in store
-      // Reset injection status if game ends or returns to a non-injectable state (e.g., Lobby, EndOfGame, None)
-      // Do NOT reset during ChampSelect itself.
+
+      // Show status change toast
+      if (status === "ChampSelect") {
+        toast.info("Champion Select detected, ready for skin injection");
+      } else if (status === "InProgress") {
+        toast.success("Game started, skins should be active");
+      } else if (status === "EndOfGame") {
+        toast.info("Game ended, cleaning up skin injection");
+      }
+
+      // Reset injection status if game ends or returns to a non-injectable state
       if (status === "None" || status === "Lobby" || status === "EndOfGame") {
         // Only reset if currently in a final state (success/error)
         const currentInjectionStatus = useGameStore.getState().injectionStatus;
@@ -79,7 +88,6 @@ export function InjectionStatusDot() {
         fn();
       });
     };
-    // Add setters to dependency array
   }, [setInjectionStatus, setLcuStatus]);
 
   let color = "bg-gray-500"; // Idle state
