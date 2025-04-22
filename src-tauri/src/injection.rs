@@ -906,7 +906,8 @@ impl SkinInjector {
                 i + 1, skins.len(), skin.champion_id, skin.skin_id, skin.chroma_id));
                 
             // Find the fantome file
-            if let Some(fantome_path) = self.find_fantome_for_skin(skin, fantome_files_dir)? {
+            let fantome_path = self.find_fantome_for_skin(skin, fantome_files_dir)?;
+            if let Some(fantome_path) = fantome_path {
                 self.log(&format!("Found fantome file: {}", fantome_path.display()));
                 
                 // Process the fantome file to create a proper mod structure
@@ -923,8 +924,13 @@ impl SkinInjector {
                     fs::copy(&fantome_path, &game_fantome_path)?;
                 }
             } else {
-                self.log(&format!("WARNING: No fantome file found for skin: champion_id={}, skin_id={}, chroma_id={:?}",
-                    skin.champion_id, skin.skin_id, skin.chroma_id));
+                let msg = format!(
+                    "No fantome file found for skin: champion_id={}, skin_id={}, chroma_id={:?}",
+                    skin.champion_id, skin.skin_id, skin.chroma_id
+                );
+                self.log(&format!("ERROR: {}", msg));
+                self.set_state(ModState::Idle);
+                return Err(InjectionError::MissingFantomeFile(msg));
             }
         }
         
