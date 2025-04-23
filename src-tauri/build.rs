@@ -4,6 +4,15 @@ use std::{env, fs, path::Path};
 fn main() {
   // Determine build profile to avoid infinite rebuild loop in dev
   let profile = env::var("PROFILE").unwrap_or_default();
+  
+  // Add Windows manifest to request admin privileges
+  #[cfg(target_os = "windows")]
+  {
+    let mut res = winres::WindowsResource::new();
+    res.set_manifest_file("resources/admin.manifest");
+    res.compile().expect("Failed to compile Windows resource");
+  }
+
   if profile != "release" {
     // Skip C++ build and resource copy in debug/dev mode
     tauri_build::build();

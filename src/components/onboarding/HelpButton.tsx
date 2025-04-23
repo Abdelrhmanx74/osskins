@@ -1,14 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { HelpCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useGameStore } from "@/lib/store";
+import { DropdownMenuItem } from "../ui/dropdown-menu";
 
 export function HelpButton() {
   const { setHasCompletedOnboarding } = useGameStore();
@@ -23,18 +17,9 @@ export function HelpButton() {
   };
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleShowOnboarding}
-          className="text-muted-foreground hover:text-foreground rounded-full"
-        >
-          <HelpCircle className="h-5 w-5" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>Show onboarding guide</TooltipContent>
-    </Tooltip>
+    <DropdownMenuItem onClick={handleShowOnboarding}>
+      <HelpCircle className="h-5 w-5" />
+      Help
+    </DropdownMenuItem>
   );
 }

@@ -11,20 +11,24 @@ import { useGameStore } from "@/lib/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, Search } from "lucide-react";
+import { Loader2, RefreshCw, Search, Menu } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import {
-  GameStatusDot,
-  // InjectionStatusDot,
-} from "@/components/skin-injection/GameStatusDot";
 import { toast } from "sonner";
 import { OnboardingTour } from "@/components/onboarding/OnboardingTour";
 import { HelpButton } from "@/components/onboarding/HelpButton";
 import { TerminalLogsDialog } from "@/components/TerminalLogsDialog";
+import { TitleBar } from "@/components/ui/titlebar/TitleBar";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+} from "@/components/ui/dropdown-menu";
+import { ThemeToneSelector } from "@/components/ThemeToneSelector";
+import { SettingsDialog } from "@/components/SettingsDialog";
 
 // Loading component using React 19 suspense
 const ChampionsLoader = () => (
-  <div className="flex flex-col items-center justify-center h-screen">
+  <div className="flex flex-col items-center justify-center h-full">
     <Loader2 className="animate-spin size-20 text-muted-foreground" />
   </div>
 );
@@ -169,7 +173,7 @@ export default function Home() {
   if (isUpdating) {
     return (
       <Suspense fallback={<ChampionsLoader />}>
-        <main className="flex min-h-screen flex-col items-center justify-center p-24">
+        <main className="flex min-h-full flex-col items-center justify-center p-24">
           <div className="flex flex-col items-center gap-8">
             <h1 className="text-2xl font-bold">Initializing...</h1>
             <p className="text-muted-foreground">
@@ -185,7 +189,7 @@ export default function Home() {
   // If no League path is selected, show directory selector
   if (!leaguePath) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center p-24">
+      <main className="flex min-h-full flex-col items-center justify-center p-24">
         <div className="flex flex-col items-center gap-8">
           <h1 className="text-2xl font-bold">Welcome to League Skin Manager</h1>
           <p className="text-muted-foreground">
@@ -200,7 +204,7 @@ export default function Home() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen gap-4">
+      <div className="flex flex-col items-center justify-center h-full gap-4">
         <div className="text-destructive">Error: {error}</div>
       </div>
     );
@@ -212,7 +216,7 @@ export default function Home() {
 
   if (hasData === false) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-full">
         <div className="text-muted-foreground">Updating champion data...</div>
       </div>
     );
@@ -220,7 +224,7 @@ export default function Home() {
 
   if (champions.length === 0) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-full">
         <div className="text-muted-foreground">No champions found</div>
       </div>
     );
@@ -248,12 +252,12 @@ export default function Home() {
 
   return (
     <Suspense fallback={<ChampionsLoader />}>
-      <div className="flex flex-col h-screen bg-background">
+      <div className="flex flex-col h-full bg-background">
         {/* Onboarding component */}
         <OnboardingTour />
 
         {/* Top bar with search and injection status dot */}
-        <div className="flex items-center justify-between p-4 border-b max-w-7xl w-full mx-auto">
+        <div className="flex items-center justify-between p-2 border-b max-w-7xl w-full mx-auto">
           <div className="flex items-center gap-4 flex-1 max-w-md">
             <div className="relative flex-1">
               <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -268,8 +272,6 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <HelpButton />
-            <TerminalLogsDialog />
             <Button
               onClick={handleUpdateDataClick}
               variant="outline"
@@ -278,16 +280,27 @@ export default function Home() {
               <RefreshCw className="h-4 w-4" />
               Update Data
             </Button>
-            {/* status dot */}
-            <GameStatusDot />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" aria-label="Menu">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="min-w-50" align="end">
+                <TerminalLogsDialog />
+                <HelpButton />
+                <SettingsDialog />
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <TitleBar />
           </div>
         </div>
 
         {/* Main content */}
-        <div className="flex flex-1 overflow-hidden p-2 max-w-7xl w-full mx-auto">
+        <div className="flex flex-1 overflow-hidden max-w-7xl w-full mx-auto">
           {/* Left side - Champions grid */}
           <div className="w-1/4 xl:w-1/5 overflow-y-auto border-r min-w-[220px]">
-            <div className="w-fit mx-auto grid grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-4">
+            <div className="w-fit mx-auto grid grid-cols-2 md:grid-cols-4 gap-3 p-2">
               {filteredChampions.map((champion) => (
                 <ChampionCard
                   key={champion.id}
@@ -315,9 +328,9 @@ export default function Home() {
           </div>
 
           {/* Right side - Skins grid */}
-          <div className="w-3/4 xl:w-4/5 flex justify-center p-4 overflow-y-auto">
+          <div className="w-3/4 xl:w-4/5 flex justify-center p-2 mb-2 overflow-y-auto">
             {selectedChampionData ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-8">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {selectedChampionData.skins
                   .filter((skin) => !skin.isBase)
                   .map((skin) => (

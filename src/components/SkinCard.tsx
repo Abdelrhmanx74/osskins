@@ -68,7 +68,7 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
     <Card
       ref={cardRef}
       className={cn(
-        "relative cursor-pointer min-h-[400px] size-full p-0 overflow-hidden transition-all duration-300",
+        "relative cursor-pointer min-h-[350px] size-full p-0 rounded-none overflow-hidden transition-all duration-300",
         isSelected ? "ring-2 ring-primary" : ""
       )}
       onClick={handleClick}

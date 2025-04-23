@@ -1,6 +1,8 @@
 import { Poppins } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
+import { ThemeProvider } from "next-themes";
+import { ThemeInitializer } from "@/components/providers/ThemeInitializer";
 
 const poppins = Poppins({
   weight: ["400", "500", "600", "700"],
@@ -14,10 +16,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html className="dark" lang="en">
-      <body className={`${poppins.variable} antialiased`}>
-        {children}
-        <Toaster richColors position="bottom-center" />
+    <html lang="en" suppressHydrationWarning>
+      <body
+        className={`${poppins.variable} antialiased flex flex-col h-screen`}
+      >
+        <ThemeProvider attribute="class" enableSystem>
+          <ThemeInitializer />
+          {children}
+          <Toaster richColors position="bottom-center" />
+        </ThemeProvider>
       </body>
     </html>
   );

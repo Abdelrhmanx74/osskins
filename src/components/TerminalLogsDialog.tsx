@@ -10,7 +10,9 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useState, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Terminal, Trash2, X } from "lucide-react";
+import { Terminal, Trash2, X, Copy } from "lucide-react";
+import { DropdownMenuItem } from "./ui/dropdown-menu";
+import { toast } from "sonner";
 
 export function TerminalLogsDialog() {
   const [logs, setLogs] = useState<string[]>([]);
@@ -39,17 +41,42 @@ export function TerminalLogsDialog() {
     setLogs([]);
   };
 
+  const copyLogs = async () => {
+    try {
+      await navigator.clipboard.writeText(logs.join("\n"));
+      toast.success("Logs copied to clipboard");
+    } catch {
+      toast.error("Failed to copy logs");
+    }
+  };
+
   return (
-    <Dialog>
+    <Dialog modal>
       <DialogTrigger asChild>
-        <Button variant="outline" size="icon">
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+          }}
+        >
           <Terminal className="h-4 w-4" />
-        </Button>
+          Terminal Logs
+        </DropdownMenuItem>
       </DialogTrigger>
       <DialogContent className="sm:max-w-5xl">
         <DialogHeader className="flex flex-row items-center justify-between">
           <DialogTitle>Terminal Logs</DialogTitle>
           <div className="flex flex-row items-center gap-2">
+            <Button
+              title="Copy"
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                void copyLogs();
+              }}
+              disabled={logs.length === 0}
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
             <Button
               title="Clear"
               variant="outline"

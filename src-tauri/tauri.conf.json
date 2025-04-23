@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Fuck Exalted",
-  "version": "0.0.1",
+  "version": "0.1.1",
   "identifier": "com.fuck-exalted.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -17,12 +17,21 @@
         "height": 800,
         "resizable": true,
         "fullscreen": false,
-        "center": true
+        "center": true,
+        "decorations": false,
+        "windowEffects": {
+          "effects": [
+            "mica"
+          ],
+          "radius": 10.0,
+          "color": "#00000000"
+        }
       }
     ],
     "security": {
       "csp": null
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
@@ -36,7 +45,18 @@
     ],
     "resources": [
       "resources/cslol-tools/*"
-    ]
+    ],
+    "windows": {
+      "wix": {
+        "language": "en-US"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "displayLanguageSelector": false
+      }
+    }
   },
   "plugins": {
     "fs": {

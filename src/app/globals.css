@@ -53,6 +53,13 @@
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.705 0.015 286.067);
+  --theme-transition-duration: 200ms;
+}
+
+:root:not(.transitioning-theme) * {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: var(--theme-transition-duration);
 }
 
 .dark {
@@ -76,10 +83,8 @@
   --ring: oklch(0.552 0.016 285.938);
 }
 
-
 ::-webkit-scrollbar {
   @apply w-2.5 h-2.5;
-
 }
 
 ::-webkit-scrollbar-track {
@@ -98,4 +103,9 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Add this after the existing base styles to enable smooth theme transitions */
+html.transitioning-theme * {
+  transition: none !important;
 }
