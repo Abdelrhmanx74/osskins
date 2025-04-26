@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ThemeToneSelector } from "@/components/ThemeToneSelector";
 import { SettingsDialog } from "@/components/SettingsDialog";
+import { InjectionStatusDot } from "@/components/InjectionStatusDot";
+import { ChampionSearch } from "@/components/ChampionSearch";
 
 // Loading component using React 19 suspense
 const ChampionsLoader = () => (
@@ -32,6 +34,26 @@ const ChampionsLoader = () => (
     <Loader2 className="animate-spin size-20 text-muted-foreground" />
   </div>
 );
+
+function getMatchScore(championName: string, query: string): number {
+  const normalizedName = championName.toLowerCase();
+  const normalizedQuery = query.toLowerCase();
+
+  // Exact match gets highest score
+  if (normalizedName === normalizedQuery) return 100;
+
+  // Starts with query gets high score
+  if (normalizedName.startsWith(normalizedQuery)) return 80;
+
+  // Contains query as a word gets medium score
+  if (normalizedName.includes(` ${normalizedQuery}`)) return 60;
+
+  // Contains query gets low score
+  if (normalizedName.includes(normalizedQuery)) return 40;
+
+  // No match
+  return 0;
+}
 
 export default function Home() {
   const { isUpdating, progress, updateData } = useDataUpdate();
@@ -156,16 +178,31 @@ export default function Home() {
     });
   }, [leaguePath, selectedSkins, favorites]);
 
-  // Sort champions: favorites at the top, then alphabetically
+  // Sort and filter champions based on search query and favorites
   const filteredChampions = champions
     .filter((champion) =>
       champion.name.toLowerCase().includes(searchQuery.toLowerCase())
     )
     .sort((a, b) => {
+      // First sort by favorite status
       const aFav = favorites.has(a.id);
       const bFav = favorites.has(b.id);
       if (aFav && !bFav) return -1;
       if (!aFav && bFav) return 1;
+
+      // Then by search relevance
+      if (searchQuery) {
+        const aStarts = a.name
+          .toLowerCase()
+          .startsWith(searchQuery.toLowerCase());
+        const bStarts = b.name
+          .toLowerCase()
+          .startsWith(searchQuery.toLowerCase());
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+      }
+
+      // Finally alphabetically
       return a.name.localeCompare(b.name);
     });
 
@@ -252,26 +289,39 @@ export default function Home() {
 
   return (
     <Suspense fallback={<ChampionsLoader />}>
-      <div className="flex flex-col h-full bg-background">
+      <div className="flex flex-col h-full">
         {/* Onboarding component */}
         <OnboardingTour />
 
         {/* Top bar with search and injection status dot */}
-        <div className="flex items-center justify-between p-2 border-b max-w-7xl w-full mx-auto">
-          <div className="flex items-center gap-4 flex-1 max-w-md">
-            <div className="relative flex-1">
-              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                className="pl-8"
-                placeholder="Search champions..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                }}
-              />
-            </div>
-          </div>
+        <div
+          data-tauri-drag-region
+          onMouseDown={(e) => {
+            if ((e.target as HTMLElement).closest("[data-tauri-drag-region]")) {
+              invoke("tauri", {
+                __tauriModule: "Window",
+                message: {
+                  cmd: "manage",
+                  data: {
+                    cmd: "startDragging",
+                  },
+                },
+              }).catch(console.error);
+            }
+          }}
+          className="flex items-center justify-between gap-4 p-2 border-b w-full mx-auto bg-primary/10"
+        >
+          <ChampionSearch
+            champions={champions}
+            onSelect={(id) => {
+              setSelectedChampion(id);
+            }}
+            selectedChampionId={selectedChampion}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+          />
           <div className="flex items-center gap-4">
+            <InjectionStatusDot />
             <Button
               onClick={handleUpdateDataClick}
               variant="outline"
@@ -297,10 +347,10 @@ export default function Home() {
         </div>
 
         {/* Main content */}
-        <div className="flex flex-1 overflow-hidden max-w-7xl w-full mx-auto">
+        <div className="flex flex-1 overflow-hidden w-full mx-auto">
           {/* Left side - Champions grid */}
-          <div className="w-1/4 xl:w-1/5 overflow-y-auto border-r min-w-[220px]">
-            <div className="w-fit mx-auto grid grid-cols-2 md:grid-cols-4 gap-3 p-2">
+          <div className="w-1/4 xl:w-1/5 overflow-y-auto scrollbar-hide bg-primary/10 border-r min-w-[220px]">
+            <div className="w-fit mx-auto grid grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2 p-2">
               {filteredChampions.map((champion) => (
                 <ChampionCard
                   key={champion.id}
@@ -328,9 +378,9 @@ export default function Home() {
           </div>
 
           {/* Right side - Skins grid */}
-          <div className="w-3/4 xl:w-4/5 flex justify-center p-2 mb-2 overflow-y-auto">
+          <div className="w-3/4 xl:w-4/5 flex justify-center p-2 overflow-y-auto size-full">
             {selectedChampionData ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-5 size-fit">
                 {selectedChampionData.skins
                   .filter((skin) => !skin.isBase)
                   .map((skin) => (

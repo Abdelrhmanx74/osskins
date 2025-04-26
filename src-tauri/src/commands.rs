@@ -136,12 +136,12 @@ pub async fn get_champion_data(
         .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
     
     let champions_dir = app_data_dir.join("champions");
-    if !champions_dir.exists() {
+    if (!champions_dir.exists()) {
         return Ok("[]".to_string()); // Return empty array if no champions directory exists
     }
 
     // If champion_id is 0, return all champions
-    if champion_id == 0 {
+    if (champion_id == 0) {
         let mut all_champions = Vec::new();
         for entry in fs::read_dir(champions_dir)
             .map_err(|e| format!("Failed to read champions directory: {}", e))? {
@@ -191,7 +191,7 @@ pub async fn check_champions_data(app: tauri::AppHandle) -> Result<bool, String>
         .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
     
     let champions_dir = app_data_dir.join("champions");
-    if !champions_dir.exists() {
+    if (!champions_dir.exists()) {
         return Ok(false);
     }
 
@@ -328,16 +328,31 @@ pub async fn inject_skins(
     let fantome_files_dir = app_data_dir.join("champions");
     println!("Fantome files directory: {}", fantome_files_dir.display());
     
+    // Emit injection started event to update UI
+    let _ = app.emit("injection-status", "injecting");
+    
     // Call the native Rust implementation of skin injection using our new SkinInjector
-    inject_skins_impl(
+    let result = inject_skins_impl(
         &app,
         &request.league_path,
         &request.skins,
         &fantome_files_dir,
-    )?;
+    );
     
-    println!("Skin injection completed");
-    Ok(())
+    // Handle result with proper error propagation to frontend
+    match result {
+        Ok(_) => {
+            println!("Skin injection completed successfully");
+            let _ = app.emit("injection-status", "success");
+            Ok(())
+        },
+        Err(err) => {
+            println!("Skin injection failed: {}", err);
+            let _ = app.emit("injection-status", "error");
+            let _ = app.emit("skin-injection-error", format!("Injection failed: {}", err));
+            Err(format!("Injection failed: {}", err))
+        }
+    }
 }
 
 // The ensure_mod_tools command is no longer needed since we're not using external tools anymore
@@ -531,6 +546,35 @@ fn emit_terminal_log(app: &AppHandle, message: &str) {
     let _ = app.emit("terminal-log", message);
 }
 
+// Add helper function for cleaner log messages
+fn format_json_summary(json: &serde_json::Value) -> String {
+    let mut summary = String::new();
+    
+    if let Some(phase) = json.get("phase") {
+        summary.push_str(&format!("phase: {}, ", phase.as_str().unwrap_or("unknown")));
+    }
+    
+    if let Some(game_data) = json.get("gameData") {
+        summary.push_str("gameData: {...}, ");
+    }
+    
+    if let Some(actions) = json.get("actions") {
+        summary.push_str(&format!("actions: [{} items], ", actions.as_array().map_or(0, |a| a.len())));
+    }
+    
+    if summary.is_empty() {
+        summary = "[Response summary unavailable]".to_string();
+    }
+    
+    summary
+}
+
+// Helper function for delayed logging
+fn delayed_log(app: &AppHandle, message: &str) {
+    emit_terminal_log(app, message);
+    thread::sleep(Duration::from_millis(100)); // Small delay for better readability
+}
+
 #[tauri::command]
 pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), String> {
     println!("Starting LCU status watcher for path: {}", leaguePath);
@@ -543,8 +587,12 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
         let mut was_reconnecting = false;
         let _ = app_handle.emit("lcu-status", "None".to_string());
         
+        // Track last seen selections to detect changes
+        let mut last_selected_skins: std::collections::HashMap<u32, SkinData> = std::collections::HashMap::new();
+        let mut last_skin_check_time = std::time::Instant::now();
+        let mut last_champion_id: Option<u32> = None;
+        
         loop {
-            // Set a default sleep duration at the start of each loop
             let mut sleep_duration = Duration::from_secs(5);
             
             let log_msg = format!("[LCU Watcher] Monitoring directory: {}", league_path_clone);
@@ -557,6 +605,8 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
             let mut token = None;
             let mut found_any_lockfile = false;
             let mut lockfile_path = None;
+            
+            // Rest of the lockfile detection code remains the same
             for dir in &search_dirs {
                 let log_msg = format!("[LCU Watcher] Looking for lockfiles in: {}", dir.display());
                 println!("{}", log_msg);
@@ -588,20 +638,18 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                 }
                 
                 if port.is_some() && token.is_some() {
-                    break; // Stop checking directories if we found a valid lockfile
+                    break;
                 }
             }
             
-            if !found_any_lockfile {
-                // Client is closed, but we were in game - maintain that state
+            if (!found_any_lockfile) {
+                // Handle no lockfile found cases...
                 if was_in_game && (last_phase == "InProgress" || was_reconnecting) {
-                    // Do not stop the injection as the player might be reconnecting
                     println!("[LCU Watcher] Client closed during active game! Maintaining state for reconnection.");
                     emit_terminal_log(&app_handle, &"[LCU Watcher] Client closed during active game! Maintaining state for reconnection.");
                     thread::sleep(Duration::from_secs(5));
                     continue;
                 } else if was_in_game && last_phase == "None" {
-                    // Game actually ended, clean up the injection
                     println!("[LCU Watcher] Game ended, cleaning up skin injection.");
                     emit_terminal_log(&app_handle, &"[LCU Watcher] Game ended, cleaning up skin injection.");
                     if let Err(e) = crate::injection::cleanup_injection(&app_handle, &league_path_clone) {
@@ -611,7 +659,6 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                     was_in_game = false;
                 }
                 
-                // Only print a single message if no lockfile is found, and sleep
                 let log_msg = format!("[LCU Watcher] No valid lockfile found. Is League running? The lockfile should be at: {}", league_path_clone);
                 println!("{}", log_msg);
                 emit_terminal_log(&app_handle, &log_msg);
@@ -625,22 +672,18 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
             println!("[LCU Watcher] Successfully connected to LCU on port: {}", port);
             emit_terminal_log(&app_handle, &format!("[LCU Watcher] Successfully connected to LCU on port: {}", port));
             
-            // Now that we have a valid lockfile and connection, enter a new loop
             'lcu_connected: loop {
-                // Before each iteration, check if the lockfile still exists
                 if !lockfile_path.exists() {
                     println!("[LCU Watcher] Lockfile disappeared, returning to outer loop to recheck.");
                     emit_terminal_log(&app_handle, "[LCU Watcher] Lockfile disappeared, returning to outer loop to recheck.");
                     break 'lcu_connected;
                 }
 
-                // build client with error handling
                 match reqwest::blocking::Client::builder()
                     .danger_accept_invalid_certs(true)
                     .build() 
                 {
                     Ok(client) => {
-                        // Try different LCU API endpoints if one fails
                         let endpoints = [
                             "/lol-gameflow/v1/session",
                             "/lol-gameflow/v1/gameflow-phase",
@@ -655,7 +698,6 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                             println!("{}", log_msg);
                             emit_terminal_log(&app_handle, &log_msg);
                             
-                            // Define auth here using the token
                             let auth = base64::encode(format!("riot:{}", token));
                             
                             match client.get(&url)
@@ -666,12 +708,19 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                     if resp.status().is_success() {
                                         connected = true;
                                         
-                                        // Handle different response formats based on the endpoint
+                                        let status = resp.status();
+                                        
                                         match resp.json::<serde_json::Value>() {
                                             Ok(json) => {
-                                                // Different endpoints return phase in different formats
+                                                // Use summary format instead of full JSON
+                                                delayed_log(&app_handle, &format!(
+                                                    "[LCU Response] {} ({})\n    {}", 
+                                                    endpoint,
+                                                    status,
+                                                    format_json_summary(&json)
+                                                ));
+                                                
                                                 if endpoint == "/lol-gameflow/v1/gameflow-phase" {
-                                                    // The /gameflow-phase endpoint directly returns the phase as a string
                                                     if let Some(phase) = json.as_str() {
                                                         phase_value = Some(phase.to_string());
                                                         let log_msg = format!("[LCU Watcher] Found phase via gameflow-phase: {}", phase);
@@ -680,7 +729,6 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                         break;
                                                     }
                                                 } else {
-                                                    // The /session endpoint returns phase as a field
                                                     if let Some(phase) = json.get("phase").and_then(|v| v.as_str()) {
                                                         phase_value = Some(phase.to_string());
                                                         let log_msg = format!("[LCU Watcher] Found phase via session: {}", phase);
@@ -693,8 +741,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                             Err(e) => println!("[LCU Watcher] Failed to parse response from {}: {}", endpoint, e),
                                         }
                                     } else {
-                                        println!("[LCU Watcher] Endpoint {} returned status: {}", endpoint, resp.status());
-                                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] Endpoint {} returned status: {}", endpoint, resp.status()));
+                                        delayed_log(&app_handle, &format!("[LCU Watcher] Endpoint {} returned status: {}", endpoint, resp.status()));
                                     }
                                 },
                                 Err(e) => println!("[LCU Watcher] Failed to connect to endpoint {}: {}", endpoint, e),
@@ -710,7 +757,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                         
                         let phase = phase_value.unwrap_or_else(|| "None".to_string());
                         
-                        if (phase != last_phase) {
+                        if phase != last_phase {
                             println!("[LCU Watcher] LCU status changed: {} -> {}", last_phase, phase);
                             emit_terminal_log(&app_handle, &format!("[LCU Watcher] LCU status changed: {} -> {}", last_phase, phase));
                             
@@ -718,7 +765,6 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                             if phase == "ChampSelect" {
                                 emit_terminal_log(&app_handle, "[LCU Watcher] Champion select started, preparing for skin injection");
                                 
-                                // Preload by ensuring the champions directory exists and overlay directory is clean
                                 let champions_dir = app_handle.path().app_data_dir()
                                     .unwrap_or_else(|_| PathBuf::from("."))
                                     .join("champions");
@@ -729,7 +775,6 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                     }
                                 }
                                 
-                                // Clean up any existing overlay for faster injection later
                                 let app_dir = app_handle.path().app_data_dir()
                                     .unwrap_or_else(|_| PathBuf::from("."));
                                 let overlay_dir = app_dir.join("overlay");
@@ -741,333 +786,317 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                             }
                         }
                         
-                        // Create a variable to track our sleep duration - we'll use shorter intervals during champion select
-                        let mut sleep_duration = Duration::from_secs(5);
-                        
-                        if (phase == "ChampSelect") {
-                            // Use shorter polling interval during champion select (1.5 seconds instead of 5)
-                            // But use adaptive polling - if we've seen the same champion multiple times, we can slow down
-                            static mut STABLE_CHAMPION_COUNT: i32 = 0;
-                            sleep_duration = if unsafe { STABLE_CHAMPION_COUNT > 3 } {
-                                Duration::from_millis(2500) // Slower polling if champion selection is stable
-                            } else {
-                                Duration::from_millis(1200) // Faster polling when actively selecting
-                            };
+                        if phase == "ChampSelect" {
+                            let now = std::time::Instant::now();
+                            if now.duration_since(last_skin_check_time).as_secs() >= 1 {
+                                last_skin_check_time = now;
+                                
+                                let session_url = format!("https://127.0.0.1:{}/lol-champ-select/v1/session", port);
+                                let auth = base64::encode(format!("riot:{}", token));
+                                
+                                if let Ok(resp) = client.get(&session_url)
+                                    .header("Authorization", format!("Basic {}", auth))
+                                    .send() 
+                                {
+                                    if resp.status().is_success() {
+                                        if let Ok(json) = resp.json::<serde_json::Value>() {
+                                            if let Some(selected_champ_id) = get_selected_champion_id(&json) {
+                                                let current_champion_id = selected_champ_id as u32;
+                                                
+                                                let champion_changed = last_champion_id != Some(current_champion_id) && current_champion_id > 0;
+                                                if champion_changed {
+                                                    emit_terminal_log(&app_handle, &format!(
+                                                        "[LCU Watcher] Champion selection changed to {}", 
+                                                        current_champion_id
+                                                    ));
+                                                    
+                                                    last_champion_id = Some(current_champion_id);
+                                                    
+                                                    let config_dir = app_handle.path().app_data_dir()
+                                                        .unwrap_or_else(|_| PathBuf::from("."))
+                                                        .join("config");
+                                                    let cfg_file = config_dir.join("config.json");
+                                                    
+                                                    if let Ok(data) = std::fs::read_to_string(&cfg_file) {
+                                                        if let Ok(config) = serde_json::from_str::<SavedConfig>(&data) {
+                                                            if let Some(skin) = config.skins.iter().find(|s| s.champion_id == current_champion_id) {
+                                                                emit_terminal_log(&app_handle, &format!(
+                                                                    "[LCU Watcher] Found pre-selected skin for champion {}: skin_id={}", 
+                                                                    current_champion_id, skin.skin_id
+                                                                ));
+                                                                
+                                                                let skins = vec![Skin {
+                                                                    champion_id: skin.champion_id,
+                                                                    skin_id: skin.skin_id,
+                                                                    chroma_id: skin.chroma_id,
+                                                                    fantome_path: skin.fantome.clone(),
+                                                                }];
+                                                                
+                                                                let champions_dir = app_handle.path().app_data_dir()
+                                                                    .unwrap_or_else(|_| PathBuf::from("."))
+                                                                    .join("champions");
+                                                                
+                                                                match crate::injection::inject_skins(
+                                                                    &app_handle,
+                                                                    &league_path_clone,
+                                                                    &skins,
+                                                                    &champions_dir
+                                                                ) {
+                                                                    Ok(_) => {
+                                                                        println!("[LCU Watcher] Successfully injected pre-selected skin for champion {}", current_champion_id);
+                                                                        emit_terminal_log(&app_handle, &format!(
+                                                                            "[LCU Watcher] Successfully injected pre-selected skin for champion {}", current_champion_id
+                                                                        ));
+                                                                        let _ = app_handle.emit("injection-status", "success");
+                                                                    },
+                                                                    Err(e) => {
+                                                                        println!("[LCU Watcher] Failed to inject pre-selected skin: {}", e);
+                                                                        emit_terminal_log(&app_handle, &format!(
+                                                                            "[LCU Watcher] Failed to inject pre-selected skin: {}", e
+                                                                        ));
+                                                                        let _ = app_handle.emit("skin-injection-error", format!(
+                                                                            "Failed to inject pre-selected skin for champion {}: {}", current_champion_id, e
+                                                                        ));
+                                                                        let _ = app_handle.emit("injection-status", "error");
+                                                                    }
+                                                                }
+                                                                
+                                                                last_selected_skins.insert(current_champion_id, skin.clone());
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                last_champion_id = None;
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                let config_dir = app_handle.path().app_data_dir()
+                                    .unwrap_or_else(|_| PathBuf::from("."))
+                                    .join("config");
+                                let cfg_file = config_dir.join("config.json");
+                                
+                                if let Ok(data) = std::fs::read_to_string(&cfg_file) {
+                                    if let Ok(config) = serde_json::from_str::<SavedConfig>(&data) {
+                                        let mut skin_changes = false;
+                                        
+                                        for skin in &config.skins {
+                                            let champ_id = skin.champion_id;
+                                            
+                                            if last_champion_id == Some(champ_id) {
+                                                if !last_selected_skins.contains_key(&champ_id) ||
+                                                   last_selected_skins.get(&champ_id).map_or(true, |old_skin| {
+                                                       old_skin.skin_id != skin.skin_id || 
+                                                       old_skin.chroma_id != skin.chroma_id || 
+                                                       old_skin.fantome != skin.fantome
+                                                   }) 
+                                                {
+                                                    emit_terminal_log(&app_handle, &format!(
+                                                        "[LCU Watcher] Detected skin change for champion {}: skin_id={}", 
+                                                        champ_id, skin.skin_id
+                                                    ));
+                                                    
+                                                    let skins = vec![Skin {
+                                                        champion_id: skin.champion_id,
+                                                        skin_id: skin.skin_id,
+                                                        chroma_id: skin.chroma_id,
+                                                        fantome_path: skin.fantome.clone(),
+                                                    }];
+                                                    
+                                                    let champions_dir = app_handle.path().app_data_dir()
+                                                        .unwrap_or_else(|_| PathBuf::from("."))
+                                                        .join("champions");
+                                                    
+                                                    if phase != "ChampSelect" {
+                                                        emit_terminal_log(&app_handle, &format!(
+                                                            "[LCU Watcher] Skipping injection - no longer in champion select (current phase: {})",
+                                                            phase
+                                                        ));
+                                                        continue;
+                                                    }
+                                                    
+                                                    match crate::injection::inject_skins(
+                                                        &app_handle,
+                                                        &league_path_clone,
+                                                        &skins,
+                                                        &champions_dir
+                                                    ) {
+                                                        Ok(_) => {
+                                                            println!("[LCU Watcher] Successfully injected skin for champion {}", champ_id);
+                                                            emit_terminal_log(&app_handle, &format!(
+                                                                "[LCU Watcher] Successfully injected skin for champion {}", champ_id
+                                                            ));
+                                                            let _ = app_handle.emit("injection-status", "success");
+                                                        },
+                                                        Err(e) => {
+                                                            println!("[LCU Watcher] Failed to inject skin: {}", e);
+                                                            emit_terminal_log(&app_handle, &format!(
+                                                                "[LCU Watcher] Failed to inject skin: {}", e
+                                                            ));
+                                                            let _ = app_handle.emit("skin-injection-error", format!(
+                                                                "Failed to inject skin for champion {}: {}", champ_id, e
+                                                            ));
+                                                            let _ = app_handle.emit("injection-status", "error");
+                                                        }
+                                                    }
+                                                    
+                                                    last_selected_skins.insert(champ_id, skin.clone());
+                                                    skin_changes = true;
+                                                }
+                                            }
+                                        }
+                                        
+                                        if skin_changes {
+                                            emit_terminal_log(&app_handle, "[LCU Watcher] Updated skin selection tracking");
+                                        }
+                                    }
+                                }
+                            }
                             
-                            // Get the current session to check selected champion
-                            let session_url = format!("https://127.0.0.1:{}/lol-champ-select/v1/session", port);
+                            if phase != "ChampSelect" && phase != "None" && last_phase == "ChampSelect" {
+                                emit_terminal_log(&app_handle, &format!(
+                                    "[LCU Watcher] Game phase changed to {}, stopping any pending injections",
+                                    phase
+                                ));
+                                let _ = crate::injection::cleanup_injection(&app_handle, &league_path_clone);
+                            }
+                            
+                            sleep_duration = Duration::from_secs(1);
+                        } else if phase == "InProgress" {
+                            // Keep existing in-game phase behavior
+                        }
+
+                        // Handle Swift Play mode - detect Lobby -> Matchmaking transition
+                        if last_phase == "Lobby" && phase == "Matchmaking" {
+                            emit_terminal_log(&app_handle, "[LCU Watcher] Detected transition from Lobby to Matchmaking, checking for Swift Play mode");
+                            
+                            // Check current queue information
+                            let queue_url = format!("https://127.0.0.1:{}/lol-gameflow/v1/session", port);
                             let auth = base64::encode(format!("riot:{}", token));
                             
-                            // Try to use the persistent HTTP client if available
-                            let client = get_lcu_client(); // Use our optimized HTTP client
-                            
-                            match client.get(&session_url)
+                            match client.get(&queue_url)
                                 .header("Authorization", format!("Basic {}", auth))
-                                .send() 
+                                .send()
                             {
                                 Ok(resp) => {
-                                    if (resp.status().is_success()) {
-                                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] Session API returned status: {}", resp.status()));
-                                        
+                                    if resp.status().is_success() {
                                         match resp.json::<serde_json::Value>() {
                                             Ok(json) => {
-                                                // Track if we already injected skins in this champion select session
-                                                // to avoid doing it repeatedly
-                                                static mut LAST_INJECTED_CHAMPION: i64 = -1;
-                                                let mut previous_injected_champion;
-                                                unsafe { previous_injected_champion = LAST_INJECTED_CHAMPION; }
-                                                
-                                                // Debug log to see what's in the session
-                                                emit_terminal_log(&app_handle, &format!("[LCU Watcher Debug] Local player cell ID exists: {}", json.get("localPlayerCellId").is_some()));
-                                                
-                                                // Get the local player's cell ID
-                                                if let Some(local_player_cell_id) = json.get("localPlayerCellId").and_then(|v| v.as_i64()) {
-                                                    emit_terminal_log(&app_handle, &format!("[LCU Watcher Debug] Local player cell ID: {}", local_player_cell_id));
-                                                    
-                                                    // First look for locked in champions - highest priority
-                                                    let mut selected_champion_id = 0;
-                                                    let mut is_locked_in = false;
-                                                    
-                                                    if let Some(actions) = json.get("actions").and_then(|v| v.as_array()) {
-                                                        emit_terminal_log(&app_handle, &format!("[LCU Watcher Debug] Found {} action groups", actions.len()));
-                                                        
-                                                        for (i, action_group) in actions.iter().enumerate() {
-                                                            if let Some(actions) = action_group.as_array() {
-                                                                emit_terminal_log(&app_handle, &format!("[LCU Watcher Debug] Action group {} has {} actions", i, actions.len()));
+                                                // Log the full response structure for debugging
+                                                emit_terminal_log(&app_handle, "[LCU Debug] Swift Play session structure:");
+                                                // Print important paths in the JSON that might contain champion selections
+                                                if let Some(game_data) = json.get("gameData") {
+                                                    if let Some(queue) = game_data.get("queue") {
+                                                        if let Some(queue_id) = queue.get("id").and_then(|id| id.as_i64()) {
+                                                            emit_terminal_log(&app_handle, &format!("[LCU Debug] Queue ID: {}", queue_id));
+                                                            
+                                                            // Check if this is Swift Play queue (both ID 1700 and ID 480)
+                                                            if queue_id == 1700 || queue_id == 480 {
+                                                                emit_terminal_log(&app_handle, &format!("[LCU Watcher] Confirmed Swift Play queue or compatible queue (ID: {})", queue_id));
                                                                 
-                                                                for (j, action) in actions.iter().enumerate() {
-                                                                    if let Some(actor_cell_id) = action.get("actorCellId").and_then(|v| v.as_i64()) {
-                                                                        if actor_cell_id == local_player_cell_id {
-                                                                            emit_terminal_log(&app_handle, &format!("[LCU Watcher Debug] Found action {} for local player", j));
-                                                                            
-                                                                            // Check if locked in
-                                                                            let completed = action.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
-                                                                            let champion_id = action.get("championId").and_then(|v| v.as_i64()).unwrap_or(0);
-                                                                            
-                                                                            emit_terminal_log(&app_handle, &format!(
-                                                                                "[LCU Watcher Debug] Action details - completed: {}, champion_id: {}", 
-                                                                                completed, champion_id
-                                                                            ));
-                                                                            
-                                                                            if completed {
-                                                                                if champion_id > 0 {
-                                                                                    is_locked_in = true;
-                                                                                    selected_champion_id = champion_id;
-                                                                                    emit_terminal_log(&app_handle, &format!("[LCU Watcher Debug] Champion {} is locked in", champion_id));
-                                                                                    break;
-                                                                                }
-                                                                            }
-                                                                            
-                                                                            // Even if not locked in, capture the selected champion
-                                                                            // so we can pre-inject skins when champion is just selected
-                                                                            if !is_locked_in {
-                                                                                if champion_id > 0 {
-                                                                                    selected_champion_id = champion_id;
-                                                                                    emit_terminal_log(&app_handle, &format!("[LCU Watcher Debug] Champion {} is selected but not locked", champion_id));
-                                                                                }
-                                                                            }
-                                                                        }
-                                                                    }
+                                                                // Log player selection data
+                                                                if let Some(player_selections) = game_data.get("playerChampionSelections") {
+                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] playerChampionSelections: {}", player_selections));
+                                                                } else {
+                                                                    emit_terminal_log(&app_handle, "[LCU Debug] No playerChampionSelections found");
                                                                 }
-                                                            }
-                                                        }
-                                                    } else {
-                                                        emit_terminal_log(&app_handle, "[LCU Watcher Debug] No actions found in session");
-                                                    }
-                                                    
-                                                    // If no champion found in actions, check in my selection directly
-                                                    if selected_champion_id == 0 {
-                                                        emit_terminal_log(&app_handle, "[LCU Watcher Debug] Checking myTeam for champion selection");
-                                                        
-                                                        if let Some(my_team) = json.get("myTeam").and_then(|v| v.as_array()) {
-                                                            emit_terminal_log(&app_handle, &format!("[LCU Watcher Debug] myTeam has {} players", my_team.len()));
-                                                            
-                                                            for (i, player) in my_team.iter().enumerate() {
-                                                                if let Some(cell_id) = player.get("cellId").and_then(|v| v.as_i64()) {
-                                                                    emit_terminal_log(&app_handle, &format!("[LCU Watcher Debug] Player {} has cellId {}", i, cell_id));
+                                                                
+                                                                if let Some(selected_champs) = game_data.get("selectedChampions") {
+                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] selectedChampions: {}", selected_champs));
+                                                                } else {
+                                                                    emit_terminal_log(&app_handle, "[LCU Debug] No selectedChampions found");
+                                                                }
+                                                                
+                                                                // Check for local player data
+                                                                if let Some(local_player) = json.get("localPlayerSelection") {
+                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] localPlayerSelection: {}", local_player));
+                                                                }
+                                                                
+                                                                // Check for team data
+                                                                if let Some(my_team) = json.get("myTeam") {
+                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] myTeam: {}", my_team));
+                                                                }
+                                                                
+                                                                // Check for role assignments
+                                                                if let Some(roles) = json.get("roleAssignments") {
+                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] roleAssignments: {}", roles));
+                                                                }
+                                                                
+                                                                // Get player champion selections for Swift Play
+                                                                let swift_play_champion_ids = get_swift_play_champion_selections(&json);
+                                                                
+                                                                if !swift_play_champion_ids.is_empty() {
+                                                                    emit_terminal_log(&app_handle, &format!(
+                                                                        "[LCU Watcher] Swift Play: Found {} champion selections: {:?}", 
+                                                                        swift_play_champion_ids.len(), 
+                                                                        swift_play_champion_ids
+                                                                    ));
                                                                     
-                                                                    if cell_id == local_player_cell_id {
-                                                                        if let Some(champion_id) = player.get("championId").and_then(|v| v.as_i64()) {
-                                                                            emit_terminal_log(&app_handle, &format!("[LCU Watcher Debug] Found champion {} for local player in myTeam", champion_id));
-                                                                            
-                                                                            if champion_id > 0 {
-                                                                                selected_champion_id = champion_id;
-                                                                                // Assuming that if champion is in myTeam, it's locked in
-                                                                                is_locked_in = true;
-                                                                                break;
+                                                                    // Inject skins for all selected champions
+                                                                    inject_skins_for_champions(&app_handle, &league_path_clone, &swift_play_champion_ids);
+                                                                } else {
+                                                                    emit_terminal_log(&app_handle, "[LCU Watcher] Swift Play: No champion selections found in session data");
+                                                                    
+                                                                    // Try checking additional endpoints to find Swift Play champions
+                                                                    let swift_play_url = format!("https://127.0.0.1:{}/lol-lobby/v2/lobby", port);
+                                                                    match client.get(&swift_play_url)
+                                                                        .header("Authorization", format!("Basic {}", auth))
+                                                                        .send()
+                                                                    {
+                                                                        Ok(swift_resp) => {
+                                                                            if swift_resp.status().is_success() {
+                                                                                if let Ok(lobby_json) = swift_resp.json::<serde_json::Value>() {
+                                                                                    emit_terminal_log(&app_handle, "[LCU Debug] Swift Play lobby data found");
+                                                                                    
+                                                                                    // Try to extract champion IDs from lobby data
+                                                                                    let lobby_champion_ids = extract_swift_play_champions_from_lobby(&lobby_json);
+                                                                                    
+                                                                                    if !lobby_champion_ids.is_empty() {
+                                                                                        emit_terminal_log(&app_handle, &format!(
+                                                                                            "[LCU Watcher] Swift Play: Found {} champion selections from lobby: {:?}", 
+                                                                                            lobby_champion_ids.len(), 
+                                                                                            lobby_champion_ids
+                                                                                        ));
+                                                                                        
+                                                                                        // Inject skins for all selected champions from lobby
+                                                                                        inject_skins_for_champions(&app_handle, &league_path_clone, &lobby_champion_ids);
+                                                                                    } else {
+                                                                                        emit_terminal_log(&app_handle, "[LCU Watcher] Swift Play: No champion selections found in lobby data");
+                                                                                        emit_terminal_log(&app_handle, &format!("[LCU Debug] Full lobby data: {}", 
+                                                                                            serde_json::to_string_pretty(&lobby_json).unwrap_or_default()));
+                                                                                    }
+                                                                                } else {
+                                                                                    emit_terminal_log(&app_handle, "[LCU Debug] Failed to parse lobby data as JSON");
+                                                                                }
+                                                                            } else {
+                                                                                emit_terminal_log(&app_handle, &format!("[LCU Debug] Failed to get lobby data: status code {}", swift_resp.status()));
                                                                             }
-                                                                        }
+                                                                        },
+                                                                        Err(e) => emit_terminal_log(&app_handle, &format!("[LCU Debug] Failed to get lobby data: {}", e)),
                                                                     }
                                                                 }
                                                             }
-                                                        } else {
-                                                            emit_terminal_log(&app_handle, "[LCU Watcher Debug] No myTeam found in session");
                                                         }
-                                                    }
-                                                    
-                                                    // Enhanced champion shuffle detection system
-                                                    static mut LAST_SEEN_CHAMPION: i64 = -1;
-                                                    static mut CHAMPION_SELECTION_COUNTER: i32 = 0;
-                                                    static mut LAST_CHAMPION_SELECTION_TIME: u128 = 0;
-                                                    static mut CHAMPIONS_VISITED: i32 = 0;
-                                                    
-                                                    // Get current time for timing-based shuffle detection
-                                                    let now = std::time::SystemTime::now()
-                                                        .duration_since(std::time::UNIX_EPOCH)
-                                                        .unwrap_or_default()
-                                                        .as_millis();
-                                                    
-                                                    // Detect champion shuffling and stability
-                                                    let (is_selection_stable, is_shuffling) = unsafe {
-                                                        // Check if champion changed
-                                                        if LAST_SEEN_CHAMPION != selected_champion_id {
-                                                            // Calculate time since last champion change
-                                                            let time_since_last_change = if LAST_CHAMPION_SELECTION_TIME > 0 {
-                                                                now - LAST_CHAMPION_SELECTION_TIME
-                                                            } else {
-                                                                0
-                                                            };
-                                                            
-                                                            emit_terminal_log(&app_handle, &format!(
-                                                                "[LCU Watcher Debug] Champion selection changed from {} to {} (after {} ms)", 
-                                                                LAST_SEEN_CHAMPION, selected_champion_id, time_since_last_change
-                                                            ));
-                                                            
-                                                            // Track rapid champion changes as "shuffling"
-                                                            let is_rapid_change = time_since_last_change < 1500; // Less than 1.5 seconds
-                                                            if is_rapid_change && selected_champion_id > 0 {
-                                                                CHAMPIONS_VISITED += 1;
-                                                                emit_terminal_log(&app_handle, &format!(
-                                                                    "[LCU Watcher Debug] Rapid champion change detected! Champions visited: {}", 
-                                                                    CHAMPIONS_VISITED
-                                                                ));
-                                                            } else {
-                                                                // Reset the shuffle counter if there's a longer pause
-                                                                CHAMPIONS_VISITED = 0;
-                                                            }
-                                                            
-                                                            // Update tracking variables
-                                                            LAST_SEEN_CHAMPION = selected_champion_id;
-                                                            LAST_CHAMPION_SELECTION_TIME = now;
-                                                            CHAMPION_SELECTION_COUNTER = 0;
-                                                            
-                                                            (false, CHAMPIONS_VISITED > 2) // Not stable, and shuffling if >2 champions visited
-                                                        } else {
-                                                            // Same champion as last check
-                                                            let time_since_selection = now - LAST_CHAMPION_SELECTION_TIME;
-                                                            CHAMPION_SELECTION_COUNTER += 1;
-                                                            
-                                                            emit_terminal_log(&app_handle, &format!(
-                                                                "[LCU Watcher Debug] Champion {} stable for {} checks ({} ms)", 
-                                                                selected_champion_id, CHAMPION_SELECTION_COUNTER, time_since_selection
-                                                            ));
-                                                            
-                                                            // Consider selection stable based on checks and time
-                                                            let enough_checks = CHAMPION_SELECTION_COUNTER >= 2;
-                                                            let enough_time = time_since_selection > 1500; // 1.5 seconds
-                                                            
-                                                            // If user was shuffling, require more stability evidence
-                                                            let stability_threshold = if CHAMPIONS_VISITED > 2 {
-                                                                enough_checks && enough_time
-                                                            } else {
-                                                                enough_checks || enough_time
-                                                            };
-                                                            
-                                                            (stability_threshold, CHAMPIONS_VISITED > 2)
-                                                        }
-                                                    };
-                                                    
-                                                    // More intelligent injection criteria
-                                                    let should_inject = selected_champion_id > 0 && (
-                                                        is_locked_in || // Either locked in (highest priority)
-                                                        (is_selection_stable && !is_shuffling) // Or stable selection (when not actively shuffling)
-                                                    );
-                                                    
-                                                    // Reset LAST_INJECTED_CHAMPION when champion changes
-                                                    // This allows reinjection when user changes champions
-                                                    if unsafe { LAST_INJECTED_CHAMPION > 0 && LAST_INJECTED_CHAMPION != selected_champion_id && selected_champion_id > 0 } {
-                                                        emit_terminal_log(&app_handle, &format!(
-                                                            "[LCU Watcher] Champion selection changed from {} to {}, will reinject if needed", 
-                                                            unsafe { LAST_INJECTED_CHAMPION }, selected_champion_id
-                                                        ));
-                                                        unsafe { LAST_INJECTED_CHAMPION = -1; }
-                                                    }
-                                                    
-                                                    // Only proceed with injection if we have a champion ready for injection and haven't already injected for this champion
-                                                    if should_inject && unsafe { LAST_INJECTED_CHAMPION != selected_champion_id } {
-                                                        // Mark that we've processed this champion
-                                                        unsafe { LAST_INJECTED_CHAMPION = selected_champion_id };
-                                                        
-                                                        println!("[LCU Watcher] Champion {} locked in", selected_champion_id);
-                                                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] Champion {} locked in", selected_champion_id));
-                                                        
-                                                        // Load saved skins from config.json
-                                                        let config_dir = app_handle.path().app_data_dir()
-                                                            .unwrap_or_else(|_| PathBuf::from("."))
-                                                            .join("config");
-                                                        let cfg_file = config_dir.join("config.json");
-                                                        
-                                                        match std::fs::read_to_string(&cfg_file) {
-                                                            Ok(data) => {
-                                                                match serde_json::from_str::<SavedConfig>(&data) {
-                                                                    Ok(config) => {
-                                                                        // Find the skin for the selected champion
-                                                                        if let Some(skin) = config.skins.iter().find(|s| s.champion_id == selected_champion_id as u32) {
-                                                                            // Prepare skin injection
-                                                                            println!("[LCU Watcher] Injecting skin for champion {}: skin_id={}", 
-                                                                                selected_champion_id, skin.skin_id);
-                                                                            emit_terminal_log(&app_handle, &format!("[LCU Watcher] Injecting skin for champion {}: skin_id={}", 
-                                                                                selected_champion_id, skin.skin_id));
-                                                                            
-                                                                            // Prepare the skin for injection
-                                                                            let skins = vec![Skin {
-                                                                                champion_id: skin.champion_id,
-                                                                                skin_id: skin.skin_id,
-                                                                                chroma_id: skin.chroma_id,
-                                                                                fantome_path: skin.fantome.clone(),
-                                                                            }];
-                                                                            
-                                                                            // Get the champions directory for fantome files
-                                                                            let champions_dir = app_handle.path().app_data_dir()
-                                                                                .unwrap_or_else(|_| PathBuf::from("."))
-                                                                                .join("champions");
-                                                                            
-                                                                            // Inject the skin with a retry mechanism
-                                                                            let max_injection_retries = 2;
-                                                                            let mut injection_attempts = 0;
-                                                                            let mut injection_success = false;
-                                                                            
-                                                                            while injection_attempts < max_injection_retries && !injection_success {
-                                                                                if injection_attempts > 0 {
-                                                                                    emit_terminal_log(&app_handle, &format!("[LCU Watcher] Retry {} of {} for skin injection", 
-                                                                                        injection_attempts, max_injection_retries));
-                                                                                    thread::sleep(Duration::from_millis(800)); // Short delay between retries
-                                                                                }
-                                                                                
-                                                                                match crate::injection::inject_skins(
-                                                                                    &app_handle,
-                                                                                    &league_path_clone,
-                                                                                    &skins,
-                                                                                    &champions_dir
-                                                                                ) {
-                                                                                    Ok(_) => {
-                                                                                        println!("[LCU Watcher] Successfully injected skin for champion {}", selected_champion_id);
-                                                                                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] Successfully injected skin for champion {}", selected_champion_id));
-                                                                                        injection_success = true;
-                                                                                        break;
-                                                                                    },
-                                                                                    Err(e) => {
-                                                                                        println!("[LCU Watcher] Injection attempt {} failed: {}", injection_attempts + 1, e);
-                                                                                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] Injection attempt {} failed: {}", injection_attempts + 1, e));
-                                                                                        injection_attempts += 1;
-                                                                                    },
-                                                                                }
-                                                                            }
-                                                                            
-                                                                            // Check if all attempts failed
-                                                                            if !injection_success {
-                                                                                let error_msg = format!("Failed to inject skin for champion {} after {} attempts", selected_champion_id, max_injection_retries);
-                                                                                println!("[LCU Watcher] {}", error_msg);
-                                                                                emit_terminal_log(&app_handle, &format!("[LCU Watcher] {}", error_msg));
-                                                                                let _ = app_handle.emit("skin-injection-error", error_msg);
-                                                                            }
-                                                                        } else {
-                                                                            println!("[LCU Watcher] No skin configured for champion {}", selected_champion_id);
-                                                                            emit_terminal_log(&app_handle, &format!("[LCU Watcher] No skin configured for champion {}", selected_champion_id));
-                                                                        }
-                                                                    },
-                                                                    Err(e) => println!("[LCU Watcher] Failed to parse config.json: {}", e),
-                                                                }
-                                                            },
-                                                            Err(e) => println!("[LCU Watcher] Failed to read config.json: {}", e),
-                                                        }
-                                                    } else if selected_champion_id > 0 && !is_locked_in {
-                                                        // Just log that a champion is selected but not locked in yet
-                                                        println!("[LCU Watcher] Champion {} selected but not locked in", selected_champion_id);
-                                                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] Champion {} selected but not locked in", selected_champion_id));
                                                     }
                                                 }
                                             },
-                                            Err(e) => println!("[LCU Watcher] Failed to parse session data: {}", e),
+                                            Err(e) => println!("[LCU Watcher] Failed to parse queue info: {}", e),
                                         }
                                     }
                                 },
-                                Err(e) => println!("[LCU Watcher] Failed to get session data: {}", e),
-                            }
-                        } else {
-                            // Reset the last injected champion ID when we leave champion select
-                            unsafe {
-                                static mut LAST_INJECTED_CHAMPION: i64 = -1;
-                                LAST_INJECTED_CHAMPION = -1;
+                                Err(e) => println!("[LCU Watcher] Failed to get queue information: {}", e),
                             }
                         }
                         
                         last_phase = phase.to_string();
+                        was_reconnecting = phase == "Reconnect";
+                        was_in_game = phase == "InProgress" || was_reconnecting;
                     },
                     Err(e) => println!("Failed to build HTTP client: {}", e),
                 }
                 
-                // Sleep for the appropriate duration before checking again
                 thread::sleep(sleep_duration);
             }
         }
@@ -1075,6 +1104,147 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
     
     println!("LCU status watcher thread started");
     Ok(())
+}
+
+// Helper function to get selected champion ID from session JSON
+fn get_selected_champion_id(session_json: &serde_json::Value) -> Option<i64> {
+    // Get local player cell ID
+    if let Some(local_player_cell_id) = session_json.get("localPlayerCellId").and_then(|v| v.as_i64()) {
+        // First, find our current active action
+        if let Some(actions) = session_json.get("actions").and_then(|v| v.as_array()) {
+            // Track if we found any pick in progress
+            let mut has_pick_in_progress = false;
+            
+            // First pass: check if we have any pick in progress
+            for action_group in actions.iter() {
+                if let Some(actions) = action_group.as_array() {
+                    for action in actions {
+                        if let Some(actor_cell_id) = action.get("actorCellId").and_then(|v| v.as_i64()) {
+                            if actor_cell_id == local_player_cell_id {
+                                let action_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                                let is_in_progress = action.get("isInProgress").and_then(|v| v.as_bool()).unwrap_or(false);
+                                
+                                if action_type == "pick" && is_in_progress {
+                                    has_pick_in_progress = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // If we have a pick in progress, don't return any champion ID
+            if has_pick_in_progress {
+                println!("[LCU Debug] Pick in progress, waiting for lock-in");
+                return None;
+            }
+            
+            // Second pass: look for completed pick
+            for action_group in actions {
+                if let Some(actions) = action_group.as_array() {
+                    for action in actions {
+                        if let Some(actor_cell_id) = action.get("actorCellId").and_then(|v| v.as_i64()) {
+                            if actor_cell_id == local_player_cell_id {
+                                let action_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                                let is_completed = action.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
+                                let champion_id = action.get("championId").and_then(|v| v.as_i64()).unwrap_or(0);
+                                
+                                // Only return champion ID if:
+                                // 1. It's a pick action (not ban)
+                                // 2. Action is completed
+                                // 3. Valid champion ID
+                                if action_type == "pick" && is_completed && champion_id > 0 {
+                                    println!("[LCU Debug] Found locked-in champion: {}", champion_id);
+                                    return Some(champion_id);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // As a backup, check myTeam data, but only if we have a completed pick
+        if let Some(my_team) = session_json.get("myTeam").and_then(|v| v.as_array()) {
+            for player in my_team {
+                if let Some(cell_id) = player.get("cellId").and_then(|v| v.as_i64()) {
+                    if cell_id == local_player_cell_id {
+                        let champion_id = player.get("championId").and_then(|v| v.as_i64()).unwrap_or(0);
+                        let pick_intent = player.get("championPickIntent").and_then(|v| v.as_i64()).unwrap_or(0);
+                        
+                        // Only consider it selected if:
+                        // 1. Has valid champion ID
+                        // 2. No pick intent (not hovering)
+                        if champion_id > 0 && pick_intent == 0 {
+                            // Verify in actions that this is a completed pick
+                            if let Some(actions) = session_json.get("actions").and_then(|v| v.as_array()) {
+                                for action_group in actions {
+                                    if let Some(actions) = action_group.as_array() {
+                                        for action in actions {
+                                            let action_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                                            let is_completed = action.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
+                                            let act_champion_id = action.get("championId").and_then(|v| v.as_i64()).unwrap_or(0);
+                                            let actor_cell_id = action.get("actorCellId").and_then(|v| v.as_i64());
+                                            
+                                            if action_type == "pick" && 
+                                               is_completed && 
+                                               act_champion_id == champion_id && 
+                                               actor_cell_id == Some(local_player_cell_id) {
+                                                println!("[LCU Debug] Confirmed locked-in champion from myTeam: {}", champion_id);
+                                                return Some(champion_id);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+// Helper function to get champion ID from name
+fn get_champion_id_by_name(app: &AppHandle, champion_name: &str) -> Option<u32> {
+    let app_data_dir = match app.path().app_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return None,
+    };
+    
+    let champions_dir = app_data_dir.join("champions");
+    if !champions_dir.exists() {
+        return None;
+    }
+    
+    // Normalize the champion name for comparison
+    let normalized_name = champion_name.to_lowercase().replace(" ", "").replace("'", "");
+    
+    // Search through champion JSON files
+    if let Ok(entries) = fs::read_dir(champions_dir) {
+        for entry in entries.filter_map(Result::ok) {
+            if entry.path().is_dir() {
+                let champ_dir_name = entry.file_name().to_string_lossy().to_lowercase();
+                
+                // Check if directory name matches
+                if champ_dir_name == normalized_name {
+                    // Found a potential match, check the JSON file
+                    let json_path = entry.path().join(format!("{}.json", champ_dir_name));
+                    
+                    if let Ok(content) = fs::read_to_string(json_path) {
+                        if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
+                            // Extract champion ID from JSON
+                            return data.get("id").and_then(|v| v.as_u64()).map(|id| id as u32);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    None
 }
 
 #[tauri::command]
@@ -1114,4 +1284,204 @@ fn get_lcu_client() -> reqwest::blocking::Client {
             .build()
             .unwrap_or_else(|_| reqwest::blocking::Client::new())
     }).clone()
+}
+
+// Helper function to get Swift Play champion selections from session JSON
+fn get_swift_play_champion_selections(json: &serde_json::Value) -> Vec<i64> {
+    let mut champion_ids = Vec::new();
+    
+    // Method 1: Look in gameData -> playerChampionSelections
+    if let Some(game_data) = json.get("gameData") {
+        if let Some(selections) = game_data.get("playerChampionSelections").and_then(|p| p.as_array()) {
+            // Get local player's summoner ID first
+            let local_summoner_id = json.get("localPlayerSelection")
+                .and_then(|lp| lp.get("summonerId"))
+                .and_then(|id| id.as_i64());
+                
+            if let Some(local_id) = local_summoner_id {
+                for selection in selections {
+                    // Check if this is the local player
+                    if let Some(player_id) = selection.get("summonerId").and_then(|id| id.as_i64()) {
+                        if player_id == local_id {
+                            // Extract champion IDs
+                            if let Some(champs) = selection.get("championIds").and_then(|ids| ids.as_array()) {
+                                for champ in champs {
+                                    if let Some(id) = champ.as_i64() {
+                                        if id > 0 && !champion_ids.contains(&id) {
+                                            champion_ids.push(id);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Method 2: Look in gameData -> selectedChampions
+    if champion_ids.is_empty() {
+        if let Some(game_data) = json.get("gameData") {
+            if let Some(selected_champions) = game_data.get("selectedChampions").and_then(|sc| sc.as_array()) {
+                for selection in selected_champions {
+                    if let Some(champion_id) = selection.get("championId").and_then(|id| id.as_i64()) {
+                        if champion_id > 0 && !champion_ids.contains(&champion_id) {
+                            champion_ids.push(champion_id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Method 3: Look in the player's team data
+    if champion_ids.is_empty() {
+        if let Some(team) = json.get("myTeam").and_then(|t| t.as_array()) {
+            let player_name = json.get("playerName").and_then(|p| p.as_str()).unwrap_or("");
+            
+            for player in team {
+                let is_local_player = player.get("summonerName")
+                    .and_then(|n| n.as_str())
+                    .map_or(false, |name| name == player_name);
+                
+                if is_local_player {
+                    // Primary champion
+                    if let Some(champion_id) = player.get("championId").and_then(|id| id.as_i64()) {
+                        if champion_id > 0 && !champion_ids.contains(&champion_id) {
+                            champion_ids.push(champion_id);
+                        }
+                    }
+                    
+                    // Secondary champion
+                    if let Some(secondary_id) = player.get("secondaryChampionId").and_then(|id| id.as_i64()) {
+                        if secondary_id > 0 && !champion_ids.contains(&secondary_id) {
+                            champion_ids.push(secondary_id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Try one more method for Swift Play
+    if champion_ids.is_empty() {
+        if let Some(roles) = json.get("roleAssignments").and_then(|r| r.as_array()) {
+            for role in roles {
+                if let Some(champion_id) = role.get("championId").and_then(|id| id.as_i64()) {
+                    if champion_id > 0 && !champion_ids.contains(&champion_id) {
+                        champion_ids.push(champion_id);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Method 4: Check lobby data playerSlots for Swift Play
+    if champion_ids.is_empty() {
+        // Try to find champions in localMember.playerSlots (common in Swift Play)
+        if let Some(local_member) = json.get("localMember") {
+            if let Some(player_slots) = local_member.get("playerSlots").and_then(|ps| ps.as_array()) {
+                for slot in player_slots {
+                    if let Some(champion_id) = slot.get("championId").and_then(|id| id.as_i64()) {
+                        if champion_id > 0 && !champion_ids.contains(&champion_id) {
+                            champion_ids.push(champion_id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    champion_ids
+}
+
+// Helper function to inject skins for multiple champions (used in Swift Play)
+fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_ids: &[i64]) {
+    let config_dir = app.path().app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("config");
+    let cfg_file = config_dir.join("config.json");
+    
+    // Check if we have config with skin selections
+    if let Ok(data) = std::fs::read_to_string(&cfg_file) {
+        if let Ok(config) = serde_json::from_str::<SavedConfig>(&data) {
+            // Get all skins for the selected champions
+            let mut skins_to_inject = Vec::new();
+            
+            for champ_id in champion_ids {
+                let champ_id_u32 = *champ_id as u32;
+                if let Some(skin) = config.skins.iter().find(|s| s.champion_id == champ_id_u32) {
+                    emit_terminal_log(app, &format!(
+                        "[LCU Watcher] Swift Play: Found skin for champion {}: skin_id={}",
+                        champ_id_u32, skin.skin_id
+                    ));
+                    
+                    skins_to_inject.push(Skin {
+                        champion_id: skin.champion_id,
+                        skin_id: skin.skin_id,
+                        chroma_id: skin.chroma_id,
+                        fantome_path: skin.fantome.clone(),
+                    });
+                } else {
+                    emit_terminal_log(app, &format!(
+                        "[LCU Watcher] Swift Play: No skin configured for champion {}", 
+                        champ_id_u32
+                    ));
+                }
+            }
+            
+            // If we found skins to inject, do it
+            if !skins_to_inject.is_empty() {
+                emit_terminal_log(app, &format!(
+                    "[LCU Watcher] Swift Play: Injecting {} skins", 
+                    skins_to_inject.len()
+                ));
+                
+                let champions_dir = app.path().app_data_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join("champions");
+                
+                match crate::injection::inject_skins(
+                    app,
+                    league_path,
+                    &skins_to_inject,
+                    &champions_dir
+                ) {
+                    Ok(_) => {
+                        emit_terminal_log(app, "[LCU Watcher] Swift Play: Successfully injected skins");
+                        let _ = app.emit("injection-status", "success");
+                    },
+                    Err(e) => {
+                        emit_terminal_log(app, &format!(
+                            "[LCU Watcher] Swift Play: Failed to inject skins: {}", e
+                        ));
+                        let _ = app.emit("skin-injection-error", format!(
+                            "Failed to inject Swift Play skins: {}", e
+                        ));
+                        let _ = app.emit("injection-status", "error");
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Extract Swift Play champion IDs from the lobby data directly
+fn extract_swift_play_champions_from_lobby(json: &serde_json::Value) -> Vec<i64> {
+    let mut champion_ids = Vec::new();
+    
+    if let Some(local_member) = json.get("localMember") {
+        if let Some(player_slots) = local_member.get("playerSlots").and_then(|ps| ps.as_array()) {
+            for slot in player_slots {
+                if let Some(champion_id) = slot.get("championId").and_then(|id| id.as_i64()) {
+                    if champion_id > 0 && !champion_ids.contains(&champion_id) {
+                        champion_ids.push(champion_id);
+                    }
+                }
+            }
+        }
+    }
+    
+    champion_ids
 }

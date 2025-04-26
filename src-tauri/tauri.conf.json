@@ -18,20 +18,12 @@
         "resizable": true,
         "fullscreen": false,
         "center": true,
-        "decorations": false,
-        "windowEffects": {
-          "effects": [
-            "mica"
-          ],
-          "radius": 10.0,
-          "color": "#00000000"
-        }
+        "decorations": false
       }
     ],
     "security": {
       "csp": null
-    },
-    "withGlobalTauri": true
+    }
   },
   "bundle": {
     "active": true,
@@ -45,18 +37,7 @@
     ],
     "resources": [
       "resources/cslol-tools/*"
-    ],
-    "windows": {
-      "wix": {
-        "language": "en-US"
-      },
-      "webviewInstallMode": {
-        "type": "downloadBootstrapper"
-      },
-      "nsis": {
-        "displayLanguageSelector": false
-      }
-    }
+    ]
   },
   "plugins": {
     "fs": {

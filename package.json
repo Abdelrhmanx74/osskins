@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --turbopack",
+    "dev:admin": "powershell -Command \"Start-Process -FilePath pnpm -ArgumentList 'tauri dev' -Verb RunAs\"",
     "build": "next build",
     "start": "next start",
     "lint": "biome check src/ && next lint",

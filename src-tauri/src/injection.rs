@@ -546,6 +546,13 @@ impl SkinInjector {
         
         self.log(&format!("No fantome file found for skin: champion_id={}, skin_id={}, chroma_id={:?}",
             skin.champion_id, skin.skin_id, skin.chroma_id));
+        self.set_state(ModState::Idle);
+        // Emit error to frontend
+        if let Some(app) = &self.app_handle {
+            let error_msg = format!("No fantome file found for skin: champion_id={}, skin_id={}, chroma_id={:?}", skin.champion_id, skin.skin_id, skin.chroma_id);
+            let _ = app.emit("injection-status", false);
+            let _ = app.emit("skin-injection-error", error_msg);
+        }
         Ok(None)
     }
     
@@ -1062,6 +1069,11 @@ impl SkinInjector {
 
     // Main injection method that does all steps
     pub fn inject_skins(&mut self, skins: &[Skin], fantome_files_dir: &Path) -> Result<(), InjectionError> {
+        // Emit start event to frontend
+        if let Some(app) = &self.app_handle {
+            let _ = app.emit("injection-status", "injecting");
+        }
+
         // First, ensure that we clean up any existing running processes
         // We do this even if we're not in Running state to avoid issues with orphaned processes
         self.cleanup()?;
@@ -1128,6 +1140,10 @@ impl SkinInjector {
         
         self.log("Skin injection completed successfully");
         // Note: We don't set state to Idle because we're now in Running state with the overlay active
+        // After all steps complete successfully, emit end event
+        if let Some(app) = &self.app_handle {
+            let _ = app.emit("injection-status", "completed");
+        }
         Ok(())
     }
 

@@ -8,14 +8,17 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Terminal, Trash2, X, Copy } from "lucide-react";
+import { Terminal, Trash2, X, Copy, ArrowDownToLine } from "lucide-react";
 import { DropdownMenuItem } from "./ui/dropdown-menu";
 import { toast } from "sonner";
+import clsx from "clsx";
 
 export function TerminalLogsDialog() {
   const [logs, setLogs] = useState<string[]>([]);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -32,10 +35,21 @@ export function TerminalLogsDialog() {
     };
   }, []);
 
+  // Scroll to bottom only if following
   useEffect(() => {
-    // Scroll to bottom when logs change
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [logs]);
+    if (isAtBottom) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [logs, isAtBottom]);
+
+  // Detect if user is at bottom
+  const handleScroll = useCallback(() => {
+    const el = scrollAreaRef.current;
+    if (!el) return;
+    // 20px threshold for "at bottom"
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20;
+    setIsAtBottom(atBottom);
+  }, []);
 
   const clearLogs = () => {
     setLogs([]);
@@ -48,6 +62,12 @@ export function TerminalLogsDialog() {
     } catch {
       toast.error("Failed to copy logs");
     }
+  };
+
+  // Scroll to bottom and enable follow
+  const scrollToBottom = () => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    setIsAtBottom(true);
   };
 
   return (
@@ -92,16 +112,37 @@ export function TerminalLogsDialog() {
             </DialogClose>
           </div>
         </DialogHeader>
-        <ScrollArea className="h-[500px] w-full rounded-md border p-4">
-          <div className="font-mono text-sm">
-            {logs.map((log, index) => (
-              <div key={index} className="whitespace-pre-wrap">
-                {log}
-              </div>
-            ))}
-            <div ref={bottomRef} />
-          </div>
-        </ScrollArea>
+        <div className="relative">
+          <ScrollArea
+            className="h-[500px] w-full max-w-[900px] rounded-md border p-4"
+            ref={scrollAreaRef}
+            onScroll={handleScroll}
+            style={{ overflowY: "auto", position: "relative" }}
+          >
+            <div className="font-mono text-sm">
+              {logs.map((log, index) => (
+                <div key={index} className="whitespace-pre-wrap">
+                  {log}
+                </div>
+              ))}
+              <div ref={bottomRef} />
+            </div>
+          </ScrollArea>
+          {!isAtBottom && (
+            <Button
+              onClick={scrollToBottom}
+              variant="secondary"
+              size="icon"
+              className={clsx(
+                "absolute right-4 bottom-6 z-10 shadow-lg animate-in fade-in",
+                "bg-background/80 backdrop-blur"
+              )}
+              title="Scroll to bottom"
+            >
+              <ArrowDownToLine className="h-5 w-5" />
+            </Button>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

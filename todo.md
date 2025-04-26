@@ -8,18 +8,20 @@
 
 - [-] Optimize performance for large champion/skin datasets.
 - [x] Ensure `mod-tools.exe` is compiled on build and not placed manually
-- [ ] app cosmetics and name, icon, etc...
+- [x] app cosmetics and name, icon, etc...
 - [x] Consider using a structured format (like JSON) for configuration instead of `league_path.txt` if more settings are planned.
 - [x?] It shouldnt stop the injecting if the user closed the game (waiting to reconnect) it should close when it turn from in game to lobby, etc..
 - [ ] The terminals that opens!! it shouldnt!
+- [ ] Handle game modes (arena, swift play)
+- [ ] Better injection error handling and cleaning cases not just at the end of a game
 
 # Front End ---------------------
 
 - [ ] Better front-end code
 - [ ] Logical loading/stale state
 
-- [ ] Add Theming
-- [ ] All contexts should be zustand or react not both at the same time
+- [x] Add Theming
+- [x] All contexts should be zustand or react not both at the same time
 
 # UX ---------------------
 

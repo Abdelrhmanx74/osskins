@@ -7,6 +7,7 @@ import { Card, CardContent, CardFooter } from "./ui/card";
 import { useGameStore } from "@/lib/store";
 import { Check, Play } from "lucide-react";
 import type { Skin } from "@/lib/hooks/use-champions";
+import { Skeleton } from "./ui/skeleton";
 
 interface SkinCardProps {
   championId: number;
@@ -19,6 +20,7 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
     null
   );
   const [isHovering, setIsHovering] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Determine if this card is selected and if a chroma is selected
@@ -68,7 +70,7 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
     <Card
       ref={cardRef}
       className={cn(
-        "relative cursor-pointer min-h-[350px] size-full p-0 rounded-none overflow-hidden transition-all duration-300",
+        "size-full relative cursor-pointer p-0 rounded-none overflow-hidden transition-all duration-300",
         isSelected ? "ring-2 ring-primary" : ""
       )}
       onClick={handleClick}
@@ -76,17 +78,25 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
       onMouseLeave={handleMouseLeave}
     >
       <CardContent className="p-0 h-full w-full relative">
+        {!imgLoaded && <Skeleton className="absolute inset-0 w-full h-full" />}
         {currentImageSrc && (
           <Image
             src={currentImageSrc}
             alt={selectedChroma?.name ?? skin.name}
             width={308}
             height={560}
-            className="object-cover"
-            priority
+            className={cn(
+              "object-cover transition-opacity duration-200",
+              imgLoaded ? "opacity-100" : "opacity-0"
+            )}
+            onLoad={() => {
+              setImgLoaded(true);
+            }}
+            onLoadingComplete={() => {
+              setImgLoaded(true);
+            }}
           />
         )}
-
         {isSelected && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-10">
             <div className="bg-primary/20 p-2 rounded-full">
@@ -94,7 +104,6 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
             </div>
           </div>
         )}
-
         {/* Play button overlay on hover */}
         {!isSelected && isHovering && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-10">
@@ -103,7 +112,6 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
             </div>
           </div>
         )}
-
         <CardFooter className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-4 flex flex-col justify-end z-20">
           <div className="w-full h-fit flex items-end justify-between gap-1">
             <h3 className="text-lg font-semibold text-white drop-shadow-md">

@@ -4,15 +4,6 @@ use std::{env, fs, path::Path};
 fn main() {
   // Determine build profile to avoid infinite rebuild loop in dev
   let profile = env::var("PROFILE").unwrap_or_default();
-  
-  // Add Windows manifest to request admin privileges
-  #[cfg(target_os = "windows")]
-  {
-    let mut res = winres::WindowsResource::new();
-    res.set_manifest_file("resources/admin.manifest");
-    res.compile().expect("Failed to compile Windows resource");
-  }
-
   if profile != "release" {
     // Skip C++ build and resource copy in debug/dev mode
     tauri_build::build();
@@ -20,7 +11,7 @@ fn main() {
   }
   // Build mod-tools C++ binary before Tauri bundle validation
   // Build mod-tools C++ binary from cslol-tools source
-  let dst = cmake::Config::new("../cslol-manager-2024-10-27-401067d-prerelease/cslol-tools")
+  let dst = cmake::Config::new("./cslol-tools")
     .profile("Release")
     // Add policy to handle older CMake configurations
     .define("CMAKE_POLICY_DEFAULT_CMP0048", "NEW")
