@@ -114,7 +114,7 @@ export function TerminalLogsDialog() {
         </DialogHeader>
         <div className="relative">
           <ScrollArea
-            className="h-[500px] w-full max-w-[900px] rounded-md border p-4"
+            className="h-[500px] w-full max-w- rounded-md border p-4"
             ref={scrollAreaRef}
             onScroll={handleScroll}
             style={{ overflowY: "auto", position: "relative" }}

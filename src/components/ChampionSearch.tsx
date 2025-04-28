@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Search } from "lucide-react";
-import { Champion } from "@/lib/hooks/use-champions";
 import { Input } from "./ui/input";
+import { Champion } from "@/lib/types";
 
 interface ChampionSearchProps {
   champions: Champion[];
@@ -82,23 +82,22 @@ export function ChampionSearch({
   }, [searchQuery, onSearchChange, hasFocus]);
 
   return (
-    <div className="relative flex items-center w-1/4 xl:w-1/5">
-      <Input
-        ref={inputRef}
-        type="search"
-        icon={<Search size={16} />}
-        placeholder="Search champions..."
-        value={searchQuery}
-        onFocus={() => {
-          setHasFocus(true);
-        }}
-        onBlur={() => {
-          setHasFocus(false);
-        }}
-        onChange={(e) => {
-          onSearchChange(e.target.value);
-        }}
-      />
-    </div>
+    <Input
+      ref={inputRef}
+      type="search"
+      className="rounded-none"
+      icon={<Search size={16} />}
+      placeholder="Search champions..."
+      value={searchQuery}
+      onFocus={() => {
+        setHasFocus(true);
+      }}
+      onBlur={() => {
+        setHasFocus(false);
+      }}
+      onChange={(e) => {
+        onSearchChange(e.target.value);
+      }}
+    />
   );
 }

@@ -118,6 +118,19 @@ export function SettingsDialog() {
 
         <ThemeToneSelector />
 
+        {/* Watermark Notice */}
+        <div className="text-xs text-center mt-2 select-none">
+          This app is 100% free do not buy it from anyone. Join our community at{" "}
+          <a
+            href="https://discord.gg/tHyHnx5DKX"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+          >
+            https://discord.gg/tHyHnx5DKX
+          </a>
+        </div>
+
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="default">Close</Button>

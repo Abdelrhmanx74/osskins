@@ -1,99 +1,28 @@
-# Fuck Exalted
+# Osskins
 
-![Tauri window screenshot](public/fuck-exalted-2_screenshot.png)
+![App Screenshot](public/osskins-screenshot.png)
 
-This is a [Tauri](https://v2.tauri.app/) project using [Next.js](https://nextjs.org/),
-bootstrapped by combining [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app)
-and [`create tauri-app`](https://v2.tauri.app/start/create-project/).
+A cross‑platform desktop application built with Next.js, Tauri and TypeScript. Osskinns lets you browse, search and manage custom skins for League of Legends on Windows.
 
-This project uses [`pnpm`](https://pnpm.io/) as the Node.js dependency
-manager, and uses the [App Router](https://nextjs.org/docs/app) model for Next.js.
+## Key Features
 
-## Template Features
+- **Tauri + Next.js**  
+  Combines Tauri’s lightweight Rust backend and secure webview with Next.js App Router (v15) and Static Site Generation.
+- **TypeScript & React**  
+  Fully typed frontend with React 19, Zustand for state, and next-themes for dark/light mode.
+- **TailwindCSS v4**  
+  Utility‑first styling, customizable via Tailwind config.
+- **Headless UI & Radix**  
+  Accessible dialogs, menus, tooltips and more from @radix‑ui/react.
+- **Modular Architecture**
+  - `src/components` contains UI primitives and domain components.
+  - `src/hooks` and `src/lib` for data fetching, local persistence and utilities.
+  - `src-tauri/src` houses all Rust logic and Tauri commands.
+- **Notifications & Feedback**  
+  In-app toasts via Sonner, progress bars, status indicators and logs dialog.
 
-- TypeScript frontend using [Next.js 15](https://nextjs.org/) React framework
-- [TailwindCSS 4](https://tailwindcss.com/) as a utility-first atomic CSS framework
-  - The example page in this template app has been updated to use only TailwindCSS
-  - While not included by default, consider using
-    [React Aria components](https://react-spectrum.adobe.com/react-aria/index.html)
-    and/or [HeadlessUI components](https://headlessui.com/) for completely unstyled and
-    fully accessible UI components, which integrate nicely with TailwindCSS
-- Opinionated formatting and linting already setup and enabled
-  - [Biome](https://biomejs.dev/) for a combination of fast formatting, linting, and
-    import sorting of TypeScript code, and [ESLint](https://eslint.org/) for any missing
-    Next.js linter rules not covered by Biome
-  - [clippy](https://github.com/rust-lang/rust-clippy) and
-    [rustfmt](https://github.com/rust-lang/rustfmt) for Rust code
-- GitHub Actions to check code formatting and linting for both TypeScript and Rust
+## Prerequisites
 
-## Getting Started
-
-### Running development server and use Tauri window
-
-After cloning for the first time, change your app identifier inside
-`src-tauri/tauri.conf.json` to your own:
-
-```jsonc
-{
-  // ...
-  // The default "com.tauri.dev" will prevent you from building in release mode
-  "identifier": "com.my-application-name.app"
-  // ...
-}
-```
-
-To develop and run the frontend in a Tauri window:
-
-```shell
-pnpm tauri dev
-```
-
-This will load the Next.js frontend directly in a Tauri webview window, in addition to
-starting a development server on `localhost:3000`.
-Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>I</kbd> in a Chromium based WebView (e.g. on
-Windows) to open the web developer console from the Tauri window.
-
-### Building for release
-
-To export the Next.js frontend via SSG and build the Tauri application for release:
-
-```shell
-pnpm tauri build
-```
-
-### Source structure
-
-Next.js frontend source files are located in `src/` and Tauri Rust application source
-files are located in `src-tauri/`. Please consult the Next.js and Tauri documentation
-respectively for questions pertaining to either technology.
-
-## Caveats
-
-### Static Site Generation / Pre-rendering
-
-Next.js is a great React frontend framework which supports server-side rendering (SSR)
-as well as static site generation (SSG or pre-rendering). For the purposes of creating a
-Tauri frontend, only SSG can be used since SSR requires an active Node.js server.
-
-Please read into the Next.js documentation for [Static Exports](https://nextjs.org/docs/app/building-your-application/deploying/static-exports)
-for an explanation of supported / unsupported features and caveats.
-
-### `next/image`
-
-The [`next/image` component](https://nextjs.org/docs/basic-features/image-optimization)
-is an enhancement over the regular `<img>` HTML element with server-side optimizations
-to dynamically scale the image quality. This is only supported when deploying the
-frontend onto Vercel directly, and must be disabled to properly export the frontend
-statically. As such, the
-[`unoptimized` property](https://nextjs.org/docs/api-reference/next/image#unoptimized)
-is set to true for the `next/image` component in the `next.config.js` configuration.
-This will allow the image to be served as-is, without changes to its quality, size,
-or format.
-
-### ReferenceError: window/navigator is not defined
-
-If you are using Tauri's `invoke` function or any OS related Tauri function from within
-JavaScript, you may encounter this error when importing the function in a global,
-non-browser context. This is due to the nature of Next.js' dev server effectively
-running a Node.js server for SSR and hot module replacement (HMR), and Node.js does not
-have a notion of `window` or `
+- Node.js ≥18 & pnpm
+- Rust toolchain (`rustup`, `cargo`)
+- Windows 10+ (for Tauri’s native window)

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, MouseEvent } from "react";
+import { useState, useEffect } from "react";
 import {
   WebviewWindow,
   getCurrentWebviewWindow,
@@ -70,19 +70,6 @@ export function TitleBar({ title = "League Skin Manager" }: TitleBarProps) {
       if (unlisten) unlisten();
     };
   }, []);
-
-  const handleDragStart = async (e: MouseEvent) => {
-    try {
-      if (appWindow) {
-        // Make sure we only handle dragging from the titlebar area
-        if ((e.target as HTMLElement).closest("[data-tauri-drag-region]")) {
-          await appWindow.startDragging();
-        }
-      }
-    } catch (error) {
-      console.error("Failed to start dragging:", error);
-    }
-  };
 
   const minimize = async () => {
     try {

@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use crate::injection::{Skin, inject_skins as inject_skins_impl};
+use crate::injection;
 use serde_json;
 use std::{thread, time::Duration};
 use base64;
@@ -42,6 +43,17 @@ pub struct SkinData {
     pub skin_id: u32,
     pub chroma_id: Option<u32>,
     pub fantome: Option<String>, // Add fantome path from the JSON
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomSkinData {
+    pub id: String,
+    pub name: String,
+    pub champion_id: u32,
+    pub champion_name: String,
+    pub file_path: String,
+    pub created_at: u64,
+    pub preview_image: Option<String>,
 }
 
 #[tauri::command]
@@ -626,13 +638,8 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                         if parts.len() >= 5 {
                             port = Some(parts[2].to_string());
                             token = Some(parts[3].to_string());
-                            println!("[LCU Watcher] Found valid lockfile at: {}", path.display());
-                            emit_terminal_log(&app_handle, &format!("[LCU Watcher] Found valid lockfile at: {}", path.display()));
                             found_any_lockfile = true;
                             break;
-                        } else {
-                            println!("[LCU Watcher] Invalid lockfile format at: {}", path.display());
-                            emit_terminal_log(&app_handle, &format!("[LCU Watcher] Invalid lockfile format at: {}", path.display()));
                         }
                     }
                 }
@@ -645,13 +652,9 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
             if (!found_any_lockfile) {
                 // Handle no lockfile found cases...
                 if was_in_game && (last_phase == "InProgress" || was_reconnecting) {
-                    println!("[LCU Watcher] Client closed during active game! Maintaining state for reconnection.");
-                    emit_terminal_log(&app_handle, &"[LCU Watcher] Client closed during active game! Maintaining state for reconnection.");
                     thread::sleep(Duration::from_secs(5));
                     continue;
                 } else if was_in_game && last_phase == "None" {
-                    println!("[LCU Watcher] Game ended, cleaning up skin injection.");
-                    emit_terminal_log(&app_handle, &"[LCU Watcher] Game ended, cleaning up skin injection.");
                     if let Err(e) = crate::injection::cleanup_injection(&app_handle, &league_path_clone) {
                         println!("[LCU Watcher] Error cleaning up injection: {}", e);
                         emit_terminal_log(&app_handle, &format!("[LCU Watcher] Error cleaning up injection: {}", e));
@@ -669,13 +672,9 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
             let port = port.unwrap();
             let token = token.unwrap();
             let lockfile_path = lockfile_path.unwrap();
-            println!("[LCU Watcher] Successfully connected to LCU on port: {}", port);
-            emit_terminal_log(&app_handle, &format!("[LCU Watcher] Successfully connected to LCU on port: {}", port));
             
             'lcu_connected: loop {
                 if !lockfile_path.exists() {
-                    println!("[LCU Watcher] Lockfile disappeared, returning to outer loop to recheck.");
-                    emit_terminal_log(&app_handle, "[LCU Watcher] Lockfile disappeared, returning to outer loop to recheck.");
                     break 'lcu_connected;
                 }
 
@@ -694,10 +693,6 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                         
                         for endpoint in endpoints {
                             let url = format!("https://127.0.0.1:{}{}", port, endpoint);
-                            let log_msg = format!("[LCU Watcher] Trying endpoint: {}", url);
-                            println!("{}", log_msg);
-                            emit_terminal_log(&app_handle, &log_msg);
-                            
                             let auth = base64::encode(format!("riot:{}", token));
                             
                             match client.get(&url)
@@ -708,40 +703,22 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                     if resp.status().is_success() {
                                         connected = true;
                                         
-                                        let status = resp.status();
-                                        
                                         match resp.json::<serde_json::Value>() {
                                             Ok(json) => {
-                                                // Use summary format instead of full JSON
-                                                delayed_log(&app_handle, &format!(
-                                                    "[LCU Response] {} ({})\n    {}", 
-                                                    endpoint,
-                                                    status,
-                                                    format_json_summary(&json)
-                                                ));
-                                                
                                                 if endpoint == "/lol-gameflow/v1/gameflow-phase" {
                                                     if let Some(phase) = json.as_str() {
                                                         phase_value = Some(phase.to_string());
-                                                        let log_msg = format!("[LCU Watcher] Found phase via gameflow-phase: {}", phase);
-                                                        println!("{}", log_msg);
-                                                        emit_terminal_log(&app_handle, &log_msg);
                                                         break;
                                                     }
                                                 } else {
                                                     if let Some(phase) = json.get("phase").and_then(|v| v.as_str()) {
                                                         phase_value = Some(phase.to_string());
-                                                        let log_msg = format!("[LCU Watcher] Found phase via session: {}", phase);
-                                                        println!("{}", log_msg);
-                                                        emit_terminal_log(&app_handle, &log_msg);
                                                         break;
                                                     }
                                                 }
                                             },
                                             Err(e) => println!("[LCU Watcher] Failed to parse response from {}: {}", endpoint, e),
                                         }
-                                    } else {
-                                        delayed_log(&app_handle, &format!("[LCU Watcher] Endpoint {} returned status: {}", endpoint, resp.status()));
                                     }
                                 },
                                 Err(e) => println!("[LCU Watcher] Failed to connect to endpoint {}: {}", endpoint, e),
@@ -749,8 +726,6 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                         }
                         
                         if (!connected) {
-                            println!("[LCU Watcher] Could not connect to any LCU API endpoint. Retrying in 5 seconds...");
-                            emit_terminal_log(&app_handle, &"[LCU Watcher] Could not connect to any LCU API endpoint. Retrying in 5 seconds...");
                             thread::sleep(Duration::from_secs(5));
                             continue;
                         }
@@ -759,12 +734,9 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                         
                         if phase != last_phase {
                             println!("[LCU Watcher] LCU status changed: {} -> {}", last_phase, phase);
-                            emit_terminal_log(&app_handle, &format!("[LCU Watcher] LCU status changed: {} -> {}", last_phase, phase));
                             
                             // If entering ChampSelect, preload assets to speed up injection later
                             if phase == "ChampSelect" {
-                                emit_terminal_log(&app_handle, "[LCU Watcher] Champion select started, preparing for skin injection");
-                                
                                 let champions_dir = app_handle.path().app_data_dir()
                                     .unwrap_or_else(|_| PathBuf::from("."))
                                     .join("champions");
@@ -805,11 +777,6 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                 
                                                 let champion_changed = last_champion_id != Some(current_champion_id) && current_champion_id > 0;
                                                 if champion_changed {
-                                                    emit_terminal_log(&app_handle, &format!(
-                                                        "[LCU Watcher] Champion selection changed to {}", 
-                                                        current_champion_id
-                                                    ));
-                                                    
                                                     last_champion_id = Some(current_champion_id);
                                                     
                                                     let config_dir = app_handle.path().app_data_dir()
@@ -820,10 +787,6 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                     if let Ok(data) = std::fs::read_to_string(&cfg_file) {
                                                         if let Ok(config) = serde_json::from_str::<SavedConfig>(&data) {
                                                             if let Some(skin) = config.skins.iter().find(|s| s.champion_id == current_champion_id) {
-                                                                emit_terminal_log(&app_handle, &format!(
-                                                                    "[LCU Watcher] Found pre-selected skin for champion {}: skin_id={}", 
-                                                                    current_champion_id, skin.skin_id
-                                                                ));
                                                                 
                                                                 let skins = vec![Skin {
                                                                     champion_id: skin.champion_id,
@@ -843,17 +806,9 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                                     &champions_dir
                                                                 ) {
                                                                     Ok(_) => {
-                                                                        println!("[LCU Watcher] Successfully injected pre-selected skin for champion {}", current_champion_id);
-                                                                        emit_terminal_log(&app_handle, &format!(
-                                                                            "[LCU Watcher] Successfully injected pre-selected skin for champion {}", current_champion_id
-                                                                        ));
                                                                         let _ = app_handle.emit("injection-status", "success");
                                                                     },
                                                                     Err(e) => {
-                                                                        println!("[LCU Watcher] Failed to inject pre-selected skin: {}", e);
-                                                                        emit_terminal_log(&app_handle, &format!(
-                                                                            "[LCU Watcher] Failed to inject pre-selected skin: {}", e
-                                                                        ));
                                                                         let _ = app_handle.emit("skin-injection-error", format!(
                                                                             "Failed to inject pre-selected skin for champion {}: {}", current_champion_id, e
                                                                         ));
@@ -893,10 +848,6 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                        old_skin.fantome != skin.fantome
                                                    }) 
                                                 {
-                                                    emit_terminal_log(&app_handle, &format!(
-                                                        "[LCU Watcher] Detected skin change for champion {}: skin_id={}", 
-                                                        champ_id, skin.skin_id
-                                                    ));
                                                     
                                                     let skins = vec![Skin {
                                                         champion_id: skin.champion_id,
@@ -910,10 +861,6 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                         .join("champions");
                                                     
                                                     if phase != "ChampSelect" {
-                                                        emit_terminal_log(&app_handle, &format!(
-                                                            "[LCU Watcher] Skipping injection - no longer in champion select (current phase: {})",
-                                                            phase
-                                                        ));
                                                         continue;
                                                     }
                                                     
@@ -924,17 +871,9 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                         &champions_dir
                                                     ) {
                                                         Ok(_) => {
-                                                            println!("[LCU Watcher] Successfully injected skin for champion {}", champ_id);
-                                                            emit_terminal_log(&app_handle, &format!(
-                                                                "[LCU Watcher] Successfully injected skin for champion {}", champ_id
-                                                            ));
                                                             let _ = app_handle.emit("injection-status", "success");
                                                         },
                                                         Err(e) => {
-                                                            println!("[LCU Watcher] Failed to inject skin: {}", e);
-                                                            emit_terminal_log(&app_handle, &format!(
-                                                                "[LCU Watcher] Failed to inject skin: {}", e
-                                                            ));
                                                             let _ = app_handle.emit("skin-injection-error", format!(
                                                                 "Failed to inject skin for champion {}: {}", champ_id, e
                                                             ));
@@ -956,10 +895,6 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                             }
                             
                             if phase != "ChampSelect" && phase != "None" && last_phase == "ChampSelect" {
-                                emit_terminal_log(&app_handle, &format!(
-                                    "[LCU Watcher] Game phase changed to {}, stopping any pending injections",
-                                    phase
-                                ));
                                 let _ = crate::injection::cleanup_injection(&app_handle, &league_path_clone);
                             }
                             
@@ -1067,11 +1002,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                                                         emit_terminal_log(&app_handle, &format!("[LCU Debug] Full lobby data: {}", 
                                                                                             serde_json::to_string_pretty(&lobby_json).unwrap_or_default()));
                                                                                     }
-                                                                                } else {
-                                                                                    emit_terminal_log(&app_handle, "[LCU Debug] Failed to parse lobby data as JSON");
                                                                                 }
-                                                                            } else {
-                                                                                emit_terminal_log(&app_handle, &format!("[LCU Debug] Failed to get lobby data: status code {}", swift_resp.status()));
                                                                             }
                                                                         },
                                                                         Err(e) => emit_terminal_log(&app_handle, &format!("[LCU Debug] Failed to get lobby data: {}", e)),
@@ -1136,7 +1067,6 @@ fn get_selected_champion_id(session_json: &serde_json::Value) -> Option<i64> {
             
             // If we have a pick in progress, don't return any champion ID
             if has_pick_in_progress {
-                println!("[LCU Debug] Pick in progress, waiting for lock-in");
                 return None;
             }
             
@@ -1155,7 +1085,6 @@ fn get_selected_champion_id(session_json: &serde_json::Value) -> Option<i64> {
                                 // 2. Action is completed
                                 // 3. Valid champion ID
                                 if action_type == "pick" && is_completed && champion_id > 0 {
-                                    println!("[LCU Debug] Found locked-in champion: {}", champion_id);
                                     return Some(champion_id);
                                 }
                             }
@@ -1191,7 +1120,6 @@ fn get_selected_champion_id(session_json: &serde_json::Value) -> Option<i64> {
                                                is_completed && 
                                                act_champion_id == champion_id && 
                                                actor_cell_id == Some(local_player_cell_id) {
-                                                println!("[LCU Debug] Confirmed locked-in champion from myTeam: {}", champion_id);
                                                 return Some(champion_id);
                                             }
                                         }
@@ -1412,10 +1340,6 @@ fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_ids: 
             for champ_id in champion_ids {
                 let champ_id_u32 = *champ_id as u32;
                 if let Some(skin) = config.skins.iter().find(|s| s.champion_id == champ_id_u32) {
-                    emit_terminal_log(app, &format!(
-                        "[LCU Watcher] Swift Play: Found skin for champion {}: skin_id={}",
-                        champ_id_u32, skin.skin_id
-                    ));
                     
                     skins_to_inject.push(Skin {
                         champion_id: skin.champion_id,
@@ -1423,20 +1347,11 @@ fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_ids: 
                         chroma_id: skin.chroma_id,
                         fantome_path: skin.fantome.clone(),
                     });
-                } else {
-                    emit_terminal_log(app, &format!(
-                        "[LCU Watcher] Swift Play: No skin configured for champion {}", 
-                        champ_id_u32
-                    ));
                 }
             }
             
             // If we found skins to inject, do it
             if !skins_to_inject.is_empty() {
-                emit_terminal_log(app, &format!(
-                    "[LCU Watcher] Swift Play: Injecting {} skins", 
-                    skins_to_inject.len()
-                ));
                 
                 let champions_dir = app.path().app_data_dir()
                     .unwrap_or_else(|_| PathBuf::from("."))
@@ -1449,13 +1364,9 @@ fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_ids: 
                     &champions_dir
                 ) {
                     Ok(_) => {
-                        emit_terminal_log(app, "[LCU Watcher] Swift Play: Successfully injected skins");
                         let _ = app.emit("injection-status", "success");
                     },
                     Err(e) => {
-                        emit_terminal_log(app, &format!(
-                            "[LCU Watcher] Swift Play: Failed to inject skins: {}", e
-                        ));
                         let _ = app.emit("skin-injection-error", format!(
                             "Failed to inject Swift Play skins: {}", e
                         ));
@@ -1484,4 +1395,306 @@ fn extract_swift_play_champions_from_lobby(json: &serde_json::Value) -> Vec<i64>
     }
     
     champion_ids
+}
+
+#[tauri::command]
+pub async fn upload_custom_skin(
+    app: tauri::AppHandle,
+    championId: u32,
+    skinName: String,
+) -> Result<CustomSkinData, String> {
+    println!("Uploading custom skin: {}", skinName);
+    println!("For champion ID: {}", championId);
+    
+    // Open file dialog for the user to select a skin file
+    #[cfg(target_os = "windows")]
+    let file_path = {
+        use std::process::Command;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let mut command = Command::new("powershell");
+        command.creation_flags(CREATE_NO_WINDOW);
+        command.args([
+            "-NoProfile",
+            "-Command",
+            r#"Add-Type -AssemblyName System.Windows.Forms; 
+            $dialog = New-Object System.Windows.Forms.OpenFileDialog;
+            $dialog.Filter = 'Skin files (*.fantome;*.wad;*.client;*.zip)|*.fantome;*.wad;*.client;*.zip';
+            $dialog.Title = 'Select Custom Skin File';
+            if($dialog.ShowDialog() -eq 'OK') { $dialog.FileName }"#,
+        ]);
+        
+        let output = command
+            .output()
+            .map_err(|e| format!("Failed to execute file dialog command: {}", e))?;
+
+        if !output.status.success() {
+            return Err("File selection cancelled".to_string());
+        }
+
+        let path = String::from_utf8(output.stdout)
+            .map_err(|e| format!("Failed to parse selected path: {}", e))?
+            .trim()
+            .to_string();
+
+        if path.is_empty() {
+            return Err("No file selected".to_string());
+        }
+        
+        path
+    };
+    
+    #[cfg(not(target_os = "windows"))]
+    let file_path = {
+        return Err("File selection is only supported on Windows for now".to_string());
+    };
+    
+    println!("Selected file: {}", file_path);
+    
+    // Get the app data directory
+    let app_data_dir = app.path().app_data_dir()
+        .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
+    
+    // Create custom skins directory if it doesn't exist
+    let custom_skins_dir = app_data_dir.join("custom_skins");
+    std::fs::create_dir_all(&custom_skins_dir)
+        .map_err(|e| format!("Failed to create custom skins directory: {}", e))?;
+        
+    // Get champion name (for organization)
+    let champion_name = if let Ok(champion_data) = get_champion_name(&app, championId).await {
+        champion_data
+    } else {
+        format!("champion_{}", championId) // Fallback if name not found
+    };
+    
+    // Create directory for this champion's custom skins
+    let champion_dir = custom_skins_dir.join(&champion_name);
+    std::fs::create_dir_all(&champion_dir)
+        .map_err(|e| format!("Failed to create champion directory: {}", e))?;
+        
+    // Generate a unique ID for this skin
+    let skin_id = format!("custom_{}_{}", championId, chrono::Utc::now().timestamp());
+    
+    // Copy the file to the custom skins directory with a new name
+    let source_path = std::path::Path::new(&file_path);
+    let file_ext = source_path.extension()
+        .map(|ext| ext.to_string_lossy().to_string())
+        .unwrap_or_else(|| "fantome".to_string());
+    
+    // Create filename: champion_name_skinid.extension
+    let dest_filename = format!("{}_{}.{}", champion_name, skin_id, file_ext);
+    let dest_path = champion_dir.join(&dest_filename);
+    
+    // Copy the file
+    std::fs::copy(source_path, &dest_path)
+        .map_err(|e| format!("Failed to copy skin file: {}", e))?;
+        
+    // Create metadata for the custom skin
+    let custom_skin = CustomSkinData {
+        id: skin_id,
+        name: skinName,
+        champion_id: championId,
+        champion_name,
+        file_path: dest_path.to_string_lossy().to_string(),
+        created_at: chrono::Utc::now().timestamp() as u64,
+        preview_image: None, // We'll leave preview generation for a future enhancement
+    };
+    
+    // Save metadata about this custom skin
+    save_custom_skin(&app, &custom_skin).await?;
+    
+    Ok(custom_skin)
+}
+
+#[tauri::command]
+pub async fn get_custom_skins(
+    app: tauri::AppHandle
+) -> Result<Vec<CustomSkinData>, String> {
+    let config_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?
+        .join("config");
+    let file = config_dir.join("custom_skins.json");
+    
+    if !file.exists() {
+        return Ok(Vec::new());
+    }
+    
+    let data = std::fs::read_to_string(&file)
+        .map_err(|e| format!("Failed to read custom skins data: {}", e))?;
+        
+    let custom_skins: Vec<CustomSkinData> = serde_json::from_str(&data)
+        .map_err(|e| format!("Failed to parse custom skins data: {}", e))?;
+        
+    Ok(custom_skins)
+}
+
+#[tauri::command]
+pub async fn delete_custom_skin(
+    app: tauri::AppHandle,
+    skin_id: String
+) -> Result<(), String> {
+    // Get all custom skins
+    let custom_skins = get_custom_skins(app.clone()).await?;
+    
+    // Find the skin to delete
+    let skin_to_delete = custom_skins.iter().find(|skin| skin.id == skin_id)
+        .ok_or_else(|| format!("Custom skin with ID {} not found", skin_id))?;
+    
+    // Delete the skin file
+    let file_path = std::path::Path::new(&skin_to_delete.file_path);
+    if file_path.exists() {
+        std::fs::remove_file(file_path)
+            .map_err(|e| format!("Failed to delete skin file: {}", e))?;
+    }
+    
+    // Update the custom skins list
+    let updated_skins: Vec<CustomSkinData> = custom_skins.into_iter()
+        .filter(|skin| skin.id != skin_id)
+        .collect();
+        
+    // Save the updated list
+    let config_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?
+        .join("config");
+    std::fs::create_dir_all(&config_dir)
+        .map_err(|e| format!("Failed to create config dir: {}", e))?;
+        
+    let file = config_dir.join("custom_skins.json");
+    let data = serde_json::to_string_pretty(&updated_skins)
+        .map_err(|e| format!("Failed to serialize custom skins: {}", e))?;
+        
+    std::fs::write(&file, data)
+        .map_err(|e| format!("Failed to write custom_skins.json: {}", e))?;
+        
+    Ok(())
+}
+
+// Helper functions
+
+async fn get_champion_name(app: &tauri::AppHandle, champion_id: u32) -> Result<String, String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+        
+    let champions_dir = app_data_dir.join("champions");
+    
+    // Look through champion directories to find the one with matching ID
+    if champions_dir.exists() {
+        for entry in std::fs::read_dir(champions_dir).map_err(|e| e.to_string())? {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+                if path.is_dir() {
+                    let json_file = path.join(format!("{}.json", entry.file_name().to_string_lossy()));
+                    
+                    if json_file.exists() {
+                        if let Ok(content) = std::fs::read_to_string(&json_file) {
+                            if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Some(id) = data.get("id").and_then(|v| v.as_u64()) {
+                                    if id as u32 == champion_id {
+                                        if let Some(name) = data.get("name").and_then(|v| v.as_str()) {
+                                            // Use champion directory name instead of display name for consistency
+                                            return Ok(entry.file_name().to_string_lossy().to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Fallback
+    Ok(format!("champion_{}", champion_id))
+}
+
+async fn save_custom_skin(app: &tauri::AppHandle, custom_skin: &CustomSkinData) -> Result<(), String> {
+    // Get all existing custom skins
+    let mut custom_skins = get_custom_skins(app.clone()).await.unwrap_or_default();
+    
+    // Add the new skin
+    custom_skins.push(custom_skin.clone());
+    
+    // Save to file
+    let config_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?
+        .join("config");
+    std::fs::create_dir_all(&config_dir)
+        .map_err(|e| format!("Failed to create config dir: {}", e))?;
+        
+    let file = config_dir.join("custom_skins.json");
+    let data = serde_json::to_string_pretty(&custom_skins)
+        .map_err(|e| format!("Failed to serialize custom skins: {}", e))?;
+        
+    std::fs::write(&file, data)
+        .map_err(|e| format!("Failed to write custom_skins.json: {}", e))?;
+    
+    Ok(())
+}
+
+// Preload resources function to improve first-time injection speed
+pub fn preload_resources(app_handle: &tauri::AppHandle) -> Result<(), String> {
+    // Inform user that resources are loading
+    println!("Preloading resources for faster first injection...");
+    
+    // Get app data directory
+    let app_data_dir = app_handle.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    
+    // Create essential directories if they don't exist
+    let overlay_cache_dir = app_data_dir.join("overlay_cache");
+    if !overlay_cache_dir.exists() {
+        std::fs::create_dir_all(&overlay_cache_dir)
+            .map_err(|e| format!("Failed to create overlay cache directory: {}", e))?;
+    }
+    
+    // Initialize the global file index to cache champion data
+    if let Ok(index) = injection::get_global_index(app_handle) {
+        let _index_guard = index.lock().unwrap();
+        // Index is now initialized in background
+    }
+    
+    // Clone the app_handle before moving it into the thread
+    let app_handle_clone = app_handle.clone();
+    
+    // Pre-build empty overlay templates in the background
+    std::thread::spawn(move || {
+        // This runs in a separate thread to not block UI
+        if let Some(league_path) = get_league_path_from_config(&app_handle_clone) {
+            // Try to create a temporary injector that will initialize cache
+            if let Ok(mut injector) = injection::SkinInjector::new(&app_handle_clone, &league_path) {
+                let _ = injector.initialize_cache();
+                println!("Successfully preloaded injection resources");
+            }
+        } else {
+            println!("League path not found, skipping preload");
+        }
+    });
+    
+    Ok(())
+}
+
+// Helper function to get league path from config
+fn get_league_path_from_config(app_handle: &AppHandle) -> Option<String> {
+    if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
+        let config_file = app_data_dir.join("config").join("config.json");
+        if config_file.exists() {
+            if let Ok(content) = fs::read_to_string(&config_file) {
+                if let Ok(config) = serde_json::from_str::<SavedConfig>(&content) {
+                    return config.league_path;
+                }
+            }
+        }
+        
+        // Try the legacy league_path.txt file as fallback
+        let legacy_path_file = app_data_dir.join("config").join("league_path.txt");
+        if legacy_path_file.exists() {
+            if let Ok(path) = fs::read_to_string(&legacy_path_file) {
+                if !path.trim().is_empty() {
+                    return Some(path.trim().to_string());
+                }
+            }
+        }
+    }
+    None
 }

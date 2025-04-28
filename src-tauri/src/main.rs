@@ -9,8 +9,20 @@ use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
-        .setup(|_app| {
+        .setup(|app| {
             // Native injection is now used - no need to check for mod-tools.exe
+            // Preload overlays during startup for better performance
+            #[cfg(not(debug_assertions))]
+            {
+                // Get the app_handle BEFORE spawning the thread
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    // We spawn a background thread to preload resources
+                    // This prevents blocking the UI during startup
+                    let _ = commands::preload_resources(&app_handle);
+                });
+            }
+            
             Ok(())
         })
         .plugin(tauri_plugin_shell::init())
@@ -31,6 +43,11 @@ fn main() {
             load_config,
             delete_champions_cache,
             auto_detect_league,
+            
+            // custom skin commands
+            upload_custom_skin,
+            get_custom_skins,
+            delete_custom_skin,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())

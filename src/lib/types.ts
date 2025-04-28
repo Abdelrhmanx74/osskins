@@ -12,6 +12,7 @@ export interface Chroma {
   colors: string[];
   description?: string;
   rarity?: string;
+  fantome?: string;
 }
 
 export interface Skin {
@@ -23,6 +24,7 @@ export interface Skin {
   rarity: string;
   featuresText: string | null;
   chromas: Chroma[];
+  fantome?: string;
 }
 
 export interface Champion {
@@ -46,4 +48,15 @@ export interface DataUpdateResult {
   success: boolean;
   error?: string;
   updatedChampions?: string[];
+}
+
+// Custom skin type for user uploaded skins
+export interface CustomSkin {
+  id: string;
+  name: string;
+  champion_id: number;
+  champion_name: string;
+  file_path: string;
+  created_at: number;
+  preview_image?: string;
 }

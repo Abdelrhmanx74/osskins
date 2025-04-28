@@ -1,31 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useGameStore } from "@/lib/store";
-
-export interface Champion {
-  id: number;
-  name: string;
-  iconSrc: string;
-  skins: Skin[];
-}
-
-export interface Skin {
-  id: number;
-  name: string;
-  skinSrc: string;
-  isBase?: boolean;
-  isLegacy?: boolean;
-  chromas?: CachedChroma[];
-  fantome?: string; // Path to the fantome file
-}
-
-export interface CachedChroma {
-  id: number;
-  name: string;
-  skinChromaPath: string;
-  colors: string[];
-  fantome?: string; // Path to the chroma's fantome file
-}
+import { Champion } from "../types";
 
 export function useChampions() {
   const { leaguePath } = useGameStore();

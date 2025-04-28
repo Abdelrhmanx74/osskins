@@ -6,7 +6,7 @@ import Image from "next/image";
 import { Card, CardContent, CardFooter } from "./ui/card";
 import { useGameStore } from "@/lib/store";
 import { Check, Play } from "lucide-react";
-import type { Skin } from "@/lib/hooks/use-champions";
+import { Skin } from "@/lib/types";
 import { Skeleton } from "./ui/skeleton";
 
 interface SkinCardProps {
@@ -16,21 +16,28 @@ interface SkinCardProps {
 
 export function SkinCard({ championId, skin }: SkinCardProps) {
   const { selectedSkins, selectSkin, clearSelection } = useGameStore();
+  const selected = selectedSkins.get(championId);
+
+  // Initialize selectedChroma from stored selection if it exists
   const [selectedChroma, setSelectedChroma] = useState<CachedChroma | null>(
-    null
+    () => {
+      if (selected?.skinId === skin.id && selected.chromaId) {
+        return skin.chromas.find((c) => c.id === selected.chromaId) ?? null;
+      }
+      return null;
+    }
   );
+
   const [isHovering, setIsHovering] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Determine if this card is selected and if a chroma is selected
-  const selected = selectedSkins.get(championId);
   const isSelected =
-    selectedSkins.has(championId) &&
-    selectedSkins.get(championId)?.skinId === skin.id &&
+    selected?.skinId === skin.id &&
     (selectedChroma
-      ? selectedSkins.get(championId)?.chromaId === selectedChroma.id
-      : true);
+      ? selected.chromaId === selectedChroma.id
+      : !selected.chromaId);
 
   // Show chroma image if selected, otherwise skin image
   const currentImageSrc = selectedChroma?.skinChromaPath ?? skin.skinSrc;
@@ -48,8 +55,12 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
     if (isSelected) {
       clearSelection(championId);
     } else {
-      const fantomePath = selectedChroma?.fantome ?? skin.fantome;
-      selectSkin(championId, skin.id, selectedChroma?.id, fantomePath);
+      selectSkin(
+        championId,
+        skin.id,
+        selectedChroma?.id,
+        selectedChroma?.fantome ?? skin.fantome
+      );
     }
   };
 
@@ -61,8 +72,12 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
       selectSkin(championId, skin.id, undefined, skin.fantome);
     } else {
       setSelectedChroma(chroma);
-      const fantomePath = chroma?.fantome ?? skin.fantome;
-      selectSkin(championId, skin.id, chroma?.id, fantomePath);
+      selectSkin(
+        championId,
+        skin.id,
+        chroma?.id,
+        chroma?.fantome ?? skin.fantome
+      );
     }
   };
 
@@ -119,7 +134,7 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
             </h3>
 
             {/* Chroma Selector positioned in bottom right */}
-            {skin.chromas && skin.chromas.length > 0 && (
+            {skin.chromas.length > 0 && (
               <ChromaSelector
                 chromas={skin.chromas}
                 onSelect={handleChromaSelect}

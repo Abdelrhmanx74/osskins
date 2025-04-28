@@ -13,14 +13,42 @@ type Status = "idle" | "injecting" | "success" | "error";
 export function InjectionStatusDot() {
   const { injectionStatus, setInjectionStatus } = useGameStore();
   const toastShownRef = useRef<Record<string, boolean>>({});
+  const currentInjectionRef = useRef<string | null>(null);
 
   // Listen for injection start/stop and error events
   useEffect(() => {
     // Setup listeners and store unlisten functions
     let unlistenStatus: () => void = () => {};
     let unlistenError: () => void = () => {};
+    let unlistenTerminalLog: () => void = () => {};
 
     void (async () => {
+      // Track terminal logs for warnings during overlay creation
+      unlistenTerminalLog = await listen<string>("terminal-log", (e) => {
+        const logMsg = e.payload;
+
+        // If we see a log that indicates we're retrying, mark this as a retry situation
+        if (
+          logMsg.includes("Retrying overlay creation") ||
+          logMsg.includes("Access violation error")
+        ) {
+          currentInjectionRef.current = "retrying";
+        }
+
+        // Clear any existing error toasts when we see a success message
+        if (
+          logMsg.includes("Overlay creation succeeded") ||
+          logMsg.includes("Overlay process started successfully") ||
+          logMsg.includes("Skin injection completed successfully")
+        ) {
+          // Clear any error toasts since we recovered
+          if (currentInjectionRef.current === "retrying") {
+            // We've recovered from a retry, waiting for final success
+            currentInjectionRef.current = "recovered";
+          }
+        }
+      });
+
       unlistenStatus = await listen("injection-status", (e) => {
         const status = e.payload;
 
@@ -28,28 +56,44 @@ export function InjectionStatusDot() {
           setInjectionStatus("injecting");
           // Reset toast tracking when starting new injection
           toastShownRef.current = {};
-        } else if (status === "success") {
+          currentInjectionRef.current = "injecting";
+        } else if (status === "completed" || status === "success") {
           setInjectionStatus("success");
-          // Only show success toast if we haven't shown one for this injection cycle
-          if (!toastShownRef.current.success) {
-            toast.success("Skin injection completed successfully");
-            toastShownRef.current.success = true;
-          }
+          // Hide any pending error toasts
+          toast.dismiss();
+
+          // Show success toast
+          toast.success("Skin injection completed successfully");
+          toastShownRef.current.success = true;
+          currentInjectionRef.current = null;
         } else if (status === "error") {
-          setInjectionStatus("error");
-          // Error message handled by separate event
+          // Only show error toast if we're not in a retry situation or if injection has actually failed
+          if (
+            currentInjectionRef.current !== "retrying" &&
+            currentInjectionRef.current !== "recovered"
+          ) {
+            setInjectionStatus("error");
+            // Error message handled by separate event
+          }
         } else {
           // Default to idle for any other status
           setInjectionStatus("idle");
+          currentInjectionRef.current = null;
         }
       });
 
       unlistenError = await listen<string>("skin-injection-error", (e) => {
-        setInjectionStatus("error");
-        // Only show error toast if we haven't shown one for this error
-        if (!toastShownRef.current.error) {
-          toast.error(`Skin injection failed: ${e.payload}`);
-          toastShownRef.current.error = true;
+        // Only show actual errors, not temporary failures during retries
+        if (
+          currentInjectionRef.current !== "retrying" &&
+          currentInjectionRef.current !== "recovered"
+        ) {
+          setInjectionStatus("error");
+          // Only show error toast if we haven't shown one for this error
+          if (!toastShownRef.current.error) {
+            toast.error(`Skin injection failed: ${e.payload}`);
+            toastShownRef.current.error = true;
+          }
         }
       });
     })();
@@ -57,6 +101,7 @@ export function InjectionStatusDot() {
     return () => {
       unlistenStatus();
       unlistenError();
+      unlistenTerminalLog();
     };
   }, [setInjectionStatus]);
 
@@ -67,6 +112,7 @@ export function InjectionStatusDot() {
         setInjectionStatus("idle");
         // Clear toast tracking when returning to idle
         toastShownRef.current = {};
+        currentInjectionRef.current = null;
       }, 5000); // Extended time to 5 seconds to make status more visible
 
       return () => {
@@ -103,7 +149,7 @@ export function InjectionStatusDot() {
     <Tooltip>
       <TooltipTrigger asChild>
         <div
-          className={`h-3 w-3 rounded-full border border-border ${color} ${animate}`}
+          className={`size-3 aspect-square shrink-0 rounded-full border border-border ${color} ${animate}`}
           aria-label={label}
         />
       </TooltipTrigger>

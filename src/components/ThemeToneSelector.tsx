@@ -267,7 +267,7 @@ async function saveThemePreferences(tone: string, isDark: boolean) {
  */
 export function useThemeTone() {
   // Default to blue tone
-  const [tone, setToneState] = useState<string>("blue");
+  const [tone, setToneState] = useState<string>("gray");
   const [initialized, setInitialized] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const { theme, setTheme, resolvedTheme } = useTheme();

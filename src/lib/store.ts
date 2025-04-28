@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { Champion, Skin } from "./hooks/use-champions";
+import { CustomSkin } from "./types";
+// import { Champion, Skin } from "./hooks/use-champions";
 
 interface SelectedSkin {
   championId: number;
@@ -11,6 +12,9 @@ interface SelectedSkin {
 // Define the possible injection statuses
 export type InjectionStatus = "idle" | "injecting" | "success" | "error";
 
+// Custom skin tabs
+export type SkinTab = "official" | "custom";
+
 interface GameState {
   leaguePath: string | null;
   lcuStatus: string | null;
@@ -18,6 +22,8 @@ interface GameState {
   selectedSkins: Map<number, SelectedSkin>;
   favorites: Set<number>;
   hasCompletedOnboarding: boolean;
+  activeTab: SkinTab;
+  customSkins: Map<number, CustomSkin[]>;
   setLeaguePath: (path: string) => void;
   setLcuStatus: (status: string) => void;
   setInjectionStatus: (status: InjectionStatus) => void; // Add this
@@ -32,6 +38,10 @@ interface GameState {
   toggleFavorite: (championId: number) => void;
   setFavorites: (favorites: Set<number>) => void;
   setHasCompletedOnboarding: (completed: boolean) => void;
+  setActiveTab: (tab: SkinTab) => void;
+  addCustomSkin: (skin: CustomSkin) => void;
+  removeCustomSkin: (skinId: string) => void;
+  setCustomSkins: (skins: CustomSkin[]) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -41,6 +51,8 @@ export const useGameStore = create<GameState>((set) => ({
   selectedSkins: new Map(),
   favorites: new Set(),
   hasCompletedOnboarding: false,
+  activeTab: "official", // Default to official skins tab
+  customSkins: new Map(),
   setLeaguePath: (path) => {
     set({ leaguePath: path });
   },
@@ -89,5 +101,59 @@ export const useGameStore = create<GameState>((set) => ({
   },
   setHasCompletedOnboarding: (completed) => {
     set({ hasCompletedOnboarding: completed });
+    if (typeof window !== "undefined") {
+      localStorage.setItem("hasCompletedOnboarding", completed.toString());
+    }
+  },
+  setActiveTab: (tab) => {
+    set({ activeTab: tab });
+    if (typeof window !== "undefined") {
+      localStorage.setItem("activeSkinsTab", tab);
+    }
+  },
+  addCustomSkin: (skin) => {
+    set((state) => {
+      const newCustomSkins = new Map(state.customSkins);
+      const championId = skin.champion_id;
+      const existingSkins = newCustomSkins.get(championId) ?? [];
+      newCustomSkins.set(championId, [...existingSkins, skin]);
+      return { customSkins: newCustomSkins };
+    });
+  },
+  removeCustomSkin: (skinId) => {
+    set((state) => {
+      const newCustomSkins = new Map(state.customSkins);
+
+      // Find which champion has this skin
+      for (const [championId, skins] of newCustomSkins.entries()) {
+        const updatedSkins = skins.filter((skin) => skin.id !== skinId);
+
+        if (updatedSkins.length !== skins.length) {
+          // We found and removed the skin
+          if (updatedSkins.length === 0) {
+            newCustomSkins.delete(championId);
+          } else {
+            newCustomSkins.set(championId, updatedSkins);
+          }
+          break;
+        }
+      }
+
+      return { customSkins: newCustomSkins };
+    });
+  },
+  setCustomSkins: (skins) => {
+    set(() => {
+      const customSkinsMap = new Map<number, CustomSkin[]>();
+
+      // Group skins by champion ID
+      skins.forEach((skin) => {
+        const championId = skin.champion_id;
+        const existingSkins = customSkinsMap.get(championId) ?? [];
+        customSkinsMap.set(championId, [...existingSkins, skin]);
+      });
+
+      return { customSkins: customSkinsMap };
+    });
   },
 }));
