@@ -77,11 +77,22 @@ export async function fetchFantomeFile(
   return new Uint8Array(arrayBuffer);
 }
 
+// Sanitize a string to be safe for use as a filename or path component
+export function sanitizeForFileName(str: string): string {
+  return str
+    .toLowerCase()
+    .trim()
+    .replace(/[/\\:?*"<>| ]+/g, "_") // replace invalid Windows path chars and spaces
+    .replace(/_+/g, "_") // collapse multiple underscores
+    .replace(/^_+|_+$/g, ""); // trim leading/trailing underscores
+}
+
 export function transformChampionData(
   summary: ChampionSummary,
   details: ChampionDetails,
   fantomeFiles: Map<number, Uint8Array>
 ): Champion {
+  const baseDir = sanitizeForFileName(summary.name);
   const skins: Skin[] = details.skins.map((skin) => {
     const baseSkinId = skin.id % 1000;
     const chromas: Chroma[] = (skin.chromas ?? []).map((chroma) => {
@@ -93,9 +104,9 @@ export function transformChampionData(
         colors: chroma.colors,
         description: chroma.description,
         rarity: chroma.rarity,
-        fantome: `${summary.name.toLowerCase().replace(/\s+/g, "_")}/${skin.name
-          .toLowerCase()
-          .replace(/\s+/g, "_")}_chroma_${chroma.id}.fantome`,
+        fantome: `${baseDir}/${sanitizeForFileName(skin.name)}_chroma_${
+          chroma.id
+        }.fantome`,
       };
     });
 
@@ -107,9 +118,7 @@ export function transformChampionData(
       skinType: skin.skinType,
       rarity: skin.rarity || "kNoRarity",
       featuresText: skin.featuresText ?? null,
-      fantome: `${summary.name.toLowerCase().replace(/\s+/g, "_")}/${skin.name
-        .toLowerCase()
-        .replace(/\s+/g, "_")}.fantome`,
+      fantome: `${baseDir}/${sanitizeForFileName(skin.name)}.fantome`,
       chromas,
     };
   });

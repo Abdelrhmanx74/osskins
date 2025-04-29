@@ -7,6 +7,7 @@ import {
   fetchChampionDetails,
   fetchFantomeFile,
   transformChampionData,
+  sanitizeForFileName,
 } from "../data-utils";
 
 // Helper function to delay execution
@@ -94,10 +95,8 @@ export function useDataUpdate() {
 
                     // Save regular skin fantome file
                     await invoke("save_fantome_file", {
-                      championName: summary.name
-                        .toLowerCase()
-                        .replace(/\s+/g, "_"),
-                      skinName: skin.name.toLowerCase().replace(/\s+/g, "_"),
+                      championName: sanitizeForFileName(summary.name),
+                      skinName: sanitizeForFileName(skin.name),
                       isChroma: false,
                       content: Array.from(fantomeContent),
                     });
@@ -112,12 +111,8 @@ export function useDataUpdate() {
                             chromaBaseSkinId
                           );
                           await invoke("save_fantome_file", {
-                            championName: summary.name
-                              .toLowerCase()
-                              .replace(/\s+/g, "_"),
-                            skinName: skin.name
-                              .toLowerCase()
-                              .replace(/\s+/g, "_"),
+                            championName: sanitizeForFileName(summary.name),
+                            skinName: sanitizeForFileName(skin.name),
                             isChroma: true,
                             chromaId: chroma.id,
                             content: Array.from(chromaFantomeContent),
@@ -148,9 +143,7 @@ export function useDataUpdate() {
               }
 
               await invoke("update_champion_data", {
-                championName: championData.name
-                  .toLowerCase()
-                  .replace(/\s+/g, "_"),
+                championName: sanitizeForFileName(championData.name),
                 data: JSON.stringify(championData),
               });
 

@@ -196,7 +196,7 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
               <Button
                 type="button"
                 onClick={() => {
-                  void handleUploadSkin;
+                  void handleUploadSkin();
                 }}
                 disabled={isUploading || !skinName.trim()}
               >
