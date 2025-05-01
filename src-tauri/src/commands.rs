@@ -554,8 +554,20 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
     Ok(cfg)
 }
 
-fn emit_terminal_log(app: &AppHandle, message: &str) {
-    let _ = app.emit("terminal-log", message);
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TerminalLog {
+    pub message: String,
+    pub log_type: String, // e.g. "lcu-watcher", "injection", "error", etc.
+    pub timestamp: String,
+}
+
+fn emit_terminal_log(app: &AppHandle, message: &str, log_type: &str) {
+    let log = TerminalLog {
+        message: message.to_string(),
+        log_type: log_type.to_string(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+    };
+    let _ = app.emit("terminal-log", log);
 }
 
 // Add helper function for cleaner log messages
@@ -583,7 +595,7 @@ fn format_json_summary(json: &serde_json::Value) -> String {
 
 // Helper function for delayed logging
 fn delayed_log(app: &AppHandle, message: &str) {
-    emit_terminal_log(app, message);
+    emit_terminal_log(app, message, "debug");
     thread::sleep(Duration::from_millis(100)); // Small delay for better readability
 }
 
@@ -607,9 +619,9 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
         loop {
             let mut sleep_duration = Duration::from_secs(5);
             
-            let log_msg = format!("[LCU Watcher] Monitoring directory: {}", league_path_clone);
+            let log_msg = format!("Monitoring directory: {}", league_path_clone);
             println!("{}", log_msg);
-            emit_terminal_log(&app_handle, &log_msg);
+            emit_terminal_log(&app_handle, &log_msg, "lcu-watcher");
             
             // Only check the configured League directory for lockfile
             let search_dirs = [PathBuf::from(&league_path_clone)];
@@ -620,9 +632,9 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
             
             // Rest of the lockfile detection code remains the same
             for dir in &search_dirs {
-                let log_msg = format!("[LCU Watcher] Looking for lockfiles in: {}", dir.display());
+                let log_msg = format!("Looking for lockfiles in: {}", dir.display());
                 println!("{}", log_msg);
-                emit_terminal_log(&app_handle, &log_msg);
+                emit_terminal_log(&app_handle, &log_msg, "lcu-watcher");
                 
                 // Check each possible lockfile name
                 for name in ["lockfile", "LeagueClientUx.lockfile", "LeagueClient.lockfile"] {
@@ -630,8 +642,8 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                     if path.exists() {
                         found_any_lockfile = true;
                         lockfile_path = Some(path.clone());
-                        println!("[LCU Watcher] Found lockfile: {}", path.display());
-                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] Found lockfile: {}", path.display()));
+                        println!("Found lockfile: {}", path.display());
+                        emit_terminal_log(&app_handle, &format!("Found lockfile: {}", path.display()), "lcu-watcher");
                     }
                     if let Ok(content) = fs::read_to_string(&path) {
                         let parts: Vec<&str> = content.split(':').collect();
@@ -656,15 +668,15 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                     continue;
                 } else if was_in_game && last_phase == "None" {
                     if let Err(e) = crate::injection::cleanup_injection(&app_handle, &league_path_clone) {
-                        println!("[LCU Watcher] Error cleaning up injection: {}", e);
-                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] Error cleaning up injection: {}", e));
+                        println!("Error cleaning up injection: {}", e);
+                        emit_terminal_log(&app_handle, &format!("Error cleaning up injection: {}", e), "error");
                     }
                     was_in_game = false;
                 }
                 
-                let log_msg = format!("[LCU Watcher] No valid lockfile found. Is League running? The lockfile should be at: {}", league_path_clone);
+                let log_msg = format!("No valid lockfile found. Is League running? The lockfile should be at: {}", league_path_clone);
                 println!("{}", log_msg);
-                emit_terminal_log(&app_handle, &log_msg);
+                emit_terminal_log(&app_handle, &log_msg, "lcu-watcher");
                 thread::sleep(Duration::from_secs(5));
                 continue;
             }
@@ -717,11 +729,11 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                     }
                                                 }
                                             },
-                                            Err(e) => println!("[LCU Watcher] Failed to parse response from {}: {}", endpoint, e),
+                                            Err(e) => println!("Failed to parse response from {}: {}", endpoint, e),
                                         }
                                     }
                                 },
-                                Err(e) => println!("[LCU Watcher] Failed to connect to endpoint {}: {}", endpoint, e),
+                                Err(e) => println!("Failed to connect to endpoint {}: {}", endpoint, e),
                             }
                         }
                         
@@ -733,7 +745,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                         let phase = phase_value.unwrap_or_else(|| "None".to_string());
                         
                         if phase != last_phase {
-                            println!("[LCU Watcher] LCU status changed: {} -> {}", last_phase, phase);
+                            println!("LCU status changed: {} -> {}", last_phase, phase);
                             
                             // If entering ChampSelect, preload assets to speed up injection later
                             if phase == "ChampSelect" {
@@ -743,7 +755,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                 
                                 if !champions_dir.exists() {
                                     if let Err(e) = fs::create_dir_all(&champions_dir) {
-                                        println!("[LCU Watcher] Failed to create champions directory: {}", e);
+                                        println!("Failed to create champions directory: {}", e);
                                     }
                                 }
                                 
@@ -752,7 +764,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                 let overlay_dir = app_dir.join("overlay");
                                 if overlay_dir.exists() {
                                     if let Err(e) = fs::remove_dir_all(&overlay_dir) {
-                                        println!("[LCU Watcher] Failed to clean overlay directory: {}", e);
+                                        println!("Failed to clean overlay directory: {}", e);
                                     }
                                 }
                             }
@@ -888,7 +900,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                         }
                                         
                                         if skin_changes {
-                                            emit_terminal_log(&app_handle, "[LCU Watcher] Updated skin selection tracking");
+                                            emit_terminal_log(&app_handle, "Updated skin selection tracking", "lcu-watcher");
                                         }
                                     }
                                 }
@@ -905,7 +917,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
 
                         // Handle Swift Play mode - detect Lobby -> Matchmaking transition
                         if last_phase == "Lobby" && phase == "Matchmaking" {
-                            emit_terminal_log(&app_handle, "[LCU Watcher] Detected transition from Lobby to Matchmaking, checking for Swift Play mode");
+                            emit_terminal_log(&app_handle, "Detected transition from Lobby to Matchmaking, checking for Swift Play mode", "lcu-watcher");
                             
                             // Check current queue information
                             let queue_url = format!("https://127.0.0.1:{}/lol-gameflow/v1/session", port);
@@ -920,43 +932,43 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                         match resp.json::<serde_json::Value>() {
                                             Ok(json) => {
                                                 // Log the full response structure for debugging
-                                                emit_terminal_log(&app_handle, "[LCU Debug] Swift Play session structure:");
+                                                emit_terminal_log(&app_handle, "[LCU Debug] Swift Play session structure:", "debug");
                                                 // Print important paths in the JSON that might contain champion selections
                                                 if let Some(game_data) = json.get("gameData") {
                                                     if let Some(queue) = game_data.get("queue") {
                                                         if let Some(queue_id) = queue.get("id").and_then(|id| id.as_i64()) {
-                                                            emit_terminal_log(&app_handle, &format!("[LCU Debug] Queue ID: {}", queue_id));
+                                                            emit_terminal_log(&app_handle, &format!("[LCU Debug] Queue ID: {}", queue_id), "debug");
                                                             
                                                             // Check if this is Swift Play queue (both ID 1700 and ID 480)
                                                             if queue_id == 1700 || queue_id == 480 {
-                                                                emit_terminal_log(&app_handle, &format!("[LCU Watcher] Confirmed Swift Play queue or compatible queue (ID: {})", queue_id));
+                                                                emit_terminal_log(&app_handle, &format!("Confirmed Swift Play queue or compatible queue (ID: {})", queue_id), "lcu-watcher");
                                                                 
                                                                 // Log player selection data
                                                                 if let Some(player_selections) = game_data.get("playerChampionSelections") {
-                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] playerChampionSelections: {}", player_selections));
+                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] playerChampionSelections: {}", player_selections), "debug");
                                                                 } else {
-                                                                    emit_terminal_log(&app_handle, "[LCU Debug] No playerChampionSelections found");
+                                                                    emit_terminal_log(&app_handle, "[LCU Debug] No playerChampionSelections found", "debug");
                                                                 }
                                                                 
                                                                 if let Some(selected_champs) = game_data.get("selectedChampions") {
-                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] selectedChampions: {}", selected_champs));
+                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] selectedChampions: {}", selected_champs), "debug");
                                                                 } else {
-                                                                    emit_terminal_log(&app_handle, "[LCU Debug] No selectedChampions found");
+                                                                    emit_terminal_log(&app_handle, "[LCU Debug] No selectedChampions found", "debug");
                                                                 }
                                                                 
                                                                 // Check for local player data
                                                                 if let Some(local_player) = json.get("localPlayerSelection") {
-                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] localPlayerSelection: {}", local_player));
+                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] localPlayerSelection: {}", local_player), "debug");
                                                                 }
                                                                 
                                                                 // Check for team data
                                                                 if let Some(my_team) = json.get("myTeam") {
-                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] myTeam: {}", my_team));
+                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] myTeam: {}", my_team), "debug");
                                                                 }
                                                                 
                                                                 // Check for role assignments
                                                                 if let Some(roles) = json.get("roleAssignments") {
-                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] roleAssignments: {}", roles));
+                                                                    emit_terminal_log(&app_handle, &format!("[LCU Debug] roleAssignments: {}", roles), "debug");
                                                                 }
                                                                 
                                                                 // Get player champion selections for Swift Play
@@ -964,15 +976,15 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                                 
                                                                 if !swift_play_champion_ids.is_empty() {
                                                                     emit_terminal_log(&app_handle, &format!(
-                                                                        "[LCU Watcher] Swift Play: Found {} champion selections: {:?}", 
+                                                                        "Swift Play: Found {} champion selections: {:?}", 
                                                                         swift_play_champion_ids.len(), 
                                                                         swift_play_champion_ids
-                                                                    ));
+                                                                    ), "lcu-watcher");
                                                                     
                                                                     // Inject skins for all selected champions
                                                                     inject_skins_for_champions(&app_handle, &league_path_clone, &swift_play_champion_ids);
                                                                 } else {
-                                                                    emit_terminal_log(&app_handle, "[LCU Watcher] Swift Play: No champion selections found in session data");
+                                                                    emit_terminal_log(&app_handle, "Swift Play: No champion selections found in session data", "lcu-watcher");
                                                                     
                                                                     // Try checking additional endpoints to find Swift Play champions
                                                                     let swift_play_url = format!("https://127.0.0.1:{}/lol-lobby/v2/lobby", port);
@@ -983,29 +995,29 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                                         Ok(swift_resp) => {
                                                                             if swift_resp.status().is_success() {
                                                                                 if let Ok(lobby_json) = swift_resp.json::<serde_json::Value>() {
-                                                                                    emit_terminal_log(&app_handle, "[LCU Debug] Swift Play lobby data found");
+                                                                                    emit_terminal_log(&app_handle, "[LCU Debug] Swift Play lobby data found", "debug");
                                                                                     
                                                                                     // Try to extract champion IDs from lobby data
                                                                                     let lobby_champion_ids = extract_swift_play_champions_from_lobby(&lobby_json);
                                                                                     
                                                                                     if !lobby_champion_ids.is_empty() {
                                                                                         emit_terminal_log(&app_handle, &format!(
-                                                                                            "[LCU Watcher] Swift Play: Found {} champion selections from lobby: {:?}", 
+                                                                                            "Swift Play: Found {} champion selections from lobby: {:?}", 
                                                                                             lobby_champion_ids.len(), 
                                                                                             lobby_champion_ids
-                                                                                        ));
+                                                                                        ), "lcu-watcher");
                                                                                         
                                                                                         // Inject skins for all selected champions from lobby
                                                                                         inject_skins_for_champions(&app_handle, &league_path_clone, &lobby_champion_ids);
                                                                                     } else {
-                                                                                        emit_terminal_log(&app_handle, "[LCU Watcher] Swift Play: No champion selections found in lobby data");
+                                                                                        emit_terminal_log(&app_handle, "Swift Play: No champion selections found in lobby data", "lcu-watcher");
                                                                                         emit_terminal_log(&app_handle, &format!("[LCU Debug] Full lobby data: {}", 
-                                                                                            serde_json::to_string_pretty(&lobby_json).unwrap_or_default()));
+                                                                                            serde_json::to_string_pretty(&lobby_json).unwrap_or_default()), "debug");
                                                                                     }
                                                                                 }
                                                                             }
                                                                         },
-                                                                        Err(e) => emit_terminal_log(&app_handle, &format!("[LCU Debug] Failed to get lobby data: {}", e)),
+                                                                        Err(e) => emit_terminal_log(&app_handle, &format!("[LCU Debug] Failed to get lobby data: {}", e), "debug"),
                                                                     }
                                                                 }
                                                             }
@@ -1013,11 +1025,11 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                     }
                                                 }
                                             },
-                                            Err(e) => println!("[LCU Watcher] Failed to parse queue info: {}", e),
+                                            Err(e) => println!("Failed to parse queue info: {}", e),
                                         }
                                     }
                                 },
-                                Err(e) => println!("[LCU Watcher] Failed to get queue information: {}", e),
+                                Err(e) => println!("Failed to get queue information: {}", e),
                             }
                         }
                         

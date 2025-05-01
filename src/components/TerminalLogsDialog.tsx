@@ -9,66 +9,92 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { listen } from "@tauri-apps/api/event";
-import { Terminal, Trash2, X, Copy, ArrowDownToLine } from "lucide-react";
-import { DropdownMenuItem } from "./ui/dropdown-menu";
+import {
+  Terminal,
+  Trash2,
+  X,
+  Copy,
+  ArrowDownToLine,
+  Filter,
+} from "lucide-react";
+import {
+  DropdownMenuItem,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import clsx from "clsx";
+import { useTerminalLogStore, TerminalLog } from "@/lib/store";
+import { Switch } from "./ui/switch";
+
+// Log type options for filtering
+const LOG_TYPE_LABELS: Record<string, string> = {
+  all: "All",
+  "lcu-watcher": "LCU Watcher",
+  injection: "Injection",
+  error: "Error",
+  debug: "Debug",
+};
+const ALL_LOG_TYPES = Object.keys(LOG_TYPE_LABELS).filter((k) => k !== "all");
 
 export function TerminalLogsDialog() {
-  const [logs, setLogs] = useState<string[]>([]);
+  const logs = useTerminalLogStore((s) => s.logs);
+  const clearLogs = useTerminalLogStore((s) => s.clearLogs);
+  const [filter, setFilter] = useState<string[]>(ALL_LOG_TYPES);
+  const [autoScroll, setAutoScroll] = useState(true);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    // Listen for terminal logs from the backend
-    const unlisten = listen("terminal-log", (event) => {
-      const log = event.payload as string;
-      setLogs((prev) => [...prev, log]);
-    });
-
-    return () => {
-      void unlisten.then((fn) => {
-        fn();
-      });
-    };
-  }, []);
+  // Remove the duplicate event listener - we now use the global TerminalLogListener
 
   // Scroll to bottom only if following
   useEffect(() => {
-    if (isAtBottom) {
+    if (autoScroll && isAtBottom) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [logs, isAtBottom]);
+  }, [logs, autoScroll, isAtBottom]);
 
   // Detect if user is at bottom
   const handleScroll = useCallback(() => {
     const el = scrollAreaRef.current;
     if (!el) return;
-    // 20px threshold for "at bottom"
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20;
     setIsAtBottom(atBottom);
   }, []);
 
-  const clearLogs = () => {
-    setLogs([]);
-  };
-
   const copyLogs = async () => {
     try {
-      await navigator.clipboard.writeText(logs.join("\n"));
+      await navigator.clipboard.writeText(
+        logs
+          .filter((log) => filter.length === 0 || filter.includes(log.log_type))
+          .map((log) => `[${log.log_type}] ${log.message}`)
+          .join("\n")
+      );
       toast.success("Logs copied to clipboard");
     } catch {
       toast.error("Failed to copy logs");
     }
   };
 
-  // Scroll to bottom and enable follow
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    setAutoScroll(true);
     setIsAtBottom(true);
   };
+
+  // Multi-select filter logic
+  const toggleFilter = (type: string) => {
+    setFilter((prev) =>
+      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+    );
+  };
+
+  const filteredLogs = logs.filter(
+    (log) => filter.length === 0 || filter.includes(log.log_type)
+  );
 
   return (
     <Dialog modal>
@@ -86,6 +112,26 @@ export function TerminalLogsDialog() {
         <DialogHeader className="flex flex-row items-center justify-between">
           <DialogTitle>Terminal Logs</DialogTitle>
           <div className="flex flex-row items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" title="Filter logs">
+                  <Filter className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {Object.entries(LOG_TYPE_LABELS)
+                  .filter(([key]) => key !== "all")
+                  .map(([key, label]) => (
+                    <DropdownMenuCheckboxItem
+                      key={key}
+                      checked={filter.includes(key)}
+                      onCheckedChange={() => toggleFilter(key)}
+                    >
+                      {label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               title="Copy"
               variant="outline"
@@ -93,7 +139,7 @@ export function TerminalLogsDialog() {
               onClick={() => {
                 void copyLogs();
               }}
-              disabled={logs.length === 0}
+              disabled={filteredLogs.length === 0}
             >
               <Copy className="h-4 w-4" />
             </Button>
@@ -120,15 +166,18 @@ export function TerminalLogsDialog() {
             style={{ overflowY: "auto", position: "relative" }}
           >
             <div className="font-mono text-sm">
-              {logs.map((log, index) => (
+              {filteredLogs.map((log, index) => (
                 <div key={index} className="whitespace-pre-wrap">
-                  {log}
+                  <span className="text-xs font-bold mr-2">
+                    [{log.log_type}]
+                  </span>
+                  {log.message}
                 </div>
               ))}
               <div ref={bottomRef} />
             </div>
           </ScrollArea>
-          {!isAtBottom && (
+          {!isAtBottom && autoScroll && (
             <Button
               onClick={scrollToBottom}
               variant="secondary"
@@ -142,6 +191,14 @@ export function TerminalLogsDialog() {
               <ArrowDownToLine className="h-5 w-5" />
             </Button>
           )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs">Auto Scroll</span>
+          <Switch
+            checked={autoScroll}
+            onCheckedChange={setAutoScroll}
+            aria-label="Auto Scroll"
+          />
         </div>
       </DialogContent>
     </Dialog>

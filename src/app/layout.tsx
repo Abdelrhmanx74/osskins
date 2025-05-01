@@ -3,6 +3,7 @@ import "./globals.css";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "next-themes";
 import { ThemeInitializer } from "@/components/providers/ThemeInitializer";
+import { TerminalLogListener } from "@/components/providers/TerminalLogListener";
 
 const poppins = Poppins({
   weight: ["400", "500", "600", "700"],
@@ -24,6 +25,7 @@ export default function RootLayout({
           <ThemeInitializer />
           {children}
           <Toaster richColors position="bottom-center" />
+          <TerminalLogListener />
         </ThemeProvider>
       </body>
     </html>

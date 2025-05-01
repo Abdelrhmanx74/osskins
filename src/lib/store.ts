@@ -157,3 +157,22 @@ export const useGameStore = create<GameState>((set) => ({
     });
   },
 }));
+
+// Terminal log store
+export type TerminalLog = {
+  message: string;
+  log_type: string;
+  timestamp: string;
+};
+
+interface TerminalLogState {
+  logs: TerminalLog[];
+  addLog: (log: TerminalLog) => void;
+  clearLogs: () => void;
+}
+
+export const useTerminalLogStore = create<TerminalLogState>((set) => ({
+  logs: [],
+  addLog: (log) => set((state) => ({ logs: [...state.logs, log] })),
+  clearLogs: () => set({ logs: [] }),
+}));

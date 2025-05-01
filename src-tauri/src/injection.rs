@@ -13,6 +13,8 @@ use once_cell::sync::Lazy;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use memmap2::{Mmap, MmapOptions};
+use crate::commands::TerminalLog;
+use chrono::Utc;
 
 // Define Windows-specific constants at the module level
 #[cfg(target_os = "windows")]
@@ -379,7 +381,7 @@ impl SkinInjector {
         
         // Emit the log to the frontend
         if let Some(app) = &self.app_handle {
-            let _ = app.emit("terminal-log", &emoji_message);
+            emit_terminal_log_injection(app, &emoji_message);
         }
         
         self.status = message.to_string();
@@ -2062,4 +2064,13 @@ fn copy_default_overlay(app_handle: &AppHandle, destination: &Path) -> Result<bo
     }
     
     Ok(false)
+}
+
+fn emit_terminal_log_injection(app: &AppHandle, message: &str) {
+    let log = TerminalLog {
+        message: message.to_string(),
+        log_type: "injection".to_string(),
+        timestamp: Utc::now().to_rfc3339(),
+    };
+    let _ = app.emit("terminal-log", log);
 }
