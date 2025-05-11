@@ -11,13 +11,16 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { TerminalLogsDialog } from "@/components/TerminalLogsDialog";
 import { SettingsDialog } from "@/components/SettingsDialog";
+import { PartyModeDialog } from "@/components/PartyModeDialog";
 import { useGameStore, SkinTab } from "@/lib/store";
 import { useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Champion } from "@/lib/types";
+import React from "react";
 
 interface TopBarProps {
   champions: Champion[];
@@ -28,7 +31,7 @@ interface TopBarProps {
   onUpdateData: () => void;
 }
 
-export function TopBar({
+export const TopBar = React.memo(function TopBar({
   champions,
   selectedChampionId,
   searchQuery,
@@ -36,8 +39,9 @@ export function TopBar({
   onChampionSelect,
   onUpdateData,
 }: TopBarProps) {
-  // Get tab state from the store
-  const { activeTab, setActiveTab } = useGameStore();
+  // Only subscribe to the specific state needed
+  const activeTab = useGameStore((s) => s.activeTab);
+  const setActiveTab = useGameStore((s) => s.setActiveTab);
 
   // Load saved tab preference from localStorage
   useEffect(() => {
@@ -122,17 +126,6 @@ export function TopBar({
           <InjectionStatusDot />
 
           {/* Update Data button always visible but disabled in custom tab */}
-          <Button
-            onClick={() => {
-              void handleForceUpdateData();
-            }}
-            variant="outline"
-            className="flex items-center gap-2"
-            disabled={activeTab === "custom"}
-          >
-            <RefreshCw className="h-4 w-4" />
-            Update Data
-          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" aria-label="Menu">
@@ -140,6 +133,26 @@ export function TopBar({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="min-w-50" align="end">
+              <PartyModeDialog />
+              <DropdownMenuItem
+                onClick={() => {
+                  onUpdateData();
+                }}
+                className="flex items-center gap-2"
+              >
+                <RefreshCw />
+                Check for Updates
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  void handleForceUpdateData();
+                }}
+                className="flex items-center gap-2"
+                disabled={activeTab === "custom"}
+              >
+                <RefreshCw className="h-4 w-4" />
+                Force Update Data
+              </DropdownMenuItem>
               <TerminalLogsDialog />
               <SettingsDialog />
             </DropdownMenuContent>
@@ -149,4 +162,4 @@ export function TopBar({
       </div>
     </div>
   );
-}
+});

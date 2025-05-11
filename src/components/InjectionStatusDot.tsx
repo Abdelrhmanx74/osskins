@@ -11,7 +11,8 @@ import { useGameStore } from "@/lib/store";
 type Status = "idle" | "injecting" | "success" | "error";
 
 export function InjectionStatusDot() {
-  const { injectionStatus, setInjectionStatus } = useGameStore();
+  const injectionStatus = useGameStore((s) => s.injectionStatus);
+  const setInjectionStatus = useGameStore((s) => s.setInjectionStatus);
   const toastShownRef = useRef<Record<string, boolean>>({});
   const currentInjectionRef = useRef<string | null>(null);
 

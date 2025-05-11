@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { CustomSkin } from "./types";
-// import { Champion, Skin } from "./hooks/use-champions";
 
 interface SelectedSkin {
   championId: number;
@@ -15,18 +14,37 @@ export type InjectionStatus = "idle" | "injecting" | "success" | "error";
 // Custom skin tabs
 export type SkinTab = "official" | "custom";
 
+// Party member interface
+export interface PartyMember {
+  id: string;
+  name: string;
+  availability: "online" | "away" | "offline" | "in-game";
+  skins: Map<number, SelectedSkin>; // Map of champion ID to selected skin
+}
+
 interface GameState {
   leaguePath: string | null;
   lcuStatus: string | null;
-  injectionStatus: InjectionStatus; // Add this
+  injectionStatus: InjectionStatus;
   selectedSkins: Map<number, SelectedSkin>;
   favorites: Set<number>;
   hasCompletedOnboarding: boolean;
   activeTab: SkinTab;
   customSkins: Map<number, CustomSkin[]>;
+  // Data update settings
+  autoUpdateData: boolean;
+  hasNewDataUpdate: boolean;
+  // Party mode state
+  partyMembers: PartyMember[];
+  pendingSyncRequest: {
+    memberId: string;
+    memberName: string;
+    data: string;
+  } | null;
+  // Methods
   setLeaguePath: (path: string) => void;
   setLcuStatus: (status: string) => void;
-  setInjectionStatus: (status: InjectionStatus) => void; // Add this
+  setInjectionStatus: (status: InjectionStatus) => void;
   selectSkin: (
     championId: number,
     skinId: number,
@@ -42,6 +60,20 @@ interface GameState {
   addCustomSkin: (skin: CustomSkin) => void;
   removeCustomSkin: (skinId: string) => void;
   setCustomSkins: (skins: CustomSkin[]) => void;
+  // Data update methods
+  setAutoUpdateData: (autoUpdate: boolean) => void;
+  setHasNewDataUpdate: (hasUpdate: boolean) => void;
+  // Party mode methods
+  addPartyMember: (member: PartyMember) => void;
+  removePartyMember: (memberId: string) => void;
+  updatePartyMemberSkins: (
+    memberId: string,
+    skins: Map<number, SelectedSkin>
+  ) => void;
+  clearParty: () => void;
+  setPendingSyncRequest: (
+    request: { memberId: string; memberName: string; data: string } | null
+  ) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -53,6 +85,12 @@ export const useGameStore = create<GameState>((set) => ({
   hasCompletedOnboarding: false,
   activeTab: "official", // Default to official skins tab
   customSkins: new Map(),
+  // Data update settings
+  autoUpdateData: true, // Default to auto-update enabled
+  hasNewDataUpdate: false,
+  // Party mode state
+  partyMembers: [],
+  pendingSyncRequest: null,
   setLeaguePath: (path) => {
     set({ leaguePath: path });
   },
@@ -156,14 +194,56 @@ export const useGameStore = create<GameState>((set) => ({
       return { customSkins: customSkinsMap };
     });
   },
+  // Data update methods
+  setAutoUpdateData: (autoUpdate) => {
+    set({ autoUpdateData: autoUpdate });
+    if (typeof window !== "undefined") {
+      localStorage.setItem("autoUpdateData", autoUpdate.toString());
+    }
+  },
+  setHasNewDataUpdate: (hasUpdate) => {
+    set({ hasNewDataUpdate: hasUpdate });
+  },
+  // Party mode methods
+  addPartyMember: (member) => {
+    set((state) => {
+      // Don't add duplicates
+      if (state.partyMembers.some((m) => m.id === member.id)) {
+        return state;
+      }
+      // Max party size is 5 (including the user)
+      if (state.partyMembers.length >= 4) {
+        return state;
+      }
+      return { partyMembers: [...state.partyMembers, member] };
+    });
+  },
+  removePartyMember: (memberId) => {
+    set((state) => ({
+      partyMembers: state.partyMembers.filter((m) => m.id !== memberId),
+    }));
+  },
+  updatePartyMemberSkins: (memberId, skins) => {
+    set((state) => ({
+      partyMembers: state.partyMembers.map((member) =>
+        member.id === memberId ? { ...member, skins } : member
+      ),
+    }));
+  },
+  clearParty: () => {
+    set({ partyMembers: [] });
+  },
+  setPendingSyncRequest: (request) => {
+    set({ pendingSyncRequest: request });
+  },
 }));
 
 // Terminal log store
-export type TerminalLog = {
+export interface TerminalLog {
   message: string;
   log_type: string;
   timestamp: string;
-};
+}
 
 interface TerminalLogState {
   logs: TerminalLog[];
@@ -173,6 +253,10 @@ interface TerminalLogState {
 
 export const useTerminalLogStore = create<TerminalLogState>((set) => ({
   logs: [],
-  addLog: (log) => set((state) => ({ logs: [...state.logs, log] })),
-  clearLogs: () => set({ logs: [] }),
+  addLog: (log) => {
+    set((state) => ({ logs: [...state.logs, log] }));
+  },
+  clearLogs: () => {
+    set({ logs: [] });
+  },
 }));

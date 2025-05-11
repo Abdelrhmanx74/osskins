@@ -12,52 +12,23 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useGameStore } from "@/lib/store";
-import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { Settings } from "lucide-react";
 import { DropdownMenuItem } from "./ui/dropdown-menu";
 import { Label } from "./ui/label";
 import { ThemeToneSelector } from "./ThemeToneSelector";
 import { Separator } from "./ui/separator";
+import { useLeagueDirectory } from "@/lib/hooks/use-league-directory";
+import { Switch } from "@/components/ui/switch";
 
 export function SettingsDialog() {
   const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const { leaguePath, setLeaguePath } = useGameStore();
-
-  const handleSelectDirectory = async () => {
-    try {
-      setIsLoading(true);
-      const path = await invoke<string>("select_league_directory");
-      if (path) {
-        setLeaguePath(path);
-        toast.success("League of Legends directory updated successfully");
-      }
-    } catch (err) {
-      console.error("Failed to select League directory:", err);
-      toast.error("Failed to select directory");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleAutoDetect = async () => {
-    try {
-      setIsLoading(true);
-      const path = await invoke<string>("auto_detect_league");
-      if (path) {
-        setLeaguePath(path);
-        toast.success("League of Legends installation found");
-      }
-    } catch (err) {
-      console.error("Failed to detect League directory:", err);
-      toast.error(
-        "Could not find League of Legends installation automatically"
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const leaguePath = useGameStore((s) => s.leaguePath);
+  const setLeaguePath = useGameStore((s) => s.setLeaguePath);
+  const autoUpdateData = useGameStore((s) => s.autoUpdateData);
+  const setAutoUpdateData = useGameStore((s) => s.setAutoUpdateData);
+  const { isLoading, handleSelectDirectory, handleAutoDetect } =
+    useLeagueDirectory(setLeaguePath);
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -68,19 +39,31 @@ export function SettingsDialog() {
             setIsOpen(true);
           }}
         >
-          <Settings className="h-4 w-4" />
+          <Settings className="size-4" />
           Settings
         </DropdownMenuItem>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>
-            Manage your League of Legends installation path and other settings.
-          </DialogDescription>
+          <DialogDescription>Manage your settings.</DialogDescription>
         </DialogHeader>
+        {/* Auto-update switch */}
+        <div className="flex items-center justify-between">
+          <Label>Auto Update Champion Data</Label>
+          <Switch
+            checked={autoUpdateData}
+            onCheckedChange={setAutoUpdateData}
+          />
+        </div>
 
-        <div className="grid gap-4 py-4">
+        <Separator />
+
+        <ThemeToneSelector />
+
+        <Separator />
+
+        <div className="grid gap-4">
           <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="leaguePath">League of Legends Path</Label>
             <Input
@@ -113,10 +96,6 @@ export function SettingsDialog() {
             </div>
           </div>
         </div>
-
-        <Separator />
-
-        <ThemeToneSelector />
 
         {/* Watermark Notice */}
         <div className="text-xs text-center mt-2 select-none">

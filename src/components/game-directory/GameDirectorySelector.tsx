@@ -3,10 +3,13 @@ import { Button } from "@/components/ui/button";
 import { useGameStore } from "@/lib/store";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
+import { useInitialization } from "@/lib/hooks/use-initialization";
 
 export function GameDirectorySelector() {
   const [isLoading, setIsLoading] = useState(false);
-  const { leaguePath, setLeaguePath } = useGameStore();
+  const { isInitialized } = useInitialization();
+  const leaguePath = useGameStore((s) => s.leaguePath);
+  const setLeaguePath = useGameStore((s) => s.setLeaguePath);
 
   const handleSelectDirectory = async () => {
     try {
@@ -42,27 +45,43 @@ export function GameDirectorySelector() {
     }
   };
 
+  // Don't show anything while initializing to prevent flash
+  if (!isInitialized) {
+    return null;
+  }
+
   return (
-    <div className="flex flex-col gap-4 items-center">
-      <div className="flex items-center gap-4">
-        <Button
-          onClick={() => void handleAutoDetect()}
-          disabled={isLoading}
-          variant="default"
-        >
-          {isLoading ? "Detecting..." : "Auto-Detect"}
-        </Button>
-        <Button
-          onClick={() => void handleSelectDirectory()}
-          disabled={isLoading}
-          variant="outline"
-        >
-          {isLoading ? "Selecting..." : "Browse"}
-        </Button>
+    <main className="flex min-h-full flex-col items-center justify-center p-24">
+      <div className="flex flex-col items-center gap-8">
+        <h1 className="text-2xl font-bold">Welcome to League Skin Manager</h1>
+        <p className="text-muted-foreground">
+          Please select your League of Legends installation directory to
+          continue
+        </p>
+        <div className="flex flex-col gap-4 items-center">
+          <div className="flex items-center gap-4">
+            <Button
+              onClick={() => void handleAutoDetect()}
+              disabled={isLoading}
+              variant="default"
+            >
+              {isLoading ? "Detecting..." : "Auto-Detect"}
+            </Button>
+            <Button
+              onClick={() => void handleSelectDirectory()}
+              disabled={isLoading}
+              variant="outline"
+            >
+              {isLoading ? "Selecting..." : "Browse"}
+            </Button>
+          </div>
+          {leaguePath && (
+            <p className="text-sm text-muted-foreground">
+              Found at: {leaguePath}
+            </p>
+          )}
+        </div>
       </div>
-      {leaguePath && (
-        <p className="text-sm text-muted-foreground">Found at: {leaguePath}</p>
-      )}
-    </div>
+    </main>
   );
 }

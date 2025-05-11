@@ -85,7 +85,6 @@ export function ChampionSearch({
     <Input
       ref={inputRef}
       type="search"
-      className="rounded-none"
       icon={<Search size={16} />}
       placeholder="Search champions..."
       value={searchQuery}

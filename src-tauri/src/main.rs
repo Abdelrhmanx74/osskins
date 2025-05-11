@@ -5,7 +5,9 @@ mod commands;
 mod injection;
 
 use commands::*;
-use tauri::Manager;
+use tauri::{Manager};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
+use tauri::menu::{Menu, MenuItem, MenuEvent};
 
 fn main() {
     tauri::Builder::default()
@@ -23,6 +25,49 @@ fn main() {
                 });
             }
             
+            // Set up system tray
+            let app_handle = app.handle();
+            // Use with_id for menu items as per docs
+            let osskins_item = MenuItem::with_id(app_handle, "osskins", "Osskins", true, None::<&str>)?;
+            let exit_item = MenuItem::with_id(app_handle, "exit", "Exit", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app_handle, &[&osskins_item, &exit_item])?;
+            let _tray = TrayIconBuilder::new()
+                .menu(&tray_menu)
+                .menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "osskins" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    },
+                    "exit" => {
+                        app.exit(0);
+                    },
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| match event {
+                    TrayIconEvent::Click { button: MouseButton::Left, .. } => {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    },
+                    _ => {}
+                })
+                .icon(app.default_window_icon().unwrap().clone())
+                .build(app_handle)
+                .unwrap();
+            // Listen for window close and hide instead
+            if let Some(main_window) = app_handle.get_webview_window("main") {
+                main_window.clone().on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = main_window.hide();
+                    }
+                });
+            }
             Ok(())
         })
         .plugin(tauri_plugin_shell::init())
@@ -44,10 +89,20 @@ fn main() {
             delete_champions_cache,
             auto_detect_league,
             
+            // GitHub update commands
+            check_github_updates,
+            pull_github_updates,
+            update_champion_data_from_github,
+            
             // custom skin commands
             upload_custom_skin,
             get_custom_skins,
             delete_custom_skin,
+            
+            // LCU API and party mode commands
+            get_lcu_friends,
+            send_lcu_message,
+            get_lcu_messages,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())

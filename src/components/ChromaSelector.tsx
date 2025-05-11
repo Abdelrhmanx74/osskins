@@ -1,9 +1,9 @@
-import { CachedChroma } from "@/utils/api";
+import { ChromaInSummary } from "@/utils/api";
 import { cn } from "@/lib/utils";
 
 interface ChromaSelectorProps {
-  chromas: CachedChroma[];
-  onSelect: (chroma: CachedChroma | null) => void;
+  chromas: ChromaInSummary[];
+  onSelect: (chroma: ChromaInSummary | null) => void;
   selectedChromaId?: number;
 }
 
@@ -23,10 +23,7 @@ export function ChromaSelector({
     .join(", ")})`;
 
   return (
-    <div
-      className="relative flex flex-col items-center group"
-      style={{ minWidth: 24 }}
-    >
+    <div className="relative flex flex-col items-center group">
       {/* Main dot with gradient */}
       <div
         className={cn(

@@ -1,88 +1,60 @@
-import Image from "next/image";
-import { Card } from "./ui/card";
+import React from "react";
+import { Champion } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { Card } from "./ui/card";
+import Image from "next/image";
 import { Heart } from "lucide-react";
-import { useRef, useState } from "react";
-import { Skeleton } from "./ui/skeleton";
 
 interface ChampionCardProps {
-  champion: {
-    id: number;
-    name: string;
-    iconSrc: string;
-  };
-  onClick: () => void;
+  champion: Champion;
   isSelected: boolean;
-  isFavorite?: boolean;
-  onToggleFavorite?: () => void;
-  className?: string;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
+  onClick: () => void;
 }
 
 export function ChampionCard({
   champion,
-  onClick,
   isSelected,
-  isFavorite = false,
+  isFavorite,
   onToggleFavorite,
-  className,
+  onClick,
 }: ChampionCardProps) {
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [imgLoaded, setImgLoaded] = useState(false);
-
-  // Handle favorite click without triggering the main card click
   const handleFavoriteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onToggleFavorite) {
-      onToggleFavorite();
-    }
+    onToggleFavorite();
   };
 
   return (
     <Card
-      ref={cardRef}
       className={cn(
-        "relative cursor-pointer size-fit overflow-hidden border-2 p-0 flex flex-col items-center rounded-none",
-        isSelected ? "border-primary" : "border-border",
-        isFavorite ? "bg-primary/5" : "",
-        className
+        "relative aspect-square cursor-pointer overflow-hidden transition-all p-0 rounded-none",
+        isSelected && "ring ring-primary"
       )}
       onClick={onClick}
     >
-      <div className="relative w-16 h-16 flex items-center justify-center">
-        {!imgLoaded && <Skeleton className="absolute inset-0 w-full h-full" />}
-        <Image
-          src={champion.iconSrc}
-          alt={`${champion.name} icon`}
-          width={64}
-          height={64}
+      <button
+        className="absolute top-1 right-1 p-1 hover:bg-background/80 rounded-full"
+        onClick={handleFavoriteClick}
+      >
+        <Heart
+          size={16}
           className={cn(
-            "object-contain transition-opacity duration-200",
-            imgLoaded ? "opacity-100" : "opacity-0"
+            "transition-colors",
+            isFavorite ? "fill-primary text-primary" : "text-muted-foreground"
           )}
-          onLoad={() => {
-            setImgLoaded(true);
-          }}
-          onLoadingComplete={() => {
-            setImgLoaded(true);
-          }}
         />
-      </div>
-      {/* <p className="text-sm text-center truncate max-w-full">{champion.name}</p> */}
+      </button>
 
-      {onToggleFavorite && (
-        <button
-          className="absolute top-1 right-1 p-1 hover:bg-background/80 rounded-full"
-          onClick={handleFavoriteClick}
-        >
-          <Heart
-            size={16}
-            className={cn(
-              "transition-colors",
-              isFavorite ? "fill-primary text-primary" : "text-muted-foreground"
-            )}
-          />
-        </button>
-      )}
+      <Image
+        src={champion.iconSrc}
+        alt={champion.name}
+        className="size-full object-cover"
+        loading="lazy"
+        width={64}
+        height={64}
+        unoptimized
+      />
     </Card>
   );
 }

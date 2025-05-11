@@ -7,6 +7,8 @@ import { SunIcon, MoonIcon } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
+import { useThemeToneContext } from "@/components/providers/ThemeToneProvider";
+import { Label } from "./ui/label";
 
 // Define theme tone options with palettes for both light and dark modes
 // Now exported so it can be used by ThemeInitializer
@@ -389,55 +391,50 @@ export function useThemeTone() {
   };
 }
 
-/**
- * Theme tone selector component
- */
 export function ThemeToneSelector() {
   const { tone, setTone, isDark, toggleTheme, isTransitioning } =
-    useThemeTone();
+    useThemeToneContext();
 
   return (
     <>
-      <div className="px-2 py-2">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium">Theme</span>
-          <div className="flex items-center gap-2">
-            <SunIcon size={14} className={isDark ? "opacity-40" : ""} />
-            <Switch
-              checked={isDark}
-              onCheckedChange={toggleTheme}
-              disabled={isTransitioning}
-            />
-            <MoonIcon size={14} className={!isDark ? "opacity-40" : ""} />
-          </div>
+      <div className="flex items-center justify-between">
+        <Label>Theme</Label>
+        <div className="flex items-center gap-2">
+          <SunIcon size={14} className={isDark ? "opacity-40" : ""} />
+          <Switch
+            checked={isDark}
+            onCheckedChange={toggleTheme}
+            disabled={isTransitioning}
+          />
+          <MoonIcon size={14} className={!isDark ? "opacity-40" : ""} />
         </div>
+      </div>
 
-        <div className="grid grid-cols-3 gap-2 mt-3">
-          {TONES.map((t) => (
-            <button
-              key={t.value}
-              className={cn(
-                "relative h-8 rounded-md transition-all flex items-center justify-center",
-                tone === t.value
-                  ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                  : "ring-1 ring-border hover:ring-2"
-              )}
-              onClick={() => {
-                if (!isTransitioning) {
-                  setTone(t.value);
-                  toast.success(`Theme changed to ${t.name}`);
-                }
-              }}
-              disabled={isTransitioning}
-              style={{
-                background: t.palette.primary,
-                opacity: isTransitioning ? 0.7 : 1,
-                cursor: isTransitioning ? "not-allowed" : "pointer",
-              }}
-              title={t.name}
-            />
-          ))}
-        </div>
+      <div className="grid grid-cols-3 gap-2">
+        {TONES.map((t) => (
+          <button
+            key={t.value}
+            className={cn(
+              "relative h-8 rounded-md transition-all flex items-center justify-center",
+              tone === t.value
+                ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                : "ring-1 ring-border hover:ring-2"
+            )}
+            onClick={() => {
+              if (!isTransitioning) {
+                setTone(t.value);
+                toast.success(`Theme changed to ${t.name}`);
+              }
+            }}
+            disabled={isTransitioning}
+            style={{
+              background: t.palette.primary,
+              opacity: isTransitioning ? 0.7 : 1,
+              cursor: isTransitioning ? "not-allowed" : "pointer",
+            }}
+            title={t.name}
+          />
+        ))}
       </div>
     </>
   );

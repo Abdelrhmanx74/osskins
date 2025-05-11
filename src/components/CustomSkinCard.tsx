@@ -10,17 +10,24 @@ import Image from "next/image";
 import { TrashIcon, Play, Check } from "lucide-react";
 import { useGameStore } from "@/lib/store";
 import { toast } from "sonner";
+import { shallow } from "zustand/shallow";
 
 interface CustomSkinCardProps {
   skin: CustomSkin;
   onDelete: (skinId: string) => Promise<boolean>;
 }
 
-export function CustomSkinCard({ skin, onDelete }: CustomSkinCardProps) {
+export const CustomSkinCard = React.memo(function CustomSkinCard({
+  skin,
+  onDelete,
+}: CustomSkinCardProps) {
   const [isHovering, setIsHovering] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const { selectedSkins, selectSkin, clearSelection } = useGameStore();
+  // Only subscribe to the specific state/actions needed
+  const selectedSkins = useGameStore((s) => s.selectedSkins);
+  const selectSkin = useGameStore((s) => s.selectSkin);
+  const clearSelection = useGameStore((s) => s.clearSelection);
 
   // Check if this skin is selected
   const isSelected =
@@ -110,4 +117,4 @@ export function CustomSkinCard({ skin, onDelete }: CustomSkinCardProps) {
       </div>
     </Button>
   );
-}
+});

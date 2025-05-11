@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
-import { useCustomSkins } from "@/lib/hooks/use-custom-skins";
+import React, { useState, Suspense } from "react";
+import { useChampions } from "@/lib/hooks/use-champions";
 import { CustomSkinItem } from "./CustomSkinItem";
 import { Button } from "./ui/button";
-import { useChampions } from "@/lib/hooks/use-champions";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -17,106 +16,91 @@ import {
 } from "./ui/dialog";
 import { Label } from "./ui/label";
 import { Input } from "./ui/input";
+import { Skeleton } from "./ui/skeleton";
+import { useCustomSkins } from "@/lib/hooks/use-custom-skins";
 
 interface CustomSkinListProps {
   championId: number | null;
 }
 
-export function CustomSkinList({ championId }: CustomSkinListProps) {
-  const { customSkins, isLoading, error, deleteCustomSkin, uploadCustomSkin } =
-    useCustomSkins();
-  const { champions } = useChampions();
+function CustomSkinLoading() {
+  return (
+    <div className="size-full space-y-3 px-20 py-10">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div
+          key={i}
+          className="w-full py-6 px-1 bg-primary/20 gap-0 rounded-lg overflow-hidden animate-pulse"
+        >
+          <div className="p-2">
+            <Skeleton className="size-8" />
+          </div>
+          <div className="flex justify-between gap-2 px-2 items-center w-full">
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="size-8 rounded-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-  // Add state for the dialog
+export function CustomSkinList({ championId }: CustomSkinListProps) {
+  const { champions } = useChampions();
+  const { customSkins, uploadCustomSkin, deleteCustomSkin } = useCustomSkins();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [skinName, setSkinName] = useState("");
   const [isUploading, setIsUploading] = useState(false);
 
-  // Get the champion data if ID is provided
   const champion = championId
     ? champions.find((c) => c.id === championId)
     : null;
-
-  // Filter skins for the selected champion
   const championCustomSkins =
     championId !== null ? customSkins.get(championId) ?? [] : [];
 
-  // Handler for adding a new custom skin
   const handleAddNewSkin = () => {
     if (!championId) {
       toast.error("Please select a champion first");
       return;
     }
-
-    // Set default skin name and open dialog
-    const defaultName = champion
-      ? `Custom ${champion.name} Skin`
-      : "Custom Skin";
-    setSkinName(defaultName);
     setIsDialogOpen(true);
   };
 
-  // Handler for uploading the skin
-  const handleUploadSkin = async () => {
-    if (!championId) {
-      toast.error("Please select a champion first");
-      return;
-    }
-
-    if (!skinName.trim()) {
-      toast.error("Please enter a skin name");
-      return;
-    }
+  const handleUploadSkin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!championId) return;
 
     setIsUploading(true);
     try {
-      const result = await uploadCustomSkin(championId, skinName);
-      if (result) {
-        toast.success(`Custom skin "${skinName}" added successfully`);
+      const newSkin = await uploadCustomSkin(championId, skinName);
+      if (newSkin) {
         setIsDialogOpen(false);
-        resetForm();
-      } else {
-        toast.error("Failed to add custom skin. Please try again.");
+        setSkinName("");
+        toast.success("Custom skin uploaded successfully");
       }
-    } catch (err) {
-      console.error("Error uploading skin:", err);
-      toast.error("Error uploading skin. Please try again.");
+    } catch (error) {
+      toast.error("Failed to upload custom skin");
+      console.error(error);
     } finally {
       setIsUploading(false);
     }
   };
 
-  // Reset the form
-  const resetForm = () => {
-    setSkinName("");
+  const handleDeleteSkin = async (skinId: string): Promise<boolean> => {
+    try {
+      const success = await deleteCustomSkin(skinId);
+      if (success) {
+        toast.success("Skin deleted successfully");
+        return true;
+      } else {
+        toast.error("Failed to delete skin");
+        return false;
+      }
+    } catch (error) {
+      toast.error("An error occurred while deleting the skin");
+      return false;
+    }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full w-full">
-        <p className="text-muted-foreground">Loading custom skins...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full w-full">
-        <p className="text-destructive">Error loading custom skins: {error}</p>
-        <Button
-          variant="outline"
-          className="mt-4"
-          onClick={() => {
-            window.location.reload();
-          }}
-        >
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
-  // If no champion is selected
   if (!championId) {
     return (
       <div className="flex flex-col items-center justify-center h-full w-full p-4">
@@ -128,13 +112,13 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
   }
 
   return (
-    <>
+    <Suspense fallback={<CustomSkinLoading />}>
       <div className="size-full space-y-3 px-20 py-10">
         {championCustomSkins.map((skin) => (
           <CustomSkinItem
             key={skin.id}
             skin={skin}
-            onDelete={deleteCustomSkin}
+            onDelete={handleDeleteSkin}
           />
         ))}
 
@@ -146,7 +130,6 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
           </div>
         )}
 
-        {/* Add skin button always shown at the end of the list */}
         <Button
           size={"lg"}
           variant="outline"
@@ -167,45 +150,45 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-4 py-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="name">Skin Name</Label>
-                <Input
-                  id="name"
-                  value={skinName}
-                  onChange={(e) => {
-                    setSkinName(e.target.value);
-                  }}
-                  placeholder="Enter a name for this skin"
-                />
+            <form onSubmit={handleUploadSkin}>
+              <div className="grid gap-4 py-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="skinName">Skin Name</Label>
+                  <Input
+                    id="skinName"
+                    name="skinName"
+                    value={skinName}
+                    onChange={(e) => {
+                      setSkinName(e.target.value);
+                    }}
+                    placeholder="Enter a name for this skin"
+                  />
+                </div>
               </div>
-            </div>
 
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setIsDialogOpen(false);
-                  resetForm();
-                }}
-                disabled={isUploading}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={() => {
-                  void handleUploadSkin();
-                }}
-                disabled={isUploading || !skinName.trim()}
-              >
-                {isUploading ? "Uploading..." : "Upload Skin"}
-              </Button>
-            </DialogFooter>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsDialogOpen(false);
+                    setSkinName("");
+                  }}
+                  disabled={isUploading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isUploading || !skinName.trim()}
+                >
+                  {isUploading ? "Uploading..." : "Upload Skin"}
+                </Button>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
       </div>
-    </>
+    </Suspense>
   );
 }

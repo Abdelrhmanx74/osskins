@@ -1,4 +1,4 @@
-import { Champion, ChampionSummary, Skin, Chroma } from "./types";
+import { Champion, ChampionInSummary, Skin, Chroma } from "./types";
 
 const COMMUNITY_DRAGON_BASE_URL =
   "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default";
@@ -37,14 +37,14 @@ function constructAssetUrl(path: string): string {
   return `${COMMUNITY_DRAGON_BASE_URL}/${transformedPath}`;
 }
 
-export async function fetchChampionSummaries(): Promise<ChampionSummary[]> {
+export async function fetchChampionSummaries(): Promise<ChampionInSummary[]> {
   const response = await fetch(
     `${COMMUNITY_DRAGON_BASE_URL}/v1/champion-summary.json`
   );
   if (!response.ok) {
     throw new Error("Failed to fetch champion summaries");
   }
-  const data = (await response.json()) as ChampionSummary[];
+  const data = (await response.json()) as ChampionInSummary[];
   return data;
 }
 
@@ -88,7 +88,7 @@ export function sanitizeForFileName(str: string): string {
 }
 
 export function transformChampionData(
-  summary: ChampionSummary,
+  summary: ChampionInSummary,
   details: ChampionDetails,
   fantomeFiles: Map<number, Uint8Array>
 ): Champion {

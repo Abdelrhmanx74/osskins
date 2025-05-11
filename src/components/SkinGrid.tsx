@@ -1,5 +1,4 @@
-"use client";
-
+import React from "react";
 import { Champion } from "@/lib/types";
 import { SkinCard } from "./SkinCard";
 
@@ -7,7 +6,9 @@ interface SkinGridProps {
   champion: Champion | null;
 }
 
-export function SkinGrid({ champion }: SkinGridProps) {
+export const SkinGrid = React.memo(function SkinGrid({
+  champion,
+}: SkinGridProps) {
   if (!champion) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -25,4 +26,4 @@ export function SkinGrid({ champion }: SkinGridProps) {
         ))}
     </div>
   );
-}
+});
