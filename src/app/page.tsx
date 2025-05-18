@@ -15,7 +15,7 @@ import { CustomSkinList } from "@/components/CustomSkinList";
 import { TopBar } from "@/components/layout/TopBar";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
-import { DataUpdateModal } from "@/components/DataUpdateModal";
+import { DownloadingModal } from "@/components/DownloadingModal";
 import { Button } from "@/components/ui/button";
 
 interface UpdateInfo {
@@ -118,7 +118,7 @@ export default function Home() {
       />
 
       {/* Update Modal - visible when updating or when manually opened */}
-      <DataUpdateModal
+      <DownloadingModal
         isOpen={isUpdating || isUpdateModalOpen}
         progress={progress}
         onClose={() => {

@@ -1,0 +1,14 @@
+# Target labels
+ zstd-populate
+# Source files and their labels
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/zstd-populate
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4ebe753644221f83fa1974ed16443bdb/zstd-populate.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/1c5b379b56adc3e28ef710bb3022cbb9/zstd-populate-complete.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-build.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-configure.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-download.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-install.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-mkdir.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-patch.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-test.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-update.rule

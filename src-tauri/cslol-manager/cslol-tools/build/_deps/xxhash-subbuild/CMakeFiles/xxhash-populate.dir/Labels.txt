@@ -1,0 +1,14 @@
+# Target labels
+ xxhash-populate
+# Source files and their labels
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/CMakeFiles/xxhash-populate
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/CMakeFiles/3cc869ed8b8c7074a39fb7f050407080/xxhash-populate.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/CMakeFiles/f6665b30d04afc2988436c7f0007ff01/xxhash-populate-complete.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/CMakeFiles/8d46e5f22c5e7084546ce3100967672c/xxhash-populate-build.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/CMakeFiles/8d46e5f22c5e7084546ce3100967672c/xxhash-populate-configure.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/CMakeFiles/8d46e5f22c5e7084546ce3100967672c/xxhash-populate-download.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/CMakeFiles/8d46e5f22c5e7084546ce3100967672c/xxhash-populate-install.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/CMakeFiles/8d46e5f22c5e7084546ce3100967672c/xxhash-populate-mkdir.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/CMakeFiles/8d46e5f22c5e7084546ce3100967672c/xxhash-populate-patch.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/CMakeFiles/8d46e5f22c5e7084546ce3100967672c/xxhash-populate-test.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/CMakeFiles/8d46e5f22c5e7084546ce3100967672c/xxhash-populate-update.rule

@@ -1,0 +1,150 @@
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\LIBDEFLATE-SUBBUILD\CMAKEFILES\E0A4A29CE5D409394A92453B62881FB5\LIBDEFLATE-POPULATE-MKDIR.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -Dcfgdir=/Debug -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/tmp/libdeflate-populate-mkdirs.cmake
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-mkdir
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\LIBDEFLATE-SUBBUILD\CMAKEFILES\E0A4A29CE5D409394A92453B62881FB5\LIBDEFLATE-POPULATE-DOWNLOAD.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/tmp/libdeflate-populate-gitclone.cmake
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-download
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\LIBDEFLATE-SUBBUILD\CMAKEFILES\E0A4A29CE5D409394A92453B62881FB5\LIBDEFLATE-POPULATE-UPDATE.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-src
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -Dcan_fetch=YES -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/tmp/libdeflate-populate-gitupdate.cmake
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\LIBDEFLATE-SUBBUILD\CMAKEFILES\E0A4A29CE5D409394A92453B62881FB5\LIBDEFLATE-POPULATE-PATCH.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-patch
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\LIBDEFLATE-SUBBUILD\CMAKEFILES\E0A4A29CE5D409394A92453B62881FB5\LIBDEFLATE-POPULATE-CONFIGURE.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-configure
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\LIBDEFLATE-SUBBUILD\CMAKEFILES\E0A4A29CE5D409394A92453B62881FB5\LIBDEFLATE-POPULATE-BUILD.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-build
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\LIBDEFLATE-SUBBUILD\CMAKEFILES\E0A4A29CE5D409394A92453B62881FB5\LIBDEFLATE-POPULATE-INSTALL.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-install
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\LIBDEFLATE-SUBBUILD\CMAKEFILES\E0A4A29CE5D409394A92453B62881FB5\LIBDEFLATE-POPULATE-TEST.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-test
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\LIBDEFLATE-SUBBUILD\CMAKEFILES\0D3A5C9E8BC5D13C0C5B7A5FE0D4C643\LIBDEFLATE-POPULATE-COMPLETE.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E make_directory C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/Debug
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/Debug/libdeflate-populate-complete
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-done
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\LIBDEFLATE-SUBBUILD\CMAKEFILES\EF513EB130E2FE6DC724BA4C24A8DA60\LIBDEFLATE-POPULATE.RULE
+setlocal
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\LIBDEFLATE-SUBBUILD\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild -BC:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild --check-stamp-file C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

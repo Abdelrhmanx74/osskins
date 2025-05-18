@@ -1,0 +1,10 @@
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\XXHASH-SUBBUILD\CMAKEFILES\3CC869ED8B8C7074A39FB7F050407080\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild -BC:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/xxhash-populate.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

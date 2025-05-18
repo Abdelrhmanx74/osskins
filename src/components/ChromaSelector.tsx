@@ -1,4 +1,4 @@
-import { ChromaInSummary } from "@/utils/api";
+import { ChromaInSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface ChromaSelectorProps {

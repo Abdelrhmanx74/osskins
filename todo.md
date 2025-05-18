@@ -22,7 +22,7 @@
 - [ ] Simultaneously use two files in the custom skin
 - [ ] Test the cleaning function
 - [ ] Make the injection status work till the end of the game
-- [ ] Refactor the command & injection files to be around ~500 each
+- [x] Refactor the command & injection files to be around ~500 each
 - [ ] Implement git-like feature so the user doesn't have to update manually
 - [ ] Check for better injection structure ways
 - [ ] Checking for messages doesn't work lcu shit...

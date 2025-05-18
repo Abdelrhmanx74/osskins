@@ -1,0 +1,303 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="16.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{AD36BC3C-44E8-3D74-B17F-E71F0D5D22AA}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>libdeflate-populate</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v142</PlatformToolset>
+    <UseDebugLibraries>true</UseDebugLibraries>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\e0a4a29ce5d409394a92453b62881fb5\libdeflate-populate-mkdir.rule">
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Creating directories for 'libdeflate-populate'</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -Dcfgdir=/Debug -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/tmp/libdeflate-populate-mkdirs.cmake
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-mkdir
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-mkdir</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\e0a4a29ce5d409394a92453b62881fb5\libdeflate-populate-download.rule">
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Performing download step (git clone) for 'libdeflate-populate'</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/tmp/libdeflate-populate-gitclone.cmake
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-download
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\libdeflate-populate-gitinfo.txt;C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-mkdir;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-download</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\e0a4a29ce5d409394a92453b62881fb5\libdeflate-populate-update.rule">
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Performing update step for 'libdeflate-populate'</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-src
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -Dcan_fetch=YES -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/tmp/libdeflate-populate-gitupdate.cmake
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\tmp\libdeflate-populate-gitupdate.cmake;C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\libdeflate-populate-update-info.txt;C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-download;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-update</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <VerifyInputsAndOutputsExist Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</VerifyInputsAndOutputsExist>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\e0a4a29ce5d409394a92453b62881fb5\libdeflate-populate-patch.rule">
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">No patch step for 'libdeflate-populate'</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-patch
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\libdeflate-populate-patch-info.txt;C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-update;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-patch</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <VerifyInputsAndOutputsExist Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</VerifyInputsAndOutputsExist>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\e0a4a29ce5d409394a92453b62881fb5\libdeflate-populate-configure.rule">
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">No configure step for 'libdeflate-populate'</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-configure
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\tmp\libdeflate-populate-cfgcmd.txt;C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-patch;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-configure</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\e0a4a29ce5d409394a92453b62881fb5\libdeflate-populate-build.rule">
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">No build step for 'libdeflate-populate'</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-build
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-configure;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-build</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\e0a4a29ce5d409394a92453b62881fb5\libdeflate-populate-install.rule">
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">No install step for 'libdeflate-populate'</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-install
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-build;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-install</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\e0a4a29ce5d409394a92453b62881fb5\libdeflate-populate-test.rule">
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">No test step for 'libdeflate-populate'</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-test
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-install;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-test</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\0d3a5c9e8bc5d13c0c5b7a5fe0d4c643\libdeflate-populate-complete.rule">
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Completed 'libdeflate-populate'</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E make_directory C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/Debug
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/Debug/libdeflate-populate-complete
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/libdeflate-populate-prefix/src/libdeflate-populate-stamp/Debug/libdeflate-populate-done
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-install;C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-mkdir;C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-download;C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-update;C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-patch;C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-configure;C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-build;C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\src\libdeflate-populate-stamp\Debug\libdeflate-populate-test;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\Debug\libdeflate-populate-complete</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <VerifyInputsAndOutputsExist Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</VerifyInputsAndOutputsExist>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\ef513eb130e2fe6dc724ba4c24a8da60\libdeflate-populate.rule">
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"></Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\Debug\libdeflate-populate-complete;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\libdeflate-populate</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <VerifyInputsAndOutputsExist Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</VerifyInputsAndOutputsExist>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeLists.txt">
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Building Custom Rule C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild -BC:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild --check-stamp-file C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineSystem.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeSystem.cmake.in;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\ExternalProject.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\ExternalProject\PatchInfo.txt.in;C:\Program Files\CMake\share\cmake-4.0\Modules\ExternalProject\RepositoryInfo.txt.in;C:\Program Files\CMake\share\cmake-4.0\Modules\ExternalProject\UpdateInfo.txt.in;C:\Program Files\CMake\share\cmake-4.0\Modules\ExternalProject\cfgcmd.txt.in;C:\Program Files\CMake\share\cmake-4.0\Modules\ExternalProject\gitclone.cmake.in;C:\Program Files\CMake\share\cmake-4.0\Modules\ExternalProject\gitupdate.cmake.in;C:\Program Files\CMake\share\cmake-4.0\Modules\ExternalProject\mkdirs.cmake.in;C:\Program Files\CMake\share\cmake-4.0\Modules\ExternalProject\shared_internal_commands.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Windows-Initialize.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\WindowsPaths.cmake;C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\4.0.0\CMakeSystem.cmake;C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\libdeflate-populate-prefix\tmp\libdeflate-populate-mkdirs.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\CMakeFiles\libdeflate-populate">
+    </None>
+  </ItemGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\libdeflate-subbuild\ZERO_CHECK.vcxproj">
+      <Project>{F80AF882-F3B7-332C-9B36-D31214A6D447}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

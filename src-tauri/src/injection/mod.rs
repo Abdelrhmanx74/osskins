@@ -13,4 +13,3 @@ pub use utils::*;
 
 // Re-export the main public functions directly
 pub use injector::{inject_skins, cleanup_injection};
-pub use utils::{get_global_index, GLOBAL_FILE_INDEX, copy_default_overlay, emit_terminal_log_injection};

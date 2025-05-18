@@ -1,0 +1,22 @@
+# CMake generation dependency list for this directory.
+C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineSystem.cmake
+C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeGenericSystem.cmake
+C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeInitializeConfigs.cmake
+C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeSystem.cmake.in
+C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeSystemSpecificInformation.cmake
+C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeSystemSpecificInitialize.cmake
+C:/Program Files/CMake/share/cmake-4.0/Modules/ExternalProject.cmake
+C:/Program Files/CMake/share/cmake-4.0/Modules/ExternalProject/PatchInfo.txt.in
+C:/Program Files/CMake/share/cmake-4.0/Modules/ExternalProject/RepositoryInfo.txt.in
+C:/Program Files/CMake/share/cmake-4.0/Modules/ExternalProject/UpdateInfo.txt.in
+C:/Program Files/CMake/share/cmake-4.0/Modules/ExternalProject/cfgcmd.txt.in
+C:/Program Files/CMake/share/cmake-4.0/Modules/ExternalProject/gitclone.cmake.in
+C:/Program Files/CMake/share/cmake-4.0/Modules/ExternalProject/gitupdate.cmake.in
+C:/Program Files/CMake/share/cmake-4.0/Modules/ExternalProject/mkdirs.cmake.in
+C:/Program Files/CMake/share/cmake-4.0/Modules/ExternalProject/shared_internal_commands.cmake
+C:/Program Files/CMake/share/cmake-4.0/Modules/Platform/Windows-Initialize.cmake
+C:/Program Files/CMake/share/cmake-4.0/Modules/Platform/Windows.cmake
+C:/Program Files/CMake/share/cmake-4.0/Modules/Platform/WindowsPaths.cmake
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/4.0.0/CMakeSystem.cmake
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeLists.txt
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/miniz-populate-prefix/tmp/miniz-populate-mkdirs.cmake

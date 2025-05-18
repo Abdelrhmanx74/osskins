@@ -1,0 +1,150 @@
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\ZSTD-SUBBUILD\CMAKEFILES\4DB9CC456EF5D775B609533C314DD8D8\ZSTD-POPULATE-MKDIR.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -Dcfgdir=/Debug -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/zstd-populate-prefix/tmp/zstd-populate-mkdirs.cmake
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/zstd-populate-prefix/src/zstd-populate-stamp/Debug/zstd-populate-mkdir
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\ZSTD-SUBBUILD\CMAKEFILES\4DB9CC456EF5D775B609533C314DD8D8\ZSTD-POPULATE-DOWNLOAD.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/zstd-populate-prefix/tmp/zstd-populate-gitclone.cmake
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/zstd-populate-prefix/src/zstd-populate-stamp/Debug/zstd-populate-download
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\ZSTD-SUBBUILD\CMAKEFILES\4DB9CC456EF5D775B609533C314DD8D8\ZSTD-POPULATE-UPDATE.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-src
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -Dcan_fetch=YES -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/zstd-populate-prefix/tmp/zstd-populate-gitupdate.cmake
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\ZSTD-SUBBUILD\CMAKEFILES\4DB9CC456EF5D775B609533C314DD8D8\ZSTD-POPULATE-PATCH.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/zstd-populate-prefix/src/zstd-populate-stamp/Debug/zstd-populate-patch
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\ZSTD-SUBBUILD\CMAKEFILES\4DB9CC456EF5D775B609533C314DD8D8\ZSTD-POPULATE-CONFIGURE.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/zstd-populate-prefix/src/zstd-populate-stamp/Debug/zstd-populate-configure
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\ZSTD-SUBBUILD\CMAKEFILES\4DB9CC456EF5D775B609533C314DD8D8\ZSTD-POPULATE-BUILD.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/zstd-populate-prefix/src/zstd-populate-stamp/Debug/zstd-populate-build
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\ZSTD-SUBBUILD\CMAKEFILES\4DB9CC456EF5D775B609533C314DD8D8\ZSTD-POPULATE-INSTALL.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/zstd-populate-prefix/src/zstd-populate-stamp/Debug/zstd-populate-install
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\ZSTD-SUBBUILD\CMAKEFILES\4DB9CC456EF5D775B609533C314DD8D8\ZSTD-POPULATE-TEST.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/zstd-populate-prefix/src/zstd-populate-stamp/Debug/zstd-populate-test
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\ZSTD-SUBBUILD\CMAKEFILES\1C5B379B56ADC3E28EF710BB3022CBB9\ZSTD-POPULATE-COMPLETE.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E make_directory C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/Debug
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/Debug/zstd-populate-complete
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/zstd-populate-prefix/src/zstd-populate-stamp/Debug/zstd-populate-done
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\ZSTD-SUBBUILD\CMAKEFILES\4EBE753644221F83FA1974ED16443BDB\ZSTD-POPULATE.RULE
+setlocal
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\ZSTD-SUBBUILD\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild -BC:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild --check-stamp-file C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

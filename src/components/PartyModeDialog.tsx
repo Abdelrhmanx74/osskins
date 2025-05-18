@@ -125,7 +125,7 @@ export const PartyModeDialog = React.memo(function PartyModeDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const [checkingRequests, setCheckingRequests] = useState(false);
   const leaguePath = useGameStore((s) => s.leaguePath);
-  const selectedSkins = useGameStore((s) => s.selectedSkins, shallow);
+  const selectedSkins = useGameStore((s) => s.selectedSkins);
   const {
     sendSyncRequest,
     acceptSync,
@@ -228,10 +228,10 @@ export const PartyModeDialog = React.memo(function PartyModeDialog() {
           <AlertDialog>
             <AlertDialogTitle>
               Sync Request from{" "}
-              {pendingSyncRequest.friendName || pendingSyncRequest.friendId}
+              {pendingSyncRequest.memberName || pendingSyncRequest.memberId}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {pendingSyncRequest.friendName || pendingSyncRequest.friendId}{" "}
+              {pendingSyncRequest.memberName || pendingSyncRequest.memberId}{" "}
               wants to sync skin selections with you. Accept to see each other's
               skins in game.
             </AlertDialogDescription>
@@ -239,8 +239,8 @@ export const PartyModeDialog = React.memo(function PartyModeDialog() {
               <Button
                 onClick={() =>
                   acceptSync(
-                    pendingSyncRequest.friendId,
-                    pendingSyncRequest.friendName || pendingSyncRequest.friendId
+                    pendingSyncRequest.memberId,
+                    pendingSyncRequest.memberName || pendingSyncRequest.memberId
                   )
                 }
                 size="sm"
@@ -249,7 +249,7 @@ export const PartyModeDialog = React.memo(function PartyModeDialog() {
                 Accept
               </Button>
               <Button
-                onClick={() => rejectSync(pendingSyncRequest.friendId)}
+                onClick={() => rejectSync(pendingSyncRequest.memberId)}
                 variant="outline"
                 size="sm"
               >

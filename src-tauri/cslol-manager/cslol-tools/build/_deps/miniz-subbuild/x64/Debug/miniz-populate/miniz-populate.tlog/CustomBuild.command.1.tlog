@@ -1,0 +1,150 @@
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\MINIZ-SUBBUILD\CMAKEFILES\DA1FD05F1E7D3AE823CB6AC741E85195\MINIZ-POPULATE-MKDIR.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -Dcfgdir=/Debug -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/miniz-populate-prefix/tmp/miniz-populate-mkdirs.cmake
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/miniz-populate-prefix/src/miniz-populate-stamp/Debug/miniz-populate-mkdir
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\MINIZ-SUBBUILD\CMAKEFILES\DA1FD05F1E7D3AE823CB6AC741E85195\MINIZ-POPULATE-DOWNLOAD.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/miniz-populate-prefix/tmp/miniz-populate-gitclone.cmake
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/miniz-populate-prefix/src/miniz-populate-stamp/Debug/miniz-populate-download
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\MINIZ-SUBBUILD\CMAKEFILES\DA1FD05F1E7D3AE823CB6AC741E85195\MINIZ-POPULATE-UPDATE.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\miniz-src
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -Dcan_fetch=YES -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/miniz-populate-prefix/tmp/miniz-populate-gitupdate.cmake
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\MINIZ-SUBBUILD\CMAKEFILES\DA1FD05F1E7D3AE823CB6AC741E85195\MINIZ-POPULATE-PATCH.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/miniz-populate-prefix/src/miniz-populate-stamp/Debug/miniz-populate-patch
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\MINIZ-SUBBUILD\CMAKEFILES\DA1FD05F1E7D3AE823CB6AC741E85195\MINIZ-POPULATE-CONFIGURE.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\miniz-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/miniz-populate-prefix/src/miniz-populate-stamp/Debug/miniz-populate-configure
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\MINIZ-SUBBUILD\CMAKEFILES\DA1FD05F1E7D3AE823CB6AC741E85195\MINIZ-POPULATE-BUILD.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\miniz-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/miniz-populate-prefix/src/miniz-populate-stamp/Debug/miniz-populate-build
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\MINIZ-SUBBUILD\CMAKEFILES\DA1FD05F1E7D3AE823CB6AC741E85195\MINIZ-POPULATE-INSTALL.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\miniz-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/miniz-populate-prefix/src/miniz-populate-stamp/Debug/miniz-populate-install
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\MINIZ-SUBBUILD\CMAKEFILES\DA1FD05F1E7D3AE823CB6AC741E85195\MINIZ-POPULATE-TEST.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\miniz-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/miniz-populate-prefix/src/miniz-populate-stamp/Debug/miniz-populate-test
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\MINIZ-SUBBUILD\CMAKEFILES\19957B88138924BE4156D1BA45F89EBA\MINIZ-POPULATE-COMPLETE.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E make_directory C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/Debug
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/Debug/miniz-populate-complete
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/miniz-populate-prefix/src/miniz-populate-stamp/Debug/miniz-populate-done
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\MINIZ-SUBBUILD\CMAKEFILES\6165A7F27CCFCBADCCA83D8FAFF1A5B9\MINIZ-POPULATE.RULE
+setlocal
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\MINIZ-SUBBUILD\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild -BC:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild --check-stamp-file C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

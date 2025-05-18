@@ -11,7 +11,7 @@ fn main() {
   }
   // Build mod-tools C++ binary before Tauri bundle validation
   // Build mod-tools C++ binary from cslol-tools source
-  let dst = cmake::Config::new("../src/cslol-tools")
+  let dst = cmake::Config::new("./cslol-manager/cslol-tools")
     .profile("Release")
     // Add policy to handle older CMake configurations
     .define("CMAKE_POLICY_DEFAULT_CMP0048", "NEW")
@@ -41,6 +41,7 @@ fn main() {
       }
     }
   }
+
   // Run Tauri build (bundles resources including cslol-tools)
   tauri_build::build();
 }
@@ -75,7 +76,7 @@ fn pre_build_default_overlays(mod_tools_path: &Path, resources_dir: &Path) {
   let info_json = r#"{
     "Name": "EmptyMod",
     "Version": "1.0.0",
-    "Author": "fuck-exalted",
+    "Author": "osskins",
     "Description": "Pre-built empty mod for faster first injection"
   }"#;
   fs::write(dummy_mod_dir.join("META").join("info.json"), info_json)
@@ -113,11 +114,6 @@ fn pre_build_default_overlays(mod_tools_path: &Path, resources_dir: &Path) {
       println!("Warning: Failed to execute mod-tools for pre-building overlay: {}", e);
     }
   }
-  
-  // Also create a config.json template
-  let config_json = r#"{"enableMods":true}"#;
-  fs::write(resources_dir.join("config.json"), config_json)
-    .expect("Failed to write config.json template");
   
   // Clean up the temp directory
   if temp_dir.exists() {

@@ -108,7 +108,7 @@ export function TerminalLogsDialog() {
           Terminal Logs
         </DropdownMenuItem>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-5xl">
+      <DialogContent className="sm:max-w-5xl overflow-y-auto">
         <DialogHeader className="flex flex-row items-center justify-between">
           <DialogTitle>Terminal Logs</DialogTitle>
           <div className="flex flex-row items-center gap-2">
@@ -158,40 +158,33 @@ export function TerminalLogsDialog() {
             </DialogClose>
           </div>
         </DialogHeader>
-        <div className="relative">
-          <ScrollArea
-            className="h-[500px] w-full max-w- rounded-md border p-4"
-            ref={scrollAreaRef}
-            onScroll={handleScroll}
-            style={{ overflowY: "auto", position: "relative" }}
-          >
-            <div className="font-mono text-sm">
-              {filteredLogs.map((log, index) => (
-                <div key={index} className="whitespace-pre-wrap">
-                  <span className="text-xs font-bold mr-2">
-                    [{log.log_type}]
-                  </span>
-                  {log.message}
-                </div>
-              ))}
-              <div ref={bottomRef} />
+        <ScrollArea
+          className="size-full relative h-[500px] max-w-[950px] rounded-md border p-4 font-mono text-sm select-text"
+          ref={scrollAreaRef}
+          onScroll={handleScroll}
+        >
+          {filteredLogs.map((log, index) => (
+            <div key={index} className="whitespace-pre-wrap">
+              <span className="text-xs font-bold mr-2">[{log.log_type}]</span>
+              {log.message}
             </div>
-          </ScrollArea>
-          {!isAtBottom && autoScroll && (
-            <Button
-              onClick={scrollToBottom}
-              variant="secondary"
-              size="icon"
-              className={clsx(
-                "absolute right-4 bottom-6 z-10 shadow-lg animate-in fade-in",
-                "bg-background/80 backdrop-blur"
-              )}
-              title="Scroll to bottom"
-            >
-              <ArrowDownToLine className="h-5 w-5" />
-            </Button>
-          )}
-        </div>
+          ))}
+          <div ref={bottomRef} />
+        </ScrollArea>
+        {!isAtBottom && autoScroll && (
+          <Button
+            onClick={scrollToBottom}
+            variant="secondary"
+            size="icon"
+            className={clsx(
+              "absolute right-4 bottom-6 z-10 shadow-lg animate-in fade-in",
+              "bg-background/80 backdrop-blur"
+            )}
+            title="Scroll to bottom"
+          >
+            <ArrowDownToLine className="h-5 w-5" />
+          </Button>
+        )}
         <div className="flex items-center gap-2">
           <span className="text-xs">Auto Scroll</span>
           <Switch

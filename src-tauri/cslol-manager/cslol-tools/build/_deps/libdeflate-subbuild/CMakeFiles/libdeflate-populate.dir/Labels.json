@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/libdeflate-populate"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/ef513eb130e2fe6dc724ba4c24a8da60/libdeflate-populate.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/0d3a5c9e8bc5d13c0c5b7a5fe0d4c643/libdeflate-populate-complete.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/e0a4a29ce5d409394a92453b62881fb5/libdeflate-populate-build.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/e0a4a29ce5d409394a92453b62881fb5/libdeflate-populate-configure.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/e0a4a29ce5d409394a92453b62881fb5/libdeflate-populate-download.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/e0a4a29ce5d409394a92453b62881fb5/libdeflate-populate-install.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/e0a4a29ce5d409394a92453b62881fb5/libdeflate-populate-mkdir.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/e0a4a29ce5d409394a92453b62881fb5/libdeflate-populate-patch.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/e0a4a29ce5d409394a92453b62881fb5/libdeflate-populate-test.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/libdeflate-subbuild/CMakeFiles/e0a4a29ce5d409394a92453b62881fb5/libdeflate-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"libdeflate-populate"
+		],
+		"name" : "libdeflate-populate"
+	}
+}

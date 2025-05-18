@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/miniz-populate"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/6165a7f27ccfcbadcca83d8faff1a5b9/miniz-populate.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/19957b88138924be4156d1ba45f89eba/miniz-populate-complete.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-build.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-configure.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-download.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-install.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-mkdir.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-patch.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-test.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"miniz-populate"
+		],
+		"name" : "miniz-populate"
+	}
+}

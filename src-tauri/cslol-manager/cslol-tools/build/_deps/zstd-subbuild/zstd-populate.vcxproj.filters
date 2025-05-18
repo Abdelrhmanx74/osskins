@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="16.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-subbuild\CMakeFiles\4db9cc456ef5d775b609533c314dd8d8\zstd-populate-mkdir.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-subbuild\CMakeFiles\4db9cc456ef5d775b609533c314dd8d8\zstd-populate-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-subbuild\CMakeFiles\4db9cc456ef5d775b609533c314dd8d8\zstd-populate-update.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-subbuild\CMakeFiles\4db9cc456ef5d775b609533c314dd8d8\zstd-populate-patch.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-subbuild\CMakeFiles\4db9cc456ef5d775b609533c314dd8d8\zstd-populate-configure.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-subbuild\CMakeFiles\4db9cc456ef5d775b609533c314dd8d8\zstd-populate-build.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-subbuild\CMakeFiles\4db9cc456ef5d775b609533c314dd8d8\zstd-populate-install.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-subbuild\CMakeFiles\4db9cc456ef5d775b609533c314dd8d8\zstd-populate-test.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-subbuild\CMakeFiles\1c5b379b56adc3e28ef710bb3022cbb9\zstd-populate-complete.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-subbuild\CMakeFiles\4ebe753644221f83fa1974ed16443bdb\zstd-populate.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-subbuild\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\zstd-subbuild\CMakeFiles\zstd-populate" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{AA5F5A2B-BBAF-37B1-A371-A7BD2DD778C6}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

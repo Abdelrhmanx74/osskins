@@ -79,7 +79,6 @@ fn main() {
             save_fantome_file,
             select_league_directory,
             inject_skins,
-            ensure_mod_tools,
             inject_game_skins,
             save_league_path,
             load_league_path,

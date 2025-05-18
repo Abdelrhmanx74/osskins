@@ -1,0 +1,150 @@
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\XXHASH-SUBBUILD\CMAKEFILES\8D46E5F22C5E7084546CE3100967672C\XXHASH-POPULATE-MKDIR.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -Dcfgdir=/Debug -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/xxhash-populate-prefix/tmp/xxhash-populate-mkdirs.cmake
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/xxhash-populate-prefix/src/xxhash-populate-stamp/Debug/xxhash-populate-mkdir
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\XXHASH-SUBBUILD\CMAKEFILES\8D46E5F22C5E7084546CE3100967672C\XXHASH-POPULATE-DOWNLOAD.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/xxhash-populate-prefix/tmp/xxhash-populate-gitclone.cmake
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/xxhash-populate-prefix/src/xxhash-populate-stamp/Debug/xxhash-populate-download
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\XXHASH-SUBBUILD\CMAKEFILES\8D46E5F22C5E7084546CE3100967672C\XXHASH-POPULATE-UPDATE.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\xxhash-src
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -Dcan_fetch=YES -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/xxhash-populate-prefix/tmp/xxhash-populate-gitupdate.cmake
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\XXHASH-SUBBUILD\CMAKEFILES\8D46E5F22C5E7084546CE3100967672C\XXHASH-POPULATE-PATCH.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/xxhash-populate-prefix/src/xxhash-populate-stamp/Debug/xxhash-populate-patch
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\XXHASH-SUBBUILD\CMAKEFILES\8D46E5F22C5E7084546CE3100967672C\XXHASH-POPULATE-CONFIGURE.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\xxhash-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/xxhash-populate-prefix/src/xxhash-populate-stamp/Debug/xxhash-populate-configure
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\XXHASH-SUBBUILD\CMAKEFILES\8D46E5F22C5E7084546CE3100967672C\XXHASH-POPULATE-BUILD.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\xxhash-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/xxhash-populate-prefix/src/xxhash-populate-stamp/Debug/xxhash-populate-build
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\XXHASH-SUBBUILD\CMAKEFILES\8D46E5F22C5E7084546CE3100967672C\XXHASH-POPULATE-INSTALL.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\xxhash-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/xxhash-populate-prefix/src/xxhash-populate-stamp/Debug/xxhash-populate-install
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\XXHASH-SUBBUILD\CMAKEFILES\8D46E5F22C5E7084546CE3100967672C\XXHASH-POPULATE-TEST.RULE
+setlocal
+cd C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri\cslol-manager\cslol-tools\build\_deps\xxhash-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/xxhash-populate-prefix/src/xxhash-populate-stamp/Debug/xxhash-populate-test
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\XXHASH-SUBBUILD\CMAKEFILES\F6665B30D04AFC2988436C7F0007FF01\XXHASH-POPULATE-COMPLETE.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E make_directory C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/CMakeFiles/Debug
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/CMakeFiles/Debug/xxhash-populate-complete
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/xxhash-populate-prefix/src/xxhash-populate-stamp/Debug/xxhash-populate-done
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\XXHASH-SUBBUILD\CMAKEFILES\3CC869ED8B8C7074A39FB7F050407080\XXHASH-POPULATE.RULE
+setlocal
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\MANA\DOCUMENTS\WORK-SPACE\FUCK-EXALTED\SRC-TAURI\CSLOL-MANAGER\CSLOL-TOOLS\BUILD\_DEPS\XXHASH-SUBBUILD\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild -BC:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild --check-stamp-file C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/xxhash-subbuild/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

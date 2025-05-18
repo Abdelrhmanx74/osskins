@@ -1,0 +1,14 @@
+# Target labels
+ miniz-populate
+# Source files and their labels
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/miniz-populate
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/6165a7f27ccfcbadcca83d8faff1a5b9/miniz-populate.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/19957b88138924be4156d1ba45f89eba/miniz-populate-complete.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-build.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-configure.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-download.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-install.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-mkdir.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-patch.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-test.rule
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/miniz-subbuild/CMakeFiles/da1fd05f1e7d3ae823cb6ac741e85195/miniz-populate-update.rule

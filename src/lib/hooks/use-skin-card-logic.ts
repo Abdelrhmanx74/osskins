@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ChromaInSummary } from "@/utils/api";
-import { Skin } from "@/lib/types";
+import { ChromaInSummary, Skin } from "@/lib/types";
 import { useGameStore } from "@/lib/store";
 
 export function useSkinCardLogic(championId: number, skin: Skin) {

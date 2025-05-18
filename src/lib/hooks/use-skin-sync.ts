@@ -252,11 +252,11 @@ export function useSkinSync() {
                       // Only show if we haven't already accepted/rejected this request
                       if (
                         !pendingSyncRequest ||
-                        pendingSyncRequest.friendId !== friend.id
+                        pendingSyncRequest.memberId !== friend.id
                       ) {
                         setPendingSyncRequest({
-                          friendId: friend.id,
-                          friendName: friend.name,
+                          memberId: friend.id,
+                          memberName: friend.name,
                           data: match[1],
                         });
                         toast.info(

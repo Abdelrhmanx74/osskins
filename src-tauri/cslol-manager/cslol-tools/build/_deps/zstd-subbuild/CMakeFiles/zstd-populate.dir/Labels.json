@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/zstd-populate"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4ebe753644221f83fa1974ed16443bdb/zstd-populate.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/1c5b379b56adc3e28ef710bb3022cbb9/zstd-populate-complete.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-build.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-configure.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-download.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-install.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-mkdir.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-patch.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-test.rule"
+		},
+		{
+			"file" : "C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/4db9cc456ef5d775b609533c314dd8d8/zstd-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"zstd-populate"
+		],
+		"name" : "zstd-populate"
+	}
+}

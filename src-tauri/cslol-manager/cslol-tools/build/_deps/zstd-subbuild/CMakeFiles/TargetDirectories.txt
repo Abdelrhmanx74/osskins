@@ -1,0 +1,3 @@
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/zstd-populate.dir
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/ALL_BUILD.dir
+C:/Users/Mana/Documents/work-space/fuck-exalted/src-tauri/cslol-manager/cslol-tools/build/_deps/zstd-subbuild/CMakeFiles/ZERO_CHECK.dir
