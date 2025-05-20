@@ -5,11 +5,9 @@ mod injector;
 mod types;
 mod utils;
 
-pub use cache::{OverlayCache, OVERLAY_CACHE};
-pub use error::InjectionError;
 pub use injector::SkinInjector;
 pub use types::*;
 pub use utils::*;
 
 // Re-export the main public functions directly
-pub use injector::{inject_skins, cleanup_injection};
+pub use injector::inject_skins;

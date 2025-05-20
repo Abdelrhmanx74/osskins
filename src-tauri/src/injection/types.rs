@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::Instant;
 
 // Define the types we need
@@ -19,11 +19,13 @@ pub enum ModState {
     Idle,
     Busy,
     Running,
+    #[allow(dead_code)]
     CriticalError,
 }
 
 // This represents a message event for the patcher
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum PatcherMessage {
     WaitStart,
     Found,
@@ -37,6 +39,7 @@ pub enum PatcherMessage {
 }
 
 impl PatcherMessage {
+    #[allow(dead_code)]
     pub fn to_string(&self) -> &'static str {
         match self {
             Self::WaitStart => "Waiting for league match to start",

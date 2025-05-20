@@ -7,7 +7,7 @@ mod injection;
 use commands::*;
 use tauri::{Manager};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
-use tauri::menu::{Menu, MenuItem, MenuEvent};
+use tauri::menu::{Menu, MenuItem};
 
 fn main() {
     tauri::Builder::default()
@@ -33,7 +33,7 @@ fn main() {
             let tray_menu = Menu::with_items(app_handle, &[&osskins_item, &exit_item])?;
             let _tray = TrayIconBuilder::new()
                 .menu(&tray_menu)
-                .menu_on_left_click(false)
+                .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "osskins" => {
                         if let Some(window) = app.get_webview_window("main") {
@@ -102,6 +102,7 @@ fn main() {
             get_lcu_friends,
             send_lcu_message,
             get_lcu_messages,
+            start_lcu_watcher,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())

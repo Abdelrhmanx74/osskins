@@ -1,18 +1,17 @@
-use super::types::*;
+use crate::commands::types::*;
 use tauri::{AppHandle, Manager};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::fs;
 use reqwest;
 use serde_json;
 use chrono;
-use super::lcu_communication::emit_terminal_log;
 
 #[tauri::command]
 pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResult, String> {
     let app_data_dir = app.path().app_data_dir()
         .map_err(|e| format!("Failed to get app data directory: {}", e))?;
     let champions_dir = app_data_dir.join("champions");
-    if (!champions_dir.exists()) {
+    if !champions_dir.exists() {
         return Ok(DataUpdateResult {
             success: true,
             error: None,
@@ -64,7 +63,7 @@ pub async fn check_champions_data(app: tauri::AppHandle) -> Result<bool, String>
         .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
     
     let champions_dir = app_data_dir.join("champions");
-    if (!champions_dir.exists()) {
+    if !champions_dir.exists() {
         return Ok(false);
     }
 
@@ -90,7 +89,7 @@ pub async fn check_champions_data(app: tauri::AppHandle) -> Result<bool, String>
 
 #[tauri::command]
 pub async fn check_github_updates(app: tauri::AppHandle) -> Result<DataUpdateResult, String> {
-    emit_terminal_log(&app, "Checking for data updates from GitHub...", "update-checker");
+    println!("Checking for data updates from GitHub...");
     
     // Get the local version
     let current_version = load_data_version(&app)?;
@@ -103,8 +102,8 @@ pub async fn check_github_updates(app: tauri::AppHandle) -> Result<DataUpdateRes
 
     let url = format!("{}/commits/main", GITHUB_API_URL);
     
-    emit_terminal_log(&app, &format!("Fetching latest commit data from: {}", url), "update-checker");
-    emit_terminal_log(&app, "Adding required GitHub API headers", "debug");
+    println!("Fetching latest commit data from: {}", url);
+    println!("Adding required GitHub API headers");
     
     // Make request with proper headers required by GitHub API
     let response_result = client.get(&url)
@@ -117,7 +116,7 @@ pub async fn check_github_updates(app: tauri::AppHandle) -> Result<DataUpdateRes
         Ok(resp) => resp,
         Err(e) => {
             let error_msg = format!("Network error connecting to GitHub: {}", e);
-            emit_terminal_log(&app, &error_msg, "error");
+            println!("{}", error_msg);
             return Err(error_msg);
         }
     };
@@ -128,12 +127,12 @@ pub async fn check_github_updates(app: tauri::AppHandle) -> Result<DataUpdateRes
         // Try to get detailed error message from GitHub
         let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
         let error_msg = format!("GitHub API error ({}): {}", status, error_body);
-        emit_terminal_log(&app, &error_msg, "error");
+        println!("{}", error_msg);
         
         // Log more details for debugging
-        emit_terminal_log(&app, &format!("Request URL that failed: {}", url), "debug");
-        emit_terminal_log(&app, &format!("Response status: {}", status), "debug");
-        emit_terminal_log(&app, &format!("Response body: {}", error_body), "debug");
+        println!("Request URL that failed: {}", url);
+        println!("Response status: {}", status);
+        println!("Response body: {}", error_body);
         
         return Err(format!("GitHub API returned error: {} - {}", status, error_body));
     }
@@ -143,7 +142,7 @@ pub async fn check_github_updates(app: tauri::AppHandle) -> Result<DataUpdateRes
         Ok(body) => body,
         Err(e) => {
             let error_msg = format!("Failed to read GitHub response: {}", e);
-            emit_terminal_log(&app, &error_msg, "error");
+            println!("{}", error_msg);
             return Err(error_msg);
         }
     };
@@ -153,7 +152,7 @@ pub async fn check_github_updates(app: tauri::AppHandle) -> Result<DataUpdateRes
         Ok(commit) => commit,
         Err(e) => {
             let error_msg = format!("Failed to parse GitHub response: {} - Response was: {}", e, response_body);
-            emit_terminal_log(&app, &error_msg, "error");
+            println!("{}", error_msg);
             return Err(format!("Failed to parse GitHub response: {}", e));
         }
     };
@@ -205,12 +204,12 @@ pub async fn check_github_updates(app: tauri::AppHandle) -> Result<DataUpdateRes
         update_message: Some(latest_commit.commit.message.lines().next().unwrap_or("Update available").to_string()),
     };
     
-    emit_terminal_log(&app, &format!(
+    println!(
         "Update check complete. Current version: {:?}, Latest version: {}, Update needed: {}", 
         current_version_str, 
         latest_version.version,
         has_update
-    ), "update-checker");
+    );
     
     Ok(result)
 }
@@ -220,13 +219,13 @@ pub async fn check_github_updates(app: tauri::AppHandle) -> Result<DataUpdateRes
 pub async fn pull_github_updates(
     app: tauri::AppHandle,
 ) -> Result<DataUpdateResult, String> {
-    emit_terminal_log(&app, "Starting GitHub data update...", "update-checker");
+    println!("Starting GitHub data update...");
     
     // Check if we actually have an update first
     let check_result = check_github_updates(app.clone()).await?;
     
     if !check_result.has_update {
-        emit_terminal_log(&app, "No updates available. Already at the latest version.", "update-checker");
+        println!("No updates available. Already at the latest version.");
         return Ok(check_result);
     }
     
@@ -257,7 +256,7 @@ pub async fn pull_github_updates(
     // This simulates a git pull - we're updating our local data with the latest from the repo
     
     // Record the updated champions (we'll fill this in as we update)
-    let mut updated_champions: Vec<String> = Vec::new();
+    let updated_champions = Vec::new();
     
     // Update version information with the latest commit data
     let new_version = DataVersion {
@@ -287,13 +286,13 @@ pub async fn pull_github_updates(
 pub async fn update_champion_data_from_github(
     app: tauri::AppHandle
 ) -> Result<DataUpdateResult, String> {
-    emit_terminal_log(&app, "Starting data update from GitHub...", "update");
+    println!("Starting data update from GitHub...");
     
     // Check if we actually need an update first
     let check_result = check_github_updates(app.clone()).await?;
     
     if !check_result.has_update {
-        emit_terminal_log(&app, "Data is already up to date.", "update");
+        println!("Data is already up to date.");
         return Ok(check_result);
     }
     
@@ -302,7 +301,7 @@ pub async fn update_champion_data_from_github(
         .map_err(|e| format!("Failed to get app data directory: {}", e))?;
         
     let champions_dir = app_data_dir.join("champions");
-    if (!champions_dir.exists()) {
+    if !champions_dir.exists() {
         fs::create_dir_all(&champions_dir)
             .map_err(|e| format!("Failed to create champions directory: {}", e))?;
     }
@@ -315,7 +314,7 @@ pub async fn update_champion_data_from_github(
     
     // First, get the latest commit for version tracking
     let commit_url = format!("{}/commits/main", GITHUB_API_URL);
-    emit_terminal_log(&app, &format!("Fetching latest commit info from: {}", commit_url), "update");
+    println!("Fetching latest commit info from: {}", commit_url);
     
     let commit_response = client.get(&commit_url)
         .send()
@@ -336,7 +335,7 @@ pub async fn update_champion_data_from_github(
     // Download updated champion data files
     // Use a central API endpoint for champion list if available, otherwise use CommunityDragon API
     let data_url = "https://raw.githubusercontent.com/darkseal-org/lol-skins-developer/main/data_manifest.json";
-    emit_terminal_log(&app, &format!("Fetching data manifest from: {}", data_url), "update");
+    println!("Fetching data manifest from: {}", data_url);
     
     let manifest_response = client.get(data_url)
         .send()
@@ -349,14 +348,14 @@ pub async fn update_champion_data_from_github(
                 Ok(manifest) => {
                     if let Some(champions) = manifest.get("champions").and_then(|c| c.as_array()) {
                         let total = champions.len();
-                        emit_terminal_log(&app, &format!("Found {} champions in manifest", total), "update");
+                        println!("Found {} champions in manifest", total);
                         
                         for (index, champion) in champions.iter().enumerate() {
                             if let (Some(name), Some(path)) = (
                                 champion.get("name").and_then(|n| n.as_str()),
                                 champion.get("path").and_then(|p| p.as_str())
                             ) {
-                                emit_terminal_log(&app, &format!("Updating champion {}/{}: {}", index + 1, total, name), "update");
+                                println!("Updating champion {}/{}: {}", index + 1, total, name);
                                 
                                 // Create the full URL to the champion data
                                 let champion_url = format!("https://raw.githubusercontent.com/darkseal-org/lol-skins-developer/main/{}", path);
@@ -381,12 +380,12 @@ pub async fn update_champion_data_from_github(
                                                 updated_champions.push(name.to_string());
                                             },
                                             Err(e) => {
-                                                emit_terminal_log(&app, &format!("Failed to download champion data for {}: {}", name, e), "error");
+                                                println!("Failed to download champion data for {}: {}", name, e);
                                             }
                                         }
                                     },
                                     _ => {
-                                        emit_terminal_log(&app, &format!("Failed to download champion data for {}", name), "error");
+                                        println!("Failed to download champion data for {}", name);
                                     }
                                 }
                             }
@@ -394,17 +393,14 @@ pub async fn update_champion_data_from_github(
                     }
                 },
                 Err(e) => {
-                    emit_terminal_log(&app, &format!("Failed to parse data manifest: {}", e), "error");
+                    println!("Failed to parse data manifest: {}", e);
                     return Err(format!("Failed to parse data manifest: {}", e));
                 }
             }
         },
         _ => {
-            // Fallback to CommunityDragon if GitHub manifest is not available
-            emit_terminal_log(&app, "GitHub manifest not available, using CommunityDragon API as fallback", "update");
-            
+            println!("GitHub manifest not available, using CommunityDragon API as fallback");
             // Current CommunityDragon implementation logic would go here
-            // This would be similar to your existing implementation
         }
     }
     

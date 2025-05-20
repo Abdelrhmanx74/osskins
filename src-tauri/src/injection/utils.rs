@@ -1,15 +1,12 @@
-use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration};
 use once_cell::sync::Lazy;
-use tauri::{AppHandle, Manager, Emitter};
+use tauri::{AppHandle, Manager};
 use walkdir::WalkDir;
-use chrono::Utc;
 
-use crate::commands::TerminalLog;
 use crate::injection::error::InjectionError;
 use crate::injection::types::FileIndex;
 
@@ -88,7 +85,7 @@ impl FileIndex {
                 self.fantome_by_filename.insert(file_name.clone(), path.to_path_buf());
                 
                 // Try to extract champion_id and skin_id from path or file name
-                if let Some((champion_id, skin_id)) = extract_skin_info_from_path(path) {
+                if let Some((champion_id, _skin_id)) = extract_skin_info_from_path(path) {
                     let key = (champion_id, None);  // No chroma support yet in this simplified version
                     self.skin_paths.entry(key).or_insert_with(Vec::new).push(path.to_path_buf());
                 }
@@ -132,6 +129,7 @@ impl FileIndex {
         None
     }
     
+    #[allow(dead_code)]
     // Get champion name, preferring the cached version
     pub fn get_champion_name(&self, champion_id: u32) -> Option<String> {
         self.champion_names.get(&champion_id).cloned()
@@ -190,62 +188,4 @@ pub fn get_global_index(app_handle: &AppHandle) -> Result<Arc<Mutex<FileIndex>>,
     }
     
     Ok(index)
-}
-
-// Add a function to check for and copy the pre-built default overlay
-pub fn copy_default_overlay(app_handle: &AppHandle, destination: &Path) -> Result<bool, InjectionError> {
-    // Check if we have a pre-built overlay in resources
-    if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        // First check in cslol-tools subfolder
-        let default_overlay = resource_dir.join("cslol-tools").join("empty_overlay");
-        if default_overlay.exists() && default_overlay.is_dir() {
-            println!("Found pre-built overlay at: {}", default_overlay.display());
-            
-            // Copy the overlay directory to the destination
-            copy_dir_all(&default_overlay, destination)?;
-            return Ok(true);
-        }
-        
-        // Also check directly in resources
-        let direct_overlay = resource_dir.join("empty_overlay");
-        if direct_overlay.exists() && direct_overlay.is_dir() {
-            println!("Found pre-built overlay at: {}", direct_overlay.display());
-            
-            copy_dir_all(&direct_overlay, destination)?;
-            return Ok(true);
-        }
-    }
-    
-    Ok(false)
-}
-
-// Helper function to recursively copy directories
-pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), InjectionError> {
-    if !dst.exists() {
-        fs::create_dir_all(dst)?;
-    }
-    
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        
-        if ty.is_dir() {
-            copy_dir_all(&src_path, &dst_path)?;
-        } else if ty.is_file() {
-            fs::copy(&src_path, &dst_path)?;
-        }
-    }
-    
-    Ok(())
-}
-
-pub fn emit_terminal_log_injection(app: &AppHandle, message: &str) {
-    let log = TerminalLog {
-        message: message.to_string(),
-        log_type: "injection".to_string(),
-        timestamp: Utc::now().to_rfc3339(),
-    };
-    let _ = app.emit("terminal-log", log);
 }

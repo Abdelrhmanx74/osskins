@@ -2,6 +2,7 @@ use std::io;
 
 // Error handling similar to CS LOL Manager
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum InjectionError {
     IoError(io::Error),
     InvalidGamePath(String),

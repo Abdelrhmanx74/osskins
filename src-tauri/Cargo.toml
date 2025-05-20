@@ -42,6 +42,7 @@ once_cell = "1.18.0"      # For lazy initialization
 memmap2 = "0.9.0"         # For memory-mapped files
 rayon = "1.8.0"           # For parallel processing
 md5 = "0.7.0"             # Added for overlay cache hash generation
+wait-timeout = "0.2.1"
 
 [features]
 # by default Tauri runs in production mode

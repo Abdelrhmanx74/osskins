@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
 use crate::injection::Skin;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -98,8 +97,8 @@ pub struct DataUpdateResult {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ThemePreferences {
     pub tone: Option<String>,
-    pub isDark: Option<bool>,
-    pub autoUpdateChampionData: Option<bool>,
+    pub is_dark: Option<bool>,
+    pub auto_update_champion_data: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -132,7 +131,7 @@ pub struct Friend {
 // Constants
 pub const GITHUB_API_URL: &str = "https://api.github.com/repos/darkseal-org/lol-skins-developer";
 pub const USER_AGENT: &str = "fuck-exalted-app/1.0";
-pub const DATA_VERSION_FILE: &str = "data_version.json";
+pub const _DATA_VERSION_FILE: &str = "data_version.json";
 pub const GITHUB_API_VERSION: &str = "2022-11-28";
-pub const GITHUB_REPO_OWNER: &str = "darkseal-org";
-pub const GITHUB_REPO_NAME: &str = "lol-skins-developer"; 
+pub const _GITHUB_REPO_OWNER: &str = "darkseal-org";
+pub const _GITHUB_REPO_NAME: &str = "lol-skins-developer";

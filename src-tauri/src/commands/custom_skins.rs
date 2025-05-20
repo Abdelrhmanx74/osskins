@@ -1,8 +1,5 @@
-use super::types::*;
-use tauri::{AppHandle, Manager};
-use std::path::{Path, PathBuf};
-use std::fs;
-use std::process::Command;
+use crate::commands::types::*;
+use tauri::Manager;
 use chrono;
 use serde_json;
 #[cfg(target_os = "windows")]
@@ -12,11 +9,11 @@ use std::os::windows::process::CommandExt;
 #[tauri::command]
 pub async fn upload_custom_skin(
     app: tauri::AppHandle,
-    championId: u32,
-    skinName: String,
+    champion_id: u32,
+    skin_name: String,
 ) -> Result<CustomSkinData, String> {
-    println!("Uploading custom skin: {}", skinName);
-    println!("For champion ID: {}", championId);
+    println!("Uploading custom skin: {}", skin_name);
+    println!("For champion ID: {}", champion_id);
     
     // Open file dialog for the user to select a skin file
     #[cfg(target_os = "windows")]
@@ -73,10 +70,10 @@ pub async fn upload_custom_skin(
         .map_err(|e| format!("Failed to create custom skins directory: {}", e))?;
         
     // Get champion name (for organization)
-    let champion_name = if let Ok(champion_data) = get_champion_name(&app, championId).await {
+    let champion_name = if let Ok(champion_data) = get_champion_name(&app, champion_id).await {
         champion_data
     } else {
-        format!("champion_{}", championId) // Fallback if name not found
+        format!("champion_{}", champion_id) // Fallback if name not found
     };
     
     // Create directory for this champion's custom skins
@@ -85,7 +82,7 @@ pub async fn upload_custom_skin(
         .map_err(|e| format!("Failed to create champion directory: {}", e))?;
         
     // Generate a unique ID for this skin
-    let skin_id = format!("custom_{}_{}", championId, chrono::Utc::now().timestamp());
+    let skin_id = format!("custom_{}_{}", champion_id, chrono::Utc::now().timestamp());
     
     // Copy the file to the custom skins directory with a new name
     let source_path = std::path::Path::new(&file_path);
@@ -104,8 +101,8 @@ pub async fn upload_custom_skin(
     // Create metadata for the custom skin
     let custom_skin = CustomSkinData {
         id: skin_id,
-        name: skinName,
-        champion_id: championId,
+        name: skin_name,
+        champion_id,
         champion_name,
         file_path: dest_path.to_string_lossy().to_string(),
         created_at: chrono::Utc::now().timestamp() as u64,
@@ -127,7 +124,7 @@ pub async fn get_custom_skins(
         .join("config");
     let file = config_dir.join("custom_skins.json");
     
-    if (!file.exists()) {
+    if !file.exists() {
         return Ok(Vec::new());
     }
     
@@ -202,6 +199,7 @@ async fn get_champion_name(app: &tauri::AppHandle, champion_id: u32) -> Result<S
                                 if let Some(id) = data.get("id").and_then(|v| v.as_u64()) {
                                     if id as u32 == champion_id {
                                         if let Some(name) = data.get("name").and_then(|v| v.as_str()) {
+                                            let _name = name;
                                             // Use champion directory name instead of display name for consistency
                                             return Ok(entry.file_name().to_string_lossy().to_string());
                                         }

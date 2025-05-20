@@ -1,6 +1,6 @@
-use super::types::*;
+use crate::commands::types::*;
 use tauri::{AppHandle, Manager};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use std::fs;
 use serde_json;
@@ -131,7 +131,7 @@ pub async fn load_league_path(app: tauri::AppHandle) -> Result<String, String> {
     
     let config_file = app_data_dir.join("config").join("league_path.txt");
     
-    if (!config_file.exists()) {
+    if !config_file.exists() {
         return Ok(String::new()); // Return empty string if no saved path
     }
     
@@ -154,6 +154,7 @@ pub async fn load_league_path(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 // Helper function to get league path from config
+#[allow(dead_code)]
 pub fn get_league_path_from_config(app_handle: &AppHandle) -> Option<String> {
     if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
         let config_file = app_data_dir.join("config").join("config.json");

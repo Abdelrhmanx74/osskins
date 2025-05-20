@@ -1,6 +1,5 @@
-use super::types::*;
-use tauri::{AppHandle, Manager};
-use std::path::{Path, PathBuf};
+use crate::commands::types::*;
+use tauri::{Manager};
 use std::fs;
 use serde_json;
 
@@ -53,12 +52,12 @@ pub async fn get_champion_data(
         .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
     
     let champions_dir = app_data_dir.join("champions");
-    if (!champions_dir.exists()) {
+    if !champions_dir.exists() {
         return Ok("[]".to_string()); // Return empty array if no champions directory exists
     }
 
     // If champion_id is 0, return all champions
-    if (champion_id == 0) {
+    if champion_id == 0 {
         let mut all_champions = Vec::new();
         for entry in fs::read_dir(champions_dir)
             .map_err(|e| format!("Failed to read champions directory: {}", e))? {
@@ -121,7 +120,7 @@ pub async fn delete_champions_cache(app: tauri::AppHandle) -> Result<(), String>
 #[tauri::command]
 pub async fn save_selected_skins(
     app: tauri::AppHandle, 
-    leaguePath: String, 
+    league_path: String, 
     skins: Vec<SkinData>, 
     favorites: Vec<u32>,
     theme: Option<ThemePreferences>
@@ -134,7 +133,7 @@ pub async fn save_selected_skins(
     let file = config_dir.join("config.json");
     // build combined JSON
     let config_json = serde_json::json!({
-        "league_path": leaguePath,
+        "league_path": league_path,
         "skins": skins,
         "favorites": favorites,
         "theme": theme
