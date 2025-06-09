@@ -27,17 +27,17 @@ winres = "0.1"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 tauri = { version = "2.5.1", features = ["tray-icon"] }
-tauri-plugin-fs = { version = "2.2.1", features = ["watch"] }
-tauri-plugin-opener = "2.2.6"
+tauri-plugin-fs = { version = "2.3.0", features = ["watch"] }
+tauri-plugin-opener = "2.2.7"
 tauri-plugin-shell = "2.0.0-beta.2"
-windows = { version = "0.52", features = ["Win32_System_Threading", "Win32_Foundation", "Win32_System_Memory", "Win32_System_ProcessStatus", "Win32_Security"] }
+windows = { version = "0.61", features = ["Win32_System_Threading", "Win32_Foundation", "Win32_System_Memory", "Win32_System_ProcessStatus", "Win32_Security"] }
 winapi = { version = "0.3", features = ["processthreadsapi", "memoryapi", "handleapi", "errhandlingapi", "winnt"] }
 walkdir = "2.4.0"
-chrono = "0.4.31"
+chrono = "0.4.41"
 web-sys = { version = "0.3.67", features = ["Window", "Document"] }
-zip = "0.6" # Added for .fantome file extraction
-reqwest = { version = "0.12.15", features = ["blocking", "rustls-tls", "json"] }
-base64 = "0.21"
+zip = "4.0" # Added for .fantome file extraction
+reqwest = { version = "0.12.19", features = ["blocking", "rustls-tls", "json"] }
+base64 = "0.22"
 once_cell = "1.18.0"      # For lazy initialization
 memmap2 = "0.9.0"         # For memory-mapped files
 rayon = "1.8.0"           # For parallel processing
