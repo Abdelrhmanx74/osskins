@@ -45,7 +45,7 @@ interface DeleteRequest {
   skinId: string;
 }
 
-export async function DELETE(request: NextRequest) {
+export async function   (request: NextRequest) {
   try {
     const { skinId } = (await request.json()) as DeleteRequest;
     await invoke("delete_custom_skin", { skinId });

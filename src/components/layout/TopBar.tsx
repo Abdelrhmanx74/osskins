@@ -2,7 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Menu } from "lucide-react";
+import { RefreshCw, Menu, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { InjectionStatusDot } from "@/components/InjectionStatusDot";
 import { TitleBar } from "@/components/ui/titlebar/TitleBar";
@@ -42,6 +42,7 @@ export const TopBar = React.memo(function TopBar({
   // Only subscribe to the specific state needed
   const activeTab = useGameStore((s) => s.activeTab);
   const setActiveTab = useGameStore((s) => s.setActiveTab);
+  const selectedSkins = useGameStore((s) => s.selectedSkins);
 
   // Load saved tab preference from localStorage
   useEffect(() => {
@@ -72,6 +73,28 @@ export const TopBar = React.memo(function TopBar({
     } catch (error) {
       console.error("Error during force update:", error);
     }
+  }
+
+  function handleForceInject() {
+    if (!selectedChampionId) {
+      toast.error("No champion selected for force injection");
+      return;
+    }
+    const selectedSkin = selectedSkins.get(selectedChampionId);
+    if (!selectedSkin) {
+      toast.error("No skin selected for this champion");
+      return;
+    }
+    toast.promise(
+      invoke("force_inject_selected_skin", {
+        championId: selectedChampionId,
+      }),
+      {
+        loading: "Injecting skin...",
+        success: "Skin injected successfully!",
+        error: "Failed to inject skin",
+      }
+    );
   }
 
   return (
@@ -152,6 +175,14 @@ export const TopBar = React.memo(function TopBar({
               >
                 <RefreshCw className="h-4 w-4" />
                 Force Update Data
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleForceInject}
+                className="flex items-center gap-2"
+                disabled={!selectedChampionId}
+              >
+                <Zap className="h-4 w-4 text-yellow-500" />
+                Force Inject Selected Skin
               </DropdownMenuItem>
               <TerminalLogsDialog />
               <SettingsDialog />

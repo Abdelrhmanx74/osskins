@@ -1,11 +1,10 @@
 // Main injection module that re-exports all components
-mod cache;
 mod error;
 mod injector;
 mod types;
 mod utils;
 
-pub use injector::SkinInjector;
+pub use injector::{SkinInjector, cleanup_injection};
 pub use types::*;
 pub use utils::*;
 

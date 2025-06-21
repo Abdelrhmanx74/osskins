@@ -11,7 +11,7 @@ fn main() {
   }
   // Build mod-tools C++ binary before Tauri bundle validation
   // Build mod-tools C++ binary from cslol-tools source
-  let dst = cmake::Config::new("./cslol-manager/cslol-tools")
+  let dst = cmake::Config::new("./cslol-tools")
     .profile("Release")
     // Add policy to handle older CMake configurations
     .define("CMAKE_POLICY_DEFAULT_CMP0048", "NEW")

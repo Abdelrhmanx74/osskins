@@ -13,3 +13,4 @@ pub use data_updates::*;
 pub use lcu_communication::*;
 pub use custom_skins::*;
 pub use file_operations::*;
+pub use skin_management::force_inject_selected_skin;

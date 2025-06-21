@@ -11,6 +11,7 @@ use crate::commands::skin_management::{get_selected_champions_universal, inject_
 
 #[tauri::command]
 pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), String> {
+    // Only print critical startup info
     println!("Starting LCU status watcher for path: {}", league_path);
     let app_handle = app.clone();
     let league_path_clone = league_path.clone();
@@ -19,26 +20,31 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
         let _was_in_game = false;
         let _was_reconnecting = false;
         let _last_skin_check_time = std::time::Instant::now();
-        let mut _sleep_duration = Duration::from_secs(5);
+        let mut _sleep_duration = Duration::from_secs(3); // Default slower polling
         let mut last_champion_ids: Vec<i64> = Vec::new();
         let client = get_lcu_client();
         let mut last_lockfile_found = false;
         loop {
-            _sleep_duration = Duration::from_secs(5);
+            // Set polling interval based on phase
+            let fast_phases = ["ChampSelect", "Matchmaking", "Preparing"];
+            if fast_phases.contains(&last_phase.as_str()) {
+                _sleep_duration = Duration::from_secs(1); // Faster polling only in critical phases
+            } else {
+                _sleep_duration = Duration::from_secs(3); // Slower polling otherwise
+            }
             // Only print if lockfile state changes
             let mut found_any_lockfile = false;
             let mut _lockfile_path = None;
             let mut port = None;
             let mut token = None;
             for dir in [PathBuf::from(&league_path_clone)].iter() {
-                // Only print if lockfile state changes
                 for name in ["lockfile", "LeagueClientUx.lockfile", "LeagueClient.lockfile"] {
                     let path = dir.join(name);
                     if path.exists() {
                         found_any_lockfile = true;
                         _lockfile_path = Some(path.clone());
                         if !last_lockfile_found {
-                            println!("Found lockfile: {}", path.display());
+                            // println!("Found lockfile: {}", path.display());
                         }
                     }
                     if let Ok(content) = fs::read_to_string(&path) {
@@ -57,14 +63,15 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
             }
             if found_any_lockfile != last_lockfile_found {
                 if found_any_lockfile {
-                    println!("Lockfile detected in directory: {}", league_path_clone);
+                    // println!("Lockfile detected in directory: {}", league_path_clone);
                 } else {
-                    println!("Lockfile lost in directory: {}", league_path_clone);
+                    // println!("Lockfile lost in directory: {}", league_path_clone);
                 }
                 last_lockfile_found = found_any_lockfile;
             }
             if !found_any_lockfile || port.is_none() || token.is_none() {
-                println!("[LCU] No valid lockfile found or missing port/token. Skipping this cycle.");
+                // Only print error if lockfile is missing
+                // println!("[LCU] No valid lockfile found or missing port/token. Skipping this cycle.");
                 std::thread::sleep(std::time::Duration::from_secs(2));
                 continue;
             }
@@ -84,10 +91,10 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                         }
                     }
                 },
-                Err(e) => println!("[LCU API Debug] Failed to fetch gameflow-phase: {}", e),
+                Err(e) => eprintln!("[LCU API Debug] Failed to fetch gameflow-phase: {}", e),
             }
             if !last_phase.is_empty() && last_phase != phase {
-                println!("[LCU Phase] Transition: {} -> {}", last_phase, phase);
+                // println!("[LCU Phase] Transition: {} -> {}", last_phase, phase);
             }
             // Detect Swift Play mode more accurately with queue IDs
             let is_swift_play = {
@@ -111,17 +118,16 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                             .and_then(|id| id.as_i64())
                                             .unwrap_or(0)
                                     });
-                                
                                 // Swift Play modes (480, 1700) 
                                 if queue_id == 1700 || queue_id == 480 {
-                                    println!("[Swift Play Detection] Detected Swift Play by queue ID: {}", queue_id);
+                                    println!("[Game Mode] Swift Play detected (queue ID: {})", queue_id);
                                     swift_play = true;
                                 } else {
                                     let mode = detect_game_mode(&json);
                                     swift_play = mode.to_uppercase().contains("SWIFT") || 
                                                 mode.to_uppercase().contains("ARENA");
                                     if swift_play {
-                                        println!("[Swift Play Detection] Detected Swift Play by mode name: {}", mode);
+                                        println!("[Game Mode] Swift Play detected by mode name: {}", mode);
                                     }
                                 }
                             }
@@ -152,9 +158,6 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                              // Make sure we're continuously injecting during Swift Play phases
                                              (is_swift_play && (phase == "Matchmaking" || phase == "Preparing" || phase == "InProgress"));
                 
-                println!("[Swift Play] Phase transition check: {} -> {} = {} (including matchmaking auto-inject)", 
-                        last_phase, phase, is_transition_to_inject);
-                
                 if is_transition_to_inject {
                     // Use the lobby endpoint for Swift Play champion selection
                     let url = format!("https://127.0.0.1:{}/lol-lobby/v2/lobby", port);
@@ -164,7 +167,6 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                         .header("Authorization", format!("Basic {}", auth))
                         .send() {
                         Ok(resp) => {
-                            println!("[Swift Play] Got response status: {}", resp.status());
                             if resp.status().is_success() {
                                 if let Ok(json) = resp.json::<serde_json::Value>() {
                                     let mode = detect_game_mode(&json);
@@ -172,7 +174,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                     println!("[Swift Play] Detected game mode: {}", mode);
                                     
                                     // Extract confirmed champions, not just hovered ones
-                                    let ids = extract_lobby_champions(&json, &mode);
+                                    let ids = extract_lobby_champions(&json, &mode, &league_path_clone);
                                     
                                     if !ids.is_empty() {
                                         champion_ids = ids;
@@ -215,7 +217,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                 if let Ok(json) = resp.json::<serde_json::Value>() {
                                     // Extract confirmed champions
                                     let mode = detect_game_mode(&json);
-                                    let ids = extract_lobby_champions(&json, &mode);
+                                    let ids = extract_lobby_champions(&json, &mode, &league_path);
                                     
                                     if !ids.is_empty() {
                                         champion_ids = ids;
@@ -340,7 +342,60 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                             }
                         })
                         .and_then(|json| {
-                            // Check if there are completed actions for the local player
+                            // First, check if this is ARAM mode by queue ID
+                            let queue_id = json.get("gameData")
+                                .and_then(|d| d.get("queue"))
+                                .and_then(|q| q.get("id"))
+                                .and_then(|id| id.as_i64())
+                                .unwrap_or_else(|| {
+                                    json.get("gameConfig")
+                                        .and_then(|c| c.get("queueId"))
+                                        .and_then(|id| id.as_i64())
+                                        .unwrap_or(0)
+                                });
+                            
+                            // Check for ARAM features like benchEnabled
+                            let bench_enabled = json.get("benchEnabled")
+                                .and_then(|b| b.as_bool())
+                                .unwrap_or(false);
+                                
+                            let is_aram_mode = queue_id == 450 || bench_enabled;
+                            
+                            if is_aram_mode {
+                                // Special handling for ARAM - champions are auto-assigned
+                                println!("[ARAM Detection] ARAM mode detected in ChampSelect phase");
+                                
+                                // Get local player's cell ID
+                                if let Some(local_cell_id) = json.get("localPlayerCellId").and_then(|id| id.as_i64()) {
+                                    println!("[ARAM] Local player cell ID: {}", local_cell_id);
+                                    
+                                    // Check myTeam for the local player's champion
+                                    if let Some(my_team) = json.get("myTeam").and_then(|t| t.as_array()) {
+                                        for player in my_team {
+                                            if player.get("cellId").and_then(|id| id.as_i64()) == Some(local_cell_id) {
+                                                // In ARAM, any non-zero championId means it's assigned and locked
+                                                if let Some(champion_id) = player.get("championId").and_then(|id| id.as_i64()) {
+                                                    if champion_id > 0 {
+                                                        println!("[ARAM] Found local player's champion: {} - AUTO-CONFIRMED", champion_id);
+                                                        return Some(true); // In ARAM, champions are always confirmed
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    // If we couldn't find the champion in myTeam, check bench champions
+                                    if let Some(bench) = json.get("benchChampions").and_then(|b| b.as_array()) {
+                                        if !bench.is_empty() {
+                                            println!("[ARAM] Found {} bench champions - confirming ARAM mode", bench.len());
+                                            // If bench exists with champions, we're definitely in ARAM
+                                            return Some(true);
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Standard game modes: check for completed actions
                             let mut found_locked = false;
                             if let Some(actions) = json.get("actions").and_then(|a| a.as_array()) {
                                 let local_cell_id = json.get("localPlayerCellId").and_then(|id| id.as_i64());
@@ -380,75 +435,21 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                 
                 // Only inject if champions are locked in AND the champions have changed since last injection
                 if is_champion_locked && champion_ids != last_champion_ids {
-                    // Filter out any invalid/zero champion IDs as an extra precaution
-                    let valid_champion_ids: Vec<i64> = champion_ids.iter()
-                        .filter(|&&id| id > 0)
-                        .cloned()
-                        .collect();
-                        
-                    // Double check we actually have valid champions
+                    let valid_champion_ids: Vec<i64> = champion_ids.iter().filter(|&&id| id > 0).cloned().collect();
                     if !valid_champion_ids.is_empty() {
-                        println!("[LCU Detection] INJECTING skins for champion IDs: {:?}", valid_champion_ids);
-                        println!("[LCU Detection] Game mode: {} | Phase: {} | Swift Play: {} | Brawl: {}", 
-                                 detect_game_mode(&serde_json::json!({})), phase, is_swift_play, !is_swift_play);
-                        
-                        // Log the injection parameters in detail for debugging
-                        println!("[INJECTION EVENT] ===================================");
-                        println!("[INJECTION EVENT] Champion IDs: {:?}", valid_champion_ids);
-                        println!("[INJECTION EVENT] Game phase: {}", phase);
-                        println!("[INJECTION EVENT] Previous phase: {}", last_phase);
-                        println!("[INJECTION EVENT] Swift Play mode: {}", is_swift_play);
-                        println!("[INJECTION EVENT] ===================================");
-                        
-                        // Get and analyze the current game session one more time before injection
-                        match client.get(&format!("https://127.0.0.1:{}/lol-lobby/v2/lobby", port))
-                            .header("Authorization", format!("Basic {}", auth))
-                            .send()
-                            .ok()
-                            .and_then(|resp| resp.status().is_success().then(|| resp.json::<serde_json::Value>().ok()).flatten()) {
-                            Some(json) => {
-                                if is_swift_play {
-                                    // Run detailed Swift Play debugging
-                                    // debug_swift_play_session(&json, &phase);
-                                } 
-                                
-                                // For all game modes, debug matchmaking data if in matchmaking phase
-                                if phase == "Matchmaking" {
-                                    // debug_matchmaking_session(&json, &phase);
-                                }
-                            },
-                            None => {}
-                        }
-                        
-                        // Log the actual injection
+                        println!("[INJECT] Injecting skins for champion IDs: {:?} | Phase: {}", valid_champion_ids, phase);
                         inject_skins_for_champions(&app_handle, &league_path_clone, &valid_champion_ids);
                         last_champion_ids = valid_champion_ids.clone();
                     } else {
-                        println!("[LCU Detection] No valid champion IDs found after filtering: {:?}", champion_ids);
+                        eprintln!("[ERROR] No valid champion IDs found after filtering: {:?}", champion_ids);
                     }
                 } else if !is_champion_locked {
-                    println!("[LCU Detection] Champions found but NOT LOCKED IN: {:?}, phase: {}", 
-                             champion_ids, phase);
-                             
-                    // Special safety check: if we're in matchmaking phase but champions aren't locked,
-                    // force the injection anyway to handle edge cases like blind pick where client might not show lock
-                    if phase == "Matchmaking" && !champion_ids.is_empty() && 
-                       champion_ids != last_champion_ids && champion_ids.iter().all(|&id| id > 0) {
-                        println!("[Matchmaking SAFETY OVERRIDE] Force injecting champions in matchmaking phase: {:?}", champion_ids);
-                        
-                        // Log the injection parameters in detail for debugging
-                        println!("[INJECTION EVENT] ===================================");
-                        println!("[INJECTION EVENT] SAFETY OVERRIDE - Champion IDs: {:?}", champion_ids);
-                        println!("[INJECTION EVENT] Game phase: {}", phase);
-                        println!("[INJECTION EVENT] Previous phase: {}", last_phase);
-                        println!("[INJECTION EVENT] ===================================");
-                        
-                        // Log the actual injection
+                    // Only print if we force inject for safety
+                    if phase == "Matchmaking" && !champion_ids.is_empty() && champion_ids != last_champion_ids && champion_ids.iter().all(|&id| id > 0) {
+                        println!("[INJECT] Safety override: injecting in matchmaking phase for champion IDs: {:?}", champion_ids);
                         inject_skins_for_champions(&app_handle, &league_path_clone, &champion_ids);
                         last_champion_ids = champion_ids.clone();
                     }
-                } else if champion_ids == last_champion_ids {
-                    println!("[LCU Detection] Champions unchanged from last injection: {:?}", champion_ids);
                 }
             } else if champion_ids_found {
                 println!("[LCU Detection] No valid champions found to inject");
@@ -457,24 +458,9 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                 // The check for found_any_lockfile, port, and token must be done before unwrap, so we skip logging here
                 // Otherwise, do not log repeated 'no champion IDs' messages
             }
-            // Use a shorter polling interval during any matchmaking phase for faster champion detection
-            let polling_interval = if phase == "Matchmaking" {
-                if is_swift_play {
-                    println!("[Swift Play] Using faster polling in matchmaking phase");
-                } else {
-                    println!("[Matchmaking] Using faster polling in matchmaking phase");
-                }
-                std::time::Duration::from_millis(1000) // 1 second polling during matchmaking
-            } else {
-                std::time::Duration::from_secs(2) // 2 seconds for normal polling
-            };
-            
-            last_phase = phase;
-            std::thread::sleep(polling_interval);
+            std::thread::sleep(_sleep_duration);
         }
-    });                       
-
-    println!("LCU status watcher thread started");
+    });
     Ok(())
 }
 
@@ -738,6 +724,7 @@ fn detect_game_mode(json: &serde_json::Value) -> String {
         match queue_id {
             480 | 1700 => return "SWIFT_PLAY".to_string(),
             1300 | 2300 => return "BRAWL".to_string(),
+            450 => return "ARAM".to_string(),
             // Add more queue IDs as needed
             _ => {
                 println!("[Game Mode Detection] Unknown queue ID: {}", queue_id);
@@ -772,7 +759,7 @@ fn detect_game_mode(json: &serde_json::Value) -> String {
 }
 
 // Helper to extract champion IDs from lobby JSON for all modes
-fn extract_lobby_champions(json: &serde_json::Value, mode: &str) -> Vec<i64> {
+fn extract_lobby_champions(json: &serde_json::Value, mode: &str, league_path: &str) -> Vec<i64> {
     let mut champion_ids = Vec::new();
     
     // Determine if this is a multi-champion mode by analyzing properties
@@ -801,8 +788,14 @@ fn extract_lobby_champions(json: &serde_json::Value, mode: &str) -> Vec<i64> {
     let is_swift_play = queue_id == 1700 || queue_id == 480 || 
                       mode.to_uppercase().contains("SWIFT") || 
                       mode.to_uppercase().contains("ARENA");
+                      
+    // Check if this is ARAM mode
+    let is_aram_mode = queue_id == 450 || 
+                      mode.to_uppercase().contains("ARAM") ||
+                      json.get("benchEnabled").and_then(|b| b.as_bool()).unwrap_or(false);  // ARAM has bench feature
                        
-    println!("[Mode Detection] Is Brawl mode: {}, Is Swift Play: {}", is_brawl_mode, is_swift_play);
+    println!("[Mode Detection] Is Brawl mode: {}, Is Swift Play: {}, Is ARAM: {}", 
+             is_brawl_mode, is_swift_play, is_aram_mode);
     
     // SPECIAL CASE: In Matchmaking phase, always consider champions as locked
     let state = json.get("state").and_then(|s| s.as_str()).unwrap_or("");
@@ -810,13 +803,17 @@ fn extract_lobby_champions(json: &serde_json::Value, mode: &str) -> Vec<i64> {
     
     // Auto-confirmation flags for different game modes
     let swift_play_auto_confirm = is_swift_play && (in_matchmaking || state == "INPROGRESS");
+    // ARAM mode auto-confirm in matchmaking - champions are assigned automatically
+    let aram_auto_confirm = is_aram_mode && (in_matchmaking || state == "INPROGRESS");
     // Also auto-confirm for other modes in matchmaking
     let matchmaking_auto_confirm = in_matchmaking || state == "INPROGRESS";
     
-    if swift_play_auto_confirm || matchmaking_auto_confirm {
-        // For Swift Play, we use special logging
+    if swift_play_auto_confirm || matchmaking_auto_confirm || aram_auto_confirm {
+        // For different game modes, use appropriate logging
         if is_swift_play {
             println!("[Swift Play Override] AUTO-CONFIRMING all champions in {} phase", state);
+        } else if is_aram_mode {
+            println!("[ARAM Override] AUTO-CONFIRMING champions in {} phase", state);
         } else {
             println!("[Matchmaking Override] AUTO-CONFIRMING all champions in {} phase", state);
         }
@@ -824,13 +821,30 @@ fn extract_lobby_champions(json: &serde_json::Value, mode: &str) -> Vec<i64> {
         // Directly extract champions from playerSlots when in any matchmaking phase
         if let Some(local_member) = json.get("localMember") {
             if let Some(player_slots) = local_member.get("playerSlots").and_then(|ps| ps.as_array()) {
-                println!("[Swift Play Override] Found {} player slots in {}", player_slots.len(), state);
+                println!("[Matchmaking Override] Found {} player slots in {}", player_slots.len(), state);
                 
-                for (i, slot) in player_slots.iter().enumerate() {
-                    if let Some(champion_id) = slot.get("championId").and_then(|id| id.as_i64()) {
-                        if champion_id > 0 && !champion_ids.contains(&champion_id) {
-                            println!("[Swift Play Override] Auto-adding champion {} from slot {}", champion_id, i);
-                            champion_ids.push(champion_id);
+                // For single-champion modes (Brawl and ARAM), only consider the first champion slot
+                let slots_to_check = if is_brawl_mode || is_aram_mode {
+                    println!("[Single Champion Mode] Only considering first champion slot in matchmaking");
+                    std::cmp::min(1, player_slots.len())
+                } else {
+                    player_slots.len()
+                };
+                
+                for i in 0..slots_to_check {
+                    if let Some(slot) = player_slots.get(i) {
+                        if let Some(champion_id) = slot.get("championId").and_then(|id| id.as_i64()) {
+                            if champion_id > 0 && !champion_ids.contains(&champion_id) {
+                                let mode_str = if is_brawl_mode { 
+                                    "Brawl" 
+                                } else if is_aram_mode { 
+                                    "ARAM" 
+                                } else { 
+                                    "Swift Play" 
+                                };
+                                println!("[{} Override] Auto-adding champion {} from slot {}", mode_str, champion_id, i);
+                                champion_ids.push(champion_id);
+                            }
                         }
                     }
                 }
@@ -855,17 +869,161 @@ fn extract_lobby_champions(json: &serde_json::Value, mode: &str) -> Vec<i64> {
             }
         }
         
-        // Another fallback for Swift Play: check gameData.playerChampionSelections
+        // Another fallback for special modes: check gameData.playerChampionSelections
         if champion_ids.is_empty() {
             if let Some(game_data) = json.get("gameData") {
                 if let Some(selections) = game_data.get("playerChampionSelections").and_then(|s| s.as_array()) {
-                    println!("[Swift Play Override] Checking playerChampionSelections: {} entries", selections.len());
+                    let mode_str = if is_brawl_mode { 
+                        "Brawl" 
+                    } else if is_aram_mode { 
+                        "ARAM" 
+                    } else { 
+                        "Swift Play" 
+                    };
+                    println!("[{} Override] Checking playerChampionSelections: {} entries", mode_str, selections.len());
                     
-                    for (i, selection) in selections.iter().enumerate() {
-                        if let Some(champion_id) = selection.get("championId").and_then(|id| id.as_i64()) {
-                            if champion_id > 0 && !champion_ids.contains(&champion_id) {
-                                println!("[Swift Play Override] Auto-confirming champion {} from selection {}", champion_id, i);
-                                champion_ids.push(champion_id);
+                    // For single-champion modes like Brawl and ARAM, we need to find the local player's selection only
+                    if is_brawl_mode || is_aram_mode {
+                        // For single-champion modes, we need to find the local player's selection only
+                        println!("[{} Mode] Looking for local player's champion only", mode_str);
+                        
+                        // Try multiple methods to identify the local player
+                        let mut found_local_champion = false;
+                        
+                        // Method 1: Try to get local player ID from localPlayerSelection
+                        if let Some(local_player_id) = json.get("localPlayerSelection")
+                            .and_then(|lp| lp.get("summonerId"))
+                            .and_then(|id| id.as_i64()) 
+                        {
+                            println!("[{} Mode] Found local player ID: {}", mode_str, local_player_id);
+                            // Find by summoner ID
+                            for (i, selection) in selections.iter().enumerate() {
+                                println!("[{} Mode] Checking selection {}: summonerId = {:?}, championId = {:?}", 
+                                         mode_str, i, 
+                                         selection.get("summonerId").and_then(|id| id.as_i64()),
+                                         selection.get("championId").and_then(|id| id.as_i64()));
+                                         
+                                if let Some(summoner_id) = selection.get("summonerId").and_then(|id| id.as_i64()) {
+                                    if summoner_id == local_player_id {
+                                        if let Some(champion_id) = selection.get("championId").and_then(|id| id.as_i64()) {
+                                            if champion_id > 0 {
+                                                println!("[{} Mode] Found local player's champion: {}", mode_str, champion_id);
+                                                champion_ids.push(champion_id);
+                                                found_local_champion = true;
+                                                break; // Only get the first one
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Method 2: Try to get local player PUUID
+                        if !found_local_champion {
+                            println!("[{} Mode] Local player ID not found, trying PUUID method", mode_str);
+                            if let Some(local_puuid) = json.get("localPlayerPuuid").and_then(|id| id.as_str())
+                                .or_else(|| json.get("localPlayer").and_then(|lp| lp.get("puuid")).and_then(|id| id.as_str()))
+                            {
+                                println!("[{} Mode] Found local player PUUID: {}", mode_str, local_puuid);
+                                for (i, selection) in selections.iter().enumerate() {
+                                    if let Some(player_puuid) = selection.get("puuid").and_then(|id| id.as_str()) {
+                                        if player_puuid == local_puuid {
+                                            if let Some(champion_id) = selection.get("championId").and_then(|id| id.as_i64()) {
+                                                if champion_id > 0 {
+                                                    println!("[{} Mode] Found local player's champion via PUUID: {}", mode_str, champion_id);
+                                                    champion_ids.push(champion_id);
+                                                    found_local_champion = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Method 3: Fallback - if we still can't identify local player, try cell ID matching
+                        if !found_local_champion {
+                            println!("[{} Mode] PUUID method failed, trying cell ID method", mode_str);
+                            if let Some(local_cell_id) = json.get("localPlayerCellId").and_then(|id| id.as_i64()) {
+                                println!("[{} Mode] Found local player cell ID: {}", mode_str, local_cell_id);
+                                for (i, selection) in selections.iter().enumerate() {
+                                    if let Some(cell_id) = selection.get("cellId").and_then(|id| id.as_i64()) {
+                                        if cell_id == local_cell_id {
+                                            if let Some(champion_id) = selection.get("championId").and_then(|id| id.as_i64()) {
+                                                if champion_id > 0 {
+                                                    println!("[{} Mode] Found local player's champion via cell ID: {}", mode_str, champion_id);
+                                                    champion_ids.push(champion_id);
+                                                    found_local_champion = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Method 4: Enhanced PUUID/Summoner ID matching using LCU API
+                        if !found_local_champion {
+                            println!("[{} Mode] Cell ID method failed, trying enhanced LCU API method", mode_str);
+                            if let Some((current_puuid, current_summoner_id)) = get_current_summoner_info(league_path) {
+                                println!("[{} Mode] Retrieved current summoner from LCU - PUUID: {}, Summoner ID: {}", 
+                                         mode_str, current_puuid, current_summoner_id);
+                                
+                                for (i, selection) in selections.iter().enumerate() {
+                                    println!("[{} Mode] Enhanced check selection {}: PUUID = {:?}, summonerId = {:?}, championId = {:?}", 
+                                             mode_str, i, 
+                                             selection.get("puuid").and_then(|id| id.as_str()),
+                                             selection.get("summonerId").and_then(|id| id.as_i64()),
+                                             selection.get("championId").and_then(|id| id.as_i64()));
+                                    
+                                    let puuid_match = selection.get("puuid")
+                                        .and_then(|id| id.as_str())
+                                        .map_or(false, |puuid| puuid == current_puuid);
+                                    
+                                    let summoner_id_match = selection.get("summonerId")
+                                        .and_then(|id| id.as_i64())
+                                        .map_or(false, |id| id == current_summoner_id);
+                                    
+                                    if puuid_match || summoner_id_match {
+                                        if let Some(champion_id) = selection.get("championId").and_then(|id| id.as_i64()) {
+                                            if champion_id > 0 {
+                                                let match_type = if puuid_match { "PUUID" } else { "Summoner ID" };
+                                                println!("[{} Mode] FOUND LOCAL PLAYER via enhanced {}: Champion {}", 
+                                                         mode_str, match_type, champion_id);
+                                                champion_ids.push(champion_id);
+                                                found_local_champion = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                println!("[{} Mode] Failed to retrieve current summoner info from LCU API", mode_str);
+                            }
+                        }
+                        
+                        // Method 5: Last resort - take first valid champion but warn about uncertainty
+                        if !found_local_champion {
+                            println!("[{} Mode] WARNING: Cannot identify local player, using first champion (may be incorrect)", mode_str);
+                            if let Some(first_selection) = selections.first() {
+                                if let Some(champion_id) = first_selection.get("championId").and_then(|id| id.as_i64()) {
+                                    if champion_id > 0 {
+                                        println!("[{} Mode] Using first available champion: {} (NOT GUARANTEED TO BE LOCAL PLAYER)", mode_str, champion_id);
+                                        champion_ids.push(champion_id);
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Normal Swift Play handling - get all champions
+                        for (i, selection) in selections.iter().enumerate() {
+                            if let Some(champion_id) = selection.get("championId").and_then(|id| id.as_i64()) {
+                                if champion_id > 0 && !champion_ids.contains(&champion_id) {
+                                    println!("[Swift Play Override] Auto-confirming champion {} from selection {}", champion_id, i);
+                                    champion_ids.push(champion_id);
+                                }
                             }
                         }
                     }
@@ -890,7 +1048,7 @@ fn extract_lobby_champions(json: &serde_json::Value, mode: &str) -> Vec<i64> {
         // State being matchmaking or further along is another strong indicator
         json.get("state")
             .and_then(|state| state.as_str())
-            .map(|s| s == "MATCHMAKING" || s == "GAMESTARTING" || s == "INPROGRESS")
+            .map(|s| s == "MATCHMAKING" || s == "GAMESTARTING" || s == "PREPARING")
             .unwrap_or(false) ||
         // Check if game phase indicates we're past champion selection
         json.get("gameData")
@@ -910,6 +1068,14 @@ fn extract_lobby_champions(json: &serde_json::Value, mode: &str) -> Vec<i64> {
             .unwrap_or(false)
     );
     
+    // Auto-confirm specifically for ARAM mode
+    let auto_confirm_aram = is_aram_mode && (
+        json.get("state")
+            .and_then(|state| state.as_str())
+            .map(|s| s == "MATCHMAKING" || s == "GAMESTARTING" || s == "INPROGRESS")
+            .unwrap_or(false)
+    );
+    
     // Auto-confirm for any game mode in matchmaking phase
     let auto_confirm_matchmaking = json.get("state")
         .and_then(|state| state.as_str())
@@ -918,6 +1084,8 @@ fn extract_lobby_champions(json: &serde_json::Value, mode: &str) -> Vec<i64> {
     
     if auto_confirm_swift_play {
         println!("[Swift Play] Auto-confirming champion selections in matchmaking phase");
+    } else if auto_confirm_aram {
+        println!("[ARAM] Auto-confirming champion selections in matchmaking phase");
     } else if auto_confirm_matchmaking {
         println!("[Matchmaking] Auto-confirming champion selections in matchmaking phase");
     }
@@ -928,9 +1096,10 @@ fn extract_lobby_champions(json: &serde_json::Value, mode: &str) -> Vec<i64> {
         if let Some(player_slots) = local_member.get("playerSlots").and_then(|ps| ps.as_array()) {
             println!("[Champion Detection] Found {} player slots", player_slots.len());
             
-            // For Brawl mode, we should only consider the first champion
-            let slots_to_check = if is_brawl_mode {
-                println!("[Brawl Mode] Only considering first champion slot");
+            // For single-champion modes (Brawl and ARAM), we should only consider the first champion
+            let slots_to_check = if is_brawl_mode || is_aram_mode {
+                let mode_str = if is_brawl_mode { "Brawl" } else { "ARAM" };
+                println!("[{} Mode] Only considering first champion slot", mode_str);
                 std::cmp::min(1, player_slots.len())
             } else {
                 if is_swift_play {
@@ -943,8 +1112,6 @@ fn extract_lobby_champions(json: &serde_json::Value, mode: &str) -> Vec<i64> {
             
             for i in 0..slots_to_check {
                 if let Some(slot) = player_slots.get(i) {
-                    println!("[Slot Analysis] Analyzing slot {}: {:?}", i, slot);
-                    
                     // Check if this is a locked selection using multiple indicators - be more stringent
                     let selection_status = slot.get("selectionStatus")
                         .and_then(|status| status.as_str())
@@ -958,8 +1125,10 @@ fn extract_lobby_champions(json: &serde_json::Value, mode: &str) -> Vec<i64> {
                                         selection_status == "LOCKED" ||
                                         is_confirmed_selection || // Fall back to global confirmation
                                         auto_confirm_swift_play || // Auto-confirm in Swift Play matchmaking
+                                        auto_confirm_aram || // Auto-confirm in ARAM matchmaking 
                                         matchmaking_auto_confirm || // Auto-confirm in any matchmaking phase
                                         (is_swift_play && champion_id > 0) || // In Swift Play, any non-zero champion is valid
+                                        (is_aram_mode && champion_id > 0) || // In ARAM, any non-zero champion is valid
                                         (in_matchmaking && champion_id > 0); // In any matchmaking phase, any non-zero champion is valid
                     
                     // We already extracted champion_id above, so just use it directly
@@ -991,6 +1160,91 @@ fn extract_lobby_champions(json: &serde_json::Value, mode: &str) -> Vec<i64> {
         }
     }
     
+    // Special handling for ARAM - check bench champions if enabled and in confirmed state
+    if is_aram_mode && champion_ids.is_empty() {
+        // For ARAM, always check bench champions regardless of confirmation state
+        // This is because ARAM assigns champions automatically
+        println!("[ARAM] Looking for champion in ARAM mode (local bench or assigned champion)");
+        
+        // First check myTeam for local player's champion (most reliable)
+        if let Some(my_team) = json.get("myTeam").and_then(|t| t.as_array()) {
+            if let Some(local_cell_id) = json.get("localPlayerCellId").and_then(|id| id.as_i64()) {
+                println!("[ARAM] Looking for local player with cell ID: {}", local_cell_id);
+                for player in my_team {
+                    if let Some(cell_id) = player.get("cellId").and_then(|id| id.as_i64()) {
+                        if cell_id == local_cell_id {
+                            if let Some(champion_id) = player.get("championId").and_then(|id| id.as_i64()) {
+                                if champion_id > 0 {
+                                    println!("[ARAM] Found local player's champion in myTeam: {}", champion_id);
+                                    champion_ids.push(champion_id);
+                                    // We found what we need, return immediately
+                                    return champion_ids;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Then check bench champions
+        if let Some(bench) = json.get("benchChampions").and_then(|b| b.as_array()) {
+            println!("[ARAM] Checking bench champions: found {} champions", bench.len());
+            
+            // First try to find the selected champion (if any)
+            for bench_champ in bench {
+                let is_selected = bench_champ.get("selected").and_then(|s| s.as_bool()).unwrap_or(false);
+                
+                if is_selected {
+                    if let Some(champion_id) = bench_champ.get("championId").and_then(|id| id.as_i64()) {
+                        if champion_id > 0 {
+                            println!("[ARAM] Found selected bench champion: {}", champion_id);
+                            champion_ids.push(champion_id);
+                            // Selected champion takes priority
+                            return champion_ids;
+                        }
+                    }
+                }
+            }
+            
+            // If no selected champion, take the first bench champion
+            if champion_ids.is_empty() {
+                for bench_champ in bench {
+                    if let Some(champion_id) = bench_champ.get("championId").and_then(|id| id.as_i64()) {
+                        if champion_id > 0 {
+                            println!("[ARAM] Using first available bench champion: {}", champion_id);
+                            champion_ids.push(champion_id);
+                            // In ARAM mode, we only need one champion (the local player's)
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Check myTeam for ARAM - find local player's champion
+        if champion_ids.is_empty() {
+            if let Some(my_team) = json.get("myTeam").and_then(|t| t.as_array()) {
+                if let Some(local_cell_id) = json.get("localPlayerCellId").and_then(|id| id.as_i64()) {
+                    println!("[ARAM] Looking for champion with local cell ID: {}", local_cell_id);
+                    for player in my_team {
+                        if let Some(cell_id) = player.get("cellId").and_then(|id| id.as_i64()) {
+                            if cell_id == local_cell_id {
+                                if let Some(champion_id) = player.get("championId").and_then(|id| id.as_i64()) {
+                                    if champion_id > 0 {
+                                        println!("[ARAM] Found local player's champion: {}", champion_id);
+                                        champion_ids.push(champion_id);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // For multi-champion modes like Swift Play, add all additional champions
     if is_multi_champion_mode {
         // Get additional champions from local member slots (beyond the first)
@@ -1017,4 +1271,33 @@ fn extract_lobby_champions(json: &serde_json::Value, mode: &str) -> Vec<i64> {
         }
     }
     champion_ids
+}
+
+// Helper function to get current summoner information for local player identification
+fn get_current_summoner_info(league_path: &str) -> Option<(String, i64)> {
+    // Find lockfile and get auth
+    if let Ok(lockfile_path) = find_lockfile(league_path) {
+        if let Ok((port, token)) = get_auth_from_lockfile(&lockfile_path) {
+            let client = get_lcu_client();
+            let summoner_url = format!("https://127.0.0.1:{}/lol-summoner/v1/current-summoner", port);
+            let auth = base64::engine::general_purpose::STANDARD.encode(format!("riot:{}", token));
+            
+            if let Ok(resp) = client.get(&summoner_url)
+                .header("Authorization", format!("Basic {}", auth))
+                .send() 
+            {
+                if resp.status().is_success() {
+                    if let Ok(summoner_data) = resp.json::<serde_json::Value>() {
+                        let puuid = summoner_data.get("puuid").and_then(|p| p.as_str()).unwrap_or("");
+                        let summoner_id = summoner_data.get("summonerId").and_then(|id| id.as_i64()).unwrap_or(0);
+                        
+                        if !puuid.is_empty() && summoner_id > 0 {
+                            return Some((puuid.to_string(), summoner_id));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
 }

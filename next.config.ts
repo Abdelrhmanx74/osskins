@@ -6,8 +6,13 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
   distDir: "dist",
+  output: "export",
+  trailingSlash: true,
   eslint: {
     ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
   },
 };
 

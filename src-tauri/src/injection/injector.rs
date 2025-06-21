@@ -9,12 +9,19 @@ use zip::ZipArchive;
 use std::env;
 use memmap2::MmapOptions;
 use std::time::Instant;
+use std::sync::{Arc, Mutex};
+use once_cell::sync::Lazy;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
 // Define Windows-specific constants at the module level
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+// Global injection mutex to prevent concurrent injections
+static INJECTION_MUTEX: Lazy<Arc<Mutex<()>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(()))
+});
 
 // Main skin injector class - simplified without profiles
 pub struct SkinInjector {
@@ -185,11 +192,12 @@ impl SkinInjector {
             let _ = writeln!(log_file, "{}", emoji_message);
             let _ = log_file.flush();
         }
-        println!("{}", emoji_message);
+        // Only print once, with [injection] prefix for clarity
+        println!("[injection] {}", emoji_message);
         
         // Emit the log to the frontend
         if let Some(_app) = &self.app_handle {
-            println!("[injection] {}", emoji_message);
+            // Optionally, emit log event here if needed
         }
         
         self.status = message.to_string();
@@ -689,19 +697,34 @@ impl SkinInjector {
     
     // Run the overlay process using mod-tools.exe
     fn run_overlay(&mut self) -> Result<(), InjectionError> {
-        let mod_tools_path = match &self.mod_tools_path {
+        // Clone mod_tools_path up front to avoid borrow checker issues
+        let mod_tools_path = match self.mod_tools_path.clone() {
             Some(path) => {
                 if !path.exists() {
+                    self.cleanup_mod_tools_processes();
+                    self.set_state(ModState::Idle);
+                    if let Some(app) = &self.app_handle {
+                        let _ = app.emit("injection-status", "error");
+                        let _ = app.emit("skin-injection-error", format!("mod-tools.exe not found at {}", path.display()));
+                    }
                     return Err(InjectionError::OverlayError(format!(
                         "mod-tools.exe was found during initialization but is no longer at path: {}. Please reinstall the application or obtain mod-tools.exe from CSLOL Manager.",
                         path.display()
                     )));
                 }
-                path.clone()
+                path
             },
-            None => return Err(InjectionError::OverlayError(
-                "mod-tools.exe not found. Please install CSLOL Manager or copy mod-tools.exe to the application directory.".into()
-            )),
+            None => {
+                self.cleanup_mod_tools_processes();
+                self.set_state(ModState::Idle);
+                if let Some(app) = &self.app_handle {
+                    let _ = app.emit("injection-status", "error");
+                    let _ = app.emit("skin-injection-error", "mod-tools.exe not found. Please install CSLOL Manager or copy mod-tools.exe to the application directory.");
+                }
+                return Err(InjectionError::OverlayError(
+                    "mod-tools.exe not found. Please install CSLOL Manager or copy mod-tools.exe to the application directory.".into()
+                ));
+            },
         };
 
         self.log(&format!("Using mod-tools.exe from: {}", mod_tools_path.display()));
@@ -730,6 +753,12 @@ impl SkinInjector {
                 }
             }
             if overlay_dir.exists() && attempts >= max_attempts {
+                self.cleanup_mod_tools_processes();
+                self.set_state(ModState::Idle);
+                if let Some(app) = &self.app_handle {
+                    let _ = app.emit("injection-status", "error");
+                    let _ = app.emit("skin-injection-error", "Cannot remove existing overlay directory. It may be locked by another process.");
+                }
                 return Err(InjectionError::OverlayError(
                     "Cannot remove existing overlay directory. It may be locked by another process.".into()
                 ));
@@ -780,8 +809,9 @@ impl SkinInjector {
         let max_retries = 5; // Increased from 3 to 5
         let mut retry_count = 0;
         let mut last_error = None;
+        let mut overlay_creation_successful = false;
         
-        while retry_count < max_retries {
+        while retry_count < max_retries && !overlay_creation_successful {
             // Add delays and cleanup between retries
             if retry_count > 0 {
                 self.log(&format!("Retrying overlay creation (attempt {}/{})", retry_count + 1, max_retries));
@@ -864,6 +894,7 @@ impl SkinInjector {
                         // Clean up temp directory
                         let _ = fs::remove_dir_all(&temp_overlay_dir);
                         
+                        overlay_creation_successful = true;
                         break;
                     } else {
                         // Command ran but had error status
@@ -884,43 +915,61 @@ impl SkinInjector {
                         } else {
                             // Other error, only show error log if this is the final attempt
                             if retry_count + 1 >= max_retries {
-                                self.log(&format!("Overlay creation failed: {}", error_message));
+                                self.log(&format!("Overlay creation failed after {} attempts: {}", max_retries, error_message));
+                            } else {
+                                // For non-final attempts, just log a brief retry message without the full error
+                                self.log(&format!("Retrying overlay creation (attempt {}/{})", retry_count + 1, max_retries));
                             }
-                            retry_count += 1;
                             
                             last_error = Some(InjectionError::ProcessError(format!(
                                 "mkoverlay command failed: {}. Exit code: {}", 
                                 error_message, output.status
                             )));
                             
-                            // Try again if we haven't exhausted retries
-                            if retry_count < max_retries {
-                                continue;
-                            }
-                            
-                            // Clean up temp directory
-                            let _ = fs::remove_dir_all(&temp_overlay_dir);
-                            
-                            return Err(last_error.unwrap());
+                            retry_count += 1;
+                            // Continue to next retry attempt - don't return early here
+                            continue;
                         }
                     }
                 },
                 Err(e) => {
-                    // Command couldn't be started
-                    return Err(InjectionError::ProcessError(format!(
+                    // Command couldn't be started - store error and continue to next retry
+                    last_error = Some(InjectionError::ProcessError(format!(
                         "Failed to create overlay: {}. The mod-tools.exe might be missing or incompatible.", e
                     )));
+                    retry_count += 1;
+                    continue;
                 }
             }
         }
         
-        // Check if all retries were exhausted
-        if retry_count >= max_retries {
+        // Check if all retries were exhausted without success
+        if !overlay_creation_successful {
+            // Cleanup on failure
+            self.cleanup_mod_tools_processes();
+            let _ = fs::remove_dir_all(&overlay_dir);
+            let _ = fs::remove_dir_all(&temp_overlay_dir);
+            self.set_state(ModState::Idle);
+            
+            // Emit error events 
+            if let Some(app) = &self.app_handle {
+                let _ = app.emit("injection-status", "error");
+                if let Some(ref err) = last_error {
+                    let _ = app.emit("skin-injection-error", format!("Overlay creation failed after {} attempts: {}", max_retries, err));
+                } else {
+                    let _ = app.emit("skin-injection-error", format!("Overlay creation failed after {} attempts", max_retries));
+                }
+            }
+            
             if let Some(err) = last_error {
                 return Err(err);
             }
             return Err(InjectionError::ProcessError("Failed to create overlay after multiple attempts".into()));
         }
+        
+        // If we reach here, overlay creation was successful
+        self.log("Overlay creation completed successfully");
+        
         // Create config.json
         let config_path = self.app_dir.join("config.json");
         let config_content = r#"{"enableMods":true}"#;
@@ -935,8 +984,9 @@ impl SkinInjector {
         let max_run_retries = 3; // Increased from 2 to 3
         let mut run_retry_count = 0;
         let mut last_run_error = None;
+        let mut overlay_started_successfully = false;
         
-        while run_retry_count < max_run_retries {
+        while run_retry_count < max_run_retries && !overlay_started_successfully {
             if run_retry_count > 0 {
                 self.log(&format!("Retrying overlay run (attempt {}/{})", run_retry_count + 1, max_run_retries));
                 std::thread::sleep(std::time::Duration::from_millis(1000));
@@ -973,15 +1023,17 @@ impl SkinInjector {
                     
                     // Emit success to frontend if available
                     if let Some(app) = &self.app_handle {
+                        // Note: First dismiss any error status by setting to idle,
+                        // then emit success. This helps the UI properly update.
+                        let _ = app.emit("injection-status", "idle");
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         let _ = app.emit("injection-status", "success");
                     }
                     
-                    return Ok(());
+                    overlay_started_successfully = true;
+                    break;
                 },
                 Err(e) => {
-                    if run_retry_count + 1 >= max_run_retries {
-                        self.log(&format!("Failed to start overlay process: {}", e));
-                    }
                     run_retry_count += 1;
                     last_run_error = Some(match e.kind() {
                         io::ErrorKind::NotFound => InjectionError::OverlayError(format!(
@@ -996,12 +1048,20 @@ impl SkinInjector {
                             e
                         ))
                     });
+                    
                     if run_retry_count < max_run_retries {
-                        self.log(&format!("Failed to start overlay process: {}. Retrying...", e));
+                        self.log(&format!("Failed to start overlay process: {}. Retrying in {}ms...", e, 1000));
                         continue;
+                    } else {
+                        self.log(&format!("Failed to start overlay process after {} attempts: {}", max_run_retries, e));
                     }
                 }
             }
+        }
+        
+        // Check if overlay startup was successful
+        if overlay_started_successfully {
+            return Ok(());
         }
         
         // If we got here, all retries failed
@@ -1062,12 +1122,7 @@ impl SkinInjector {
         if let Some(_app) = &self.app_handle {
             let _ = _app.emit("injection-status", "injecting");
         }
-
-        // First, ensure that we clean up any existing running processes
-        // We do this even if we're not in Running state to avoid issues with orphaned processes
-        self.cleanup()?;
-        
-        // Now we can properly initialize for a new injection
+        // Removed: self.cleanup()?; // Cleanup should only happen after the game ends, not before injection
         self.set_state(ModState::Busy);
         self.log("Starting skin injection process...");
         
@@ -1129,15 +1184,29 @@ impl SkinInjector {
         }
         
         // Start the overlay process - THIS is the key part that makes skins actually show in-game!
-        self.run_overlay()?;
-        
-        self.log("Skin injection completed successfully");
-        // Note: We don't set state to Idle because we're now in Running state with the overlay active
-        // After all steps complete successfully, emit end event
-        if let Some(_app) = &self.app_handle {
-            let _ = _app.emit("injection-status", "completed");
+        match self.run_overlay() {
+            Ok(_) => {
+                self.log("Skin injection completed successfully");
+                // Note: We don't set state to Idle because we're now in Running state with the overlay active
+                // After all steps complete successfully, emit end event
+                if let Some(_app) = &self.app_handle {
+                    // Make sure we clear any potential error state first
+                    let _ = _app.emit("injection-status", "idle");
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    let _ = _app.emit("injection-status", "completed");
+                }
+                Ok(())
+            },
+            Err(e) => {
+                self.log(&format!("Failed to start overlay process: {}", e));
+                self.set_state(ModState::Idle);
+                if let Some(_app) = &self.app_handle {
+                    let _ = _app.emit("injection-status", "error");
+                    let _ = _app.emit("skin-injection-error", format!("Injection failed: {}", e));
+                }
+                Err(e)
+            }
         }
-        Ok(())
     }
 
     // Add a cleanup method to stop the injection
@@ -1198,10 +1267,46 @@ impl SkinInjector {
             }
         }
         
+        // Also clean up the game mods directory
+        let game_mods_dir = self.game_path.join("mods");
+        if game_mods_dir.exists() {
+            for _ in 0..3 {
+                match fs::remove_dir_all(&game_mods_dir) {
+                    Ok(_) => break,
+                    Err(_) => {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                }
+            }
+        }
+        
         // Reset the state regardless of previous state to ensure cleanup
         self.set_state(ModState::Idle);
+        
+        // Emit cleanup status to frontend
+        if let Some(app) = &self.app_handle {
+            let _ = app.emit("injection-status", "idle");
+        }
+        
         self.log("Skin injection stopped");
         
+        Ok(())
+    }
+    
+    /// Call this after the game ends (e.g. phase transitions to lobby/none) to clean up overlays and mods
+    pub fn post_game_cleanup(&mut self) -> Result<(), InjectionError> {
+        self.log("Post-game cleanup: removing overlays and killing mod-tools processes");
+        self.cleanup_mod_tools_processes();
+        let overlay_dir = self.app_dir.join("overlay");
+        if overlay_dir.exists() {
+            let _ = fs::remove_dir_all(&overlay_dir);
+        }
+        let game_mods_dir = self.game_path.join("mods");
+        if game_mods_dir.exists() {
+            let _ = fs::remove_dir_all(&game_mods_dir);
+        }
+        self.set_state(ModState::Idle);
+        self.log("Post-game cleanup complete");
         Ok(())
     }
 }
@@ -1213,6 +1318,24 @@ pub fn inject_skins(
     skins: &[Skin], 
     fantome_files_dir: &Path
 ) -> Result<(), String> {
+    // Acquire injection lock to prevent concurrent injections
+    let _lock = match INJECTION_MUTEX.try_lock() {
+        Ok(lock) => lock,
+        Err(_) => {
+            // Another injection process is already running
+            let error_msg = "Another injection process is already running. Please wait for it to complete.";
+            println!("{}", error_msg);
+            
+            // Emit error to frontend
+            let _ = app_handle.emit("injection-status", "error");
+            let _ = app_handle.emit("skin-injection-error", error_msg);
+            
+            return Err(error_msg.to_string());
+        }
+    };
+    
+    println!("🔒 Acquired injection lock - starting injection process");
+    
     // Create injector
     let mut injector = SkinInjector::new(app_handle, game_path)
         .map_err(|e| format!("Failed to create injector: {}", e))?;
@@ -1221,9 +1344,21 @@ pub fn inject_skins(
     injector.initialize()
         .map_err(|e| format!("Failed to initialize: {}", e))?;
     
-    // Inject skins
-    injector.inject_skins(skins, fantome_files_dir)
-        .map_err(|e| format!("Failed to inject skins: {}", e))
+    // Inject skins - simplified error handling to avoid duplication
+    let result = match injector.inject_skins(skins, fantome_files_dir) {
+        Ok(_) => {
+            println!("🔓 Injection completed successfully - releasing lock");
+            Ok(())
+        },
+        Err(e) => {
+            println!("🔓 Injection failed - releasing lock: {}", e);
+            // Don't wrap the error message again to avoid confusion
+            Err(e.to_string())
+        }
+    };
+    
+    // Lock is automatically released when _lock goes out of scope
+    result
 }
 
 // New function to clean up the injection when needed

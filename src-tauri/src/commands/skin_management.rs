@@ -44,8 +44,8 @@ pub async fn inject_skins(
         },
         Err(err) => {
             println!("Skin injection failed: {}", err);
-            let _ = app.emit("injection-status", "error");
-            let _ = app.emit("skin-injection-error", format!("Injection failed: {}", err));
+            // Don't emit error events here since the injector already handles this
+            // to prevent duplicate error messages
             Err(format!("Injection failed: {}", err))
         }
     }
@@ -133,7 +133,7 @@ pub fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_i
         
     if valid_champion_ids.is_empty() {
         println!("[Swift Play Injection] No valid champion IDs to inject");
-        return;
+         return;
     }
     
     println!("[Swift Play Injection] Valid champion IDs: {:?}", valid_champion_ids);
@@ -199,11 +199,10 @@ pub fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_i
                         println!("Successfully injected skins");
                     },
                     Err(e) => {
-                        let _ = app.emit("skin-injection-error", format!(
-                            "Failed to inject skins: {}", e
-                        ));
-                        let _ = app.emit("injection-status", "error");
+                        // Don't emit error events here since the injector already handles this
+                        // to prevent duplicate error messages
                         println!("Error injecting skins: {}", e);
+                        return;
                     }
                 }
             } else if !champion_ids.is_empty() {
@@ -220,11 +219,11 @@ pub fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_i
 
 // Get the selected champions from any game mode (Normal, ARAM, Swift Play, Brawl, etc.)
 pub fn get_selected_champions_universal(json: &serde_json::Value) -> Vec<i64> {
+    // Only log high-level info: champion IDs, game mode, queue ID, phase
     let mut champion_ids = Vec::new();
-    println!("!!! FUNCTION CALLED: get_selected_champions_universal !!!");
-    println!("Universal champion detection: checking for champions in session data");
-    println!("JSON structure keys at root level: {:?}", json.as_object().map(|o| o.keys().collect::<Vec<_>>()));
-    
+    // println!("!!! FUNCTION CALLED: get_selected_champions_universal !!!");
+    // println!("Universal champion detection: checking for champions in session data");
+    // println!("JSON structure keys at root level: {:?}", json.as_object().map(|o| o.keys().collect::<Vec<_>>()));
     // Get game mode info for logging purposes
     let game_mode = if let Some(game_data) = json.get("gameData") {
         if let Some(queue) = game_data.get("queue") {
@@ -239,9 +238,43 @@ pub fn get_selected_champions_universal(json: &serde_json::Value) -> Vec<i64> {
     } else {
         None
     };
-    
-    println!("Detected game mode from JSON: {:?}", game_mode);
-    
+    // Only log game mode and queue ID
+    if let Some(mode) = game_mode {
+        println!("[Game Mode] {}", mode);
+    }
+    let queue_id = json.get("gameData")
+        .and_then(|d| d.get("queue"))
+        .and_then(|q| q.get("id"))
+        .and_then(|id| id.as_i64())
+        .unwrap_or_else(|| {
+            json.get("gameConfig")
+                .and_then(|c| c.get("queueId"))
+                .and_then(|id| id.as_i64())
+                .unwrap_or(0)
+        });
+    println!("[Queue ID] {}", queue_id);
+
+    // Special Brawl detection: use localPlayerCellId and gameData.teamOne/teamTwo
+    if queue_id == 1300 || queue_id == 2300 {
+        println!("[Brawl Detection] Attempting to detect local champion in Brawl");
+        if let Some(local_cell_id) = json.get("gameData").and_then(|gd| gd.get("localPlayerCellId")).and_then(|id| id.as_i64()) {
+            if let Some(game_data) = json.get("gameData") {
+                let mut teams = Vec::new();
+                if let Some(one) = game_data.get("teamOne").and_then(|t| t.as_array()) { teams.extend(one); }
+                if let Some(two) = game_data.get("teamTwo").and_then(|t| t.as_array()) { teams.extend(two); }
+                for player in teams {
+                    if player.get("cellId").and_then(|id| id.as_i64()) == Some(local_cell_id) {
+                        if let Some(ch_id) = player.get("championId").and_then(|id| id.as_i64()) {
+                            println!("[Brawl Detection] Found local champion ID: {}", ch_id);
+                            return vec![ch_id];
+                        }
+                    }
+                }
+            }
+        }
+        println!("[Brawl Detection] Failed to detect local champion, falling back");
+    }
+
     // IMPORTANT: Check for Swift Play matchmaking phase - special case that needs auto-confirmation
     let queue_id = json.get("gameData")
         .and_then(|d| d.get("queue"))
@@ -254,75 +287,11 @@ pub fn get_selected_champions_universal(json: &serde_json::Value) -> Vec<i64> {
                 .unwrap_or(0)
         });
     
-    // Determine if this is Swift Play mode
-    let is_swift_play = queue_id == 480 || queue_id == 1700 || 
-                      game_mode.map_or(false, |mode| mode.to_uppercase().contains("SWIFT") || 
-                                                       mode.to_uppercase().contains("ARENA"));
-                      
-    // Check if we're in matchmaking phase                  
-    let is_matchmaking = json.get("state")
+    // Check if we're in matchmaking phase
+    let in_matchmaking = json.get("state")
         .and_then(|s| s.as_str())
         .map(|s| s == "MATCHMAKING" || s == "GAMESTARTING" || s == "INPROGRESS")
         .unwrap_or(false);
-        
-    let swift_play_matchmaking = is_swift_play && is_matchmaking;
-    
-    // Special Swift Play matchmaking auto-confirmation override
-    if swift_play_matchmaking {
-        println!("[Swift Play AUTO-CONFIRM] Detected Swift Play in matchmaking phase");
-        
-        // In Swift Play matchmaking, we should auto-confirm all champions in playerSlots
-        if let Some(local_member) = json.get("localMember") {
-            println!("[Swift Play AUTO-CONFIRM] Found localMember in matchmaking");
-            if let Some(player_slots) = local_member.get("playerSlots").and_then(|ps| ps.as_array()) {
-                println!("[Swift Play AUTO-CONFIRM] Found {} player slots", player_slots.len());
-                
-                // Auto-confirm all champions in player slots
-                for (i, slot) in player_slots.iter().enumerate() {
-                    if let Some(champion_id) = slot.get("championId").and_then(|id| id.as_i64()) {
-                        if champion_id > 0 {
-                            println!("[Swift Play AUTO-CONFIRM] Auto-confirming champion {} in slot {}", champion_id, i);
-                            champion_ids.push(champion_id);
-                        }
-                    }
-                }
-                
-                // If we found champions, return them immediately
-                if !champion_ids.is_empty() {
-                    println!("[Swift Play AUTO-CONFIRM] Returning {} auto-confirmed champions: {:?}", 
-                            champion_ids.len(), champion_ids);
-                    return champion_ids;
-                }
-            } else {
-                // Also try checking gameData.playerChampionSelections for Swift Play matchmaking
-                if let Some(game_data) = json.get("gameData") {
-                    if let Some(selections) = game_data.get("playerChampionSelections").and_then(|s| s.as_array()) {
-                        println!("[Swift Play AUTO-CONFIRM] Found playerChampionSelections: {} entries", selections.len());
-                        
-                        for (i, selection) in selections.iter().enumerate() {
-                            if let Some(champion_id) = selection.get("championId").and_then(|id| id.as_i64()) {
-                                if champion_id > 0 {
-                                    println!("[Swift Play AUTO-CONFIRM] Auto-confirming champion {} from selection {}", champion_id, i);
-                                    champion_ids.push(champion_id);
-                                }
-                            }
-                        }
-                        
-                        // If we found champions this way, return them immediately
-                        if !champion_ids.is_empty() {
-                            println!("[Swift Play AUTO-CONFIRM] Returning {} auto-confirmed champions from selections: {:?}", 
-                                    champion_ids.len(), champion_ids);
-                            return champion_ids;
-                        }
-                    }
-                }
-                
-                println!("[Swift Play AUTO-CONFIRM] No playerSlots found in localMember");
-            }
-        } else {
-            println!("[Swift Play AUTO-CONFIRM] No localMember found");
-        }
-    }
     
     // Check if we're in any matchmaking phase - this applies to all game modes  
     let in_matchmaking = json.get("state")
@@ -331,7 +300,7 @@ pub fn get_selected_champions_universal(json: &serde_json::Value) -> Vec<i64> {
         .unwrap_or(false);
     
     // If we're in matchmaking but not Swift Play, still auto-confirm champions
-    if in_matchmaking && !swift_play_matchmaking {
+    if in_matchmaking {
         println!("[Matchmaking AUTO-CONFIRM] Detected game in matchmaking phase");
         
         // In matchmaking, we should auto-confirm all champions in playerSlots for any game mode
@@ -340,12 +309,23 @@ pub fn get_selected_champions_universal(json: &serde_json::Value) -> Vec<i64> {
             if let Some(player_slots) = local_member.get("playerSlots").and_then(|ps| ps.as_array()) {
                 println!("[Matchmaking AUTO-CONFIRM] Found {} player slots", player_slots.len());
                 
-                // Auto-confirm all champions in player slots
-                for (i, slot) in player_slots.iter().enumerate() {
-                    if let Some(champion_id) = slot.get("championId").and_then(|id| id.as_i64()) {
-                        if champion_id > 0 {
-                            println!("[Matchmaking AUTO-CONFIRM] Auto-confirming champion {} in slot {}", champion_id, i);
-                            champion_ids.push(champion_id);
+                // For Brawl mode, only consider the first slot
+                let is_brawl_mode = queue_id == 1300 || queue_id == 2300;
+                let slots_to_check = if is_brawl_mode {
+                    println!("[Brawl Mode] Only considering first champion slot in matchmaking");
+                    std::cmp::min(1, player_slots.len())
+                } else {
+                    player_slots.len()
+                };
+                
+                // Auto-confirm champions in player slots (all for multi-champion modes, only first for Brawl)
+                for i in 0..slots_to_check {
+                    if let Some(slot) = player_slots.get(i) {
+                        if let Some(champion_id) = slot.get("championId").and_then(|id| id.as_i64()) {
+                            if champion_id > 0 {
+                                println!("[Matchmaking AUTO-CONFIRM] Auto-confirming champion {} in slot {}", champion_id, i);
+                                champion_ids.push(champion_id);
+                            }
                         }
                     }
                 }
@@ -363,11 +343,51 @@ pub fn get_selected_champions_universal(json: &serde_json::Value) -> Vec<i64> {
                 if let Some(selections) = game_data.get("playerChampionSelections").and_then(|s| s.as_array()) {
                     println!("[Matchmaking AUTO-CONFIRM] Found playerChampionSelections: {} entries", selections.len());
                     
-                    for (i, selection) in selections.iter().enumerate() {
-                        if let Some(champion_id) = selection.get("championId").and_then(|id| id.as_i64()) {
-                            if champion_id > 0 {
-                                println!("[Matchmaking AUTO-CONFIRM] Auto-confirming champion {} from selection {}", champion_id, i);
-                                champion_ids.push(champion_id);
+                    // For Brawl mode, we need to identify the local player's selection only
+                    let is_brawl_mode = queue_id == 1300 || queue_id == 2300;
+                    
+                    if is_brawl_mode {
+                        // Try to find the local player's selection for Brawl mode
+                        println!("[Brawl Mode] Looking for local player's champion only");
+                        
+                        if let Some(local_player_id) = json.get("localPlayerSelection")
+                            .and_then(|lp| lp.get("summonerId"))
+                            .and_then(|id| id.as_i64()) 
+                        {
+                            // Match by summoner ID
+                            for (i, selection) in selections.iter().enumerate() {
+                                if let Some(summoner_id) = selection.get("summonerId").and_then(|id| id.as_i64()) {
+                                    if summoner_id == local_player_id {
+                                        if let Some(champion_id) = selection.get("championId").and_then(|id| id.as_i64()) {
+                                            if champion_id > 0 {
+                                                println!("[Brawl Mode] Found local player's champion: {}", champion_id);
+                                                champion_ids.push(champion_id);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // If we can't identify the local player, just take the first non-zero champion ID
+                            for (i, selection) in selections.iter().enumerate() {
+                                if let Some(champion_id) = selection.get("championId").and_then(|id| id.as_i64()) {
+                                    if champion_id > 0 {
+                                        println!("[Brawl Mode] Cannot identify local player, using first champion: {}", champion_id);
+                                        champion_ids.push(champion_id);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Normal multi-champion handling
+                        for (i, selection) in selections.iter().enumerate() {
+                            if let Some(champion_id) = selection.get("championId").and_then(|id| id.as_i64()) {
+                                if champion_id > 0 {
+                                    println!("[Matchmaking AUTO-CONFIRM] Auto-confirming champion {} from selection {}", champion_id, i);
+                                    champion_ids.push(champion_id);
+                                }
                             }
                         }
                     }
@@ -475,7 +495,7 @@ pub fn get_selected_champions_universal(json: &serde_json::Value) -> Vec<i64> {
         println!("Detected game mode: {}, Queue ID: {}", game_mode, queue_id);
         
         // Check if this is Brawl mode by queue ID
-        let is_brawl_mode = queue_id == 1300; // 1300 is the queue ID for Brawl
+        let is_brawl_mode = queue_id == 1300 || queue_id == 2300; // 1300 and 2300 are queue IDs for Brawl
         if is_brawl_mode {
             println!("[Mode Detection] Detected Brawl mode by queue ID: {}", queue_id);
         }
@@ -492,7 +512,7 @@ pub fn get_selected_champions_universal(json: &serde_json::Value) -> Vec<i64> {
                 .and_then(|id| id.as_i64());
                 
             // For Brawl mode, we need to be extra careful to only detect the local player's champion
-            let is_brawl_mode = queue_id == 1300;
+            let is_brawl_mode = queue_id == 1300 || queue_id == 2300;
             
             // If it's a single champion mode like Brawl or we didn't detect the mode yet, make sure to check local player
             let check_local_player = is_brawl_mode || !is_multi_champion_mode || local_player_id.is_some();
@@ -632,9 +652,9 @@ pub fn get_selected_champions_universal(json: &serde_json::Value) -> Vec<i64> {
     
     // Method 4: Check all members player slots (Multi-player Swift Play lobby)
     if let Some(members) = json.get("members") {
-        println!("Found 'members' node in JSON: {:?}", members);
+        // println!("Found 'members' node in JSON: {:?}", members);
         if let Some(members_array) = members.as_array() {
-            println!("Members is an array with {} items", members_array.len());
+            // println!("Members is an array with {} items", members_array.len());
             
             // For single-champion modes, we need to identify the local player
             let local_puuid = if !is_multi_champion_mode {
@@ -707,26 +727,67 @@ pub fn get_selected_champions_universal(json: &serde_json::Value) -> Vec<i64> {
     }
     
     // Method 5: Special handling for ARAM - look at myChampions and bench champions
-    if let Some(my_selection) = json.get("myTeam").and_then(|t| t.as_array()) {
-        // Get local player cell ID first
-        if let Some(local_cell_id) = json.get("localPlayerCellId").and_then(|id| id.as_i64()) {
-            // Find the player with matching cellId
-            for player in my_selection {
-                if let Some(cell_id) = player.get("cellId").and_then(|id| id.as_i64()) {
-                    if cell_id == local_cell_id {
-                        // This is the local player, get their champion
-                        if let Some(champion_id) = player.get("championId").and_then(|id| id.as_i64()) {
-                            if champion_id > 0 && !champion_ids.contains(&champion_id) {
-                                println!("[ARAM Detection] Found champion ID: {}", champion_id);
-                                champion_ids.push(champion_id);
-                                
-                                // For single-champion modes, only return this one champion
-                                if !is_multi_champion_mode {
-                                    println!("[Single Champion Mode] Found local player champion: {}", champion_id);
+    // Check if this is ARAM mode first
+    let is_aram_mode = queue_id == 450 || 
+                      (game_mode.map_or(false, |mode| mode.to_uppercase().contains("ARAM"))) ||
+                      json.get("benchEnabled").and_then(|b| b.as_bool()).unwrap_or(false);
+                      
+    if is_aram_mode {
+        println!("[ARAM Detection] Detected ARAM mode, looking for champion");
+        
+        // Log additional information to help with diagnosis
+        println!("[ARAM Debug] Phase: {}", json.get("phase").and_then(|p| p.as_str()).unwrap_or("Unknown"));
+        println!("[ARAM Debug] State: {}", json.get("state").and_then(|s| s.as_str()).unwrap_or("Unknown"));
+        println!("[ARAM Debug] Has benchEnabled: {}", json.get("benchEnabled").is_some());
+        println!("[ARAM Debug] Has champSelectActive: {}", json.get("champSelectActive").and_then(|c| c.as_bool()).unwrap_or(false));
+        
+        // ARAM-specific detection - get the local player's champion
+        if let Some(my_selection) = json.get("myTeam").and_then(|t| t.as_array()) {
+            // Get local player cell ID first
+            if let Some(local_cell_id) = json.get("localPlayerCellId").and_then(|id| id.as_i64()) {
+                println!("[ARAM Detection] Looking for local player with cell ID: {}", local_cell_id);
+                // Find the player with matching cellId
+                for player in my_selection {
+                    if let Some(cell_id) = player.get("cellId").and_then(|id| id.as_i64()) {
+                        if cell_id == local_cell_id {
+                            // This is the local player, get their champion
+                            if let Some(champion_id) = player.get("championId").and_then(|id| id.as_i64()) {
+                                if champion_id > 0 && !champion_ids.contains(&champion_id) {
+                                    println!("[ARAM Detection] Found local player's champion ID: {}", champion_id);
+                                    champion_ids.push(champion_id);
+                                    
+                                    // In ARAM mode, we only need the local player's champion
+                                    println!("[ARAM Mode] Found local player champion: {}", champion_id);
                                     return vec![champion_id]; // Return only the local player's champion
                                 }
-                                // Continue checking other methods for multi-champion modes
                             }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Also try to find the local player directly in localMember - common in ARAM
+        if let Some(local_member) = json.get("localMember") {
+            println!("[ARAM Detection] Found localMember, checking for champion");
+            
+            // Direct champion ID on localMember
+            if let Some(champion_id) = local_member.get("championId").and_then(|id| id.as_i64()) {
+                if champion_id > 0 {
+                    println!("[ARAM Detection] Found champion directly on localMember: {}", champion_id);
+                    return vec![champion_id];
+                }
+            }
+            
+            // Check player slots (usually only one in ARAM)
+            if let Some(player_slots) = local_member.get("playerSlots").and_then(|ps| ps.as_array()) {
+                println!("[ARAM Detection] Found {} player slots", player_slots.len());
+                if !player_slots.is_empty() {
+                    // In ARAM, we only need to check the first slot
+                    if let Some(champion_id) = player_slots[0].get("championId").and_then(|id| id.as_i64()) {
+                        if champion_id > 0 {
+                            println!("[ARAM Detection] Found champion in first player slot: {}", champion_id);
+                            return vec![champion_id];
                         }
                     }
                 }
@@ -736,12 +797,30 @@ pub fn get_selected_champions_universal(json: &serde_json::Value) -> Vec<i64> {
     
     // Method 6: Check bench champions in ARAM (after reroll)
     // Only check bench if we haven't found the local player's champion
-    if champion_ids.is_empty() {
+    if champion_ids.is_empty() && is_aram_mode {
+        println!("[ARAM Detection] Checking bench champions");
         if let Some(bench) = json.get("benchChampions").and_then(|b| b.as_array()) {
+            println!("[ARAM Detection] Found {} bench champions", bench.len());
+            
+            // First try to find the selected bench champion (if any)
             for bench_champ in bench {
+                let is_selected = bench_champ.get("selected").and_then(|s| s.as_bool()).unwrap_or(false);
+                if is_selected {
+                    if let Some(champion_id) = bench_champ.get("championId").and_then(|id| id.as_i64()) {
+                        if champion_id > 0 {
+                            println!("[ARAM Detection] Found selected bench champion: {}", champion_id);
+                            return vec![champion_id]; // Return the selected bench champion
+                        }
+                    }
+                }
+            }
+            
+            // If no selected champion found, take the first bench champion
+            if let Some(bench_champ) = bench.first() {
                 if let Some(champion_id) = bench_champ.get("championId").and_then(|id| id.as_i64()) {
-                    if champion_id > 0 && !champion_ids.contains(&champion_id) {
-                        champion_ids.push(champion_id);
+                    if champion_id > 0 {
+                        println!("[ARAM Detection] Using first bench champion: {}", champion_id);
+                        return vec![champion_id]; // Return first bench champion
                     }
                 }
             }
@@ -750,6 +829,13 @@ pub fn get_selected_champions_universal(json: &serde_json::Value) -> Vec<i64> {
     
     // Method 7: Check benchEnabled to confirm if this is ARAM
     if let Some(bench_enabled) = json.get("benchEnabled").and_then(|b| b.as_bool()) {
+        if bench_enabled && !is_aram_mode {
+            println!("[ARAM Detection] Detected ARAM mode via benchEnabled flag");
+            // If we haven't already found champions, try the ARAM methods again
+            if champion_ids.is_empty() {
+                return get_selected_champions_universal(json); // Recursive call with updated is_aram_mode
+            }
+        }
     }
     
     // Method 8: Handle any potential new game modes by checking any champion ID anywhere in the JSON
@@ -1090,13 +1176,13 @@ pub fn is_multi_champion_mode(json: &serde_json::Value, game_mode: Option<&str>)
             .and_then(|q| q.get("id"))
             .and_then(|id| id.as_i64())
         {
-            // Brawl mode (1300, 2300) is definitely single-champion
-            if queue_id == 1300 || queue_id == 2300 {
-                println!("[Mode Detection] Detected Brawl mode (Queue ID {}) - single-champion mode", queue_id);
+            // Brawl mode (1300, 2300) and ARAM (450) should be treated as single-champion modes
+            if queue_id == 1300 || queue_id == 2300 || queue_id == 450 {
+                println!("[Mode Detection] Detected single-champion mode (Queue ID {}) - treating as single-champion mode", queue_id);
                 return false;
             }
             
-            // Swift Play modes (480, 1700) are multi-champion
+            // Swift Play modes (1700, 480) are multi-champion
             if queue_id == 1700 || queue_id == 480 {
                 println!("[Mode Detection] Detected Swift Play mode (Queue ID {}) - multi-champion mode", queue_id);
                 return true;
@@ -1109,13 +1195,13 @@ pub fn is_multi_champion_mode(json: &serde_json::Value, game_mode: Option<&str>)
     // Check in gameConfig section as well - some API responses have queue ID here
     if let Some(game_config) = json.get("gameConfig") {
         if let Some(queue_id) = game_config.get("queueId").and_then(|id| id.as_i64()) {
-            // Brawl mode (1300, 2300) is definitely single-champion
-            if queue_id == 1300 || queue_id == 2300 {
-                println!("[Mode Detection] Detected Brawl mode (Queue ID {}) in gameConfig - single-champion mode", queue_id);
+            // Brawl mode (1300, 2300) and ARAM (450) should be treated as single-champion modes
+            if queue_id == 1300 || queue_id == 2300 || queue_id == 450 {
+                println!("[Mode Detection] Detected single-champion mode (Queue ID {}) in gameConfig - treating as single-champion mode", queue_id);
                 return false;
             }
             
-            // Swift Play modes (480, 1700) are multi-champion
+            // Swift Play modes (1700, 480) are multi-champion
             if queue_id == 1700 || queue_id == 480 {
                 println!("[Mode Detection] Detected Swift Play mode (Queue ID {}) in gameConfig - multi-champion mode", queue_id);
                 return true;
@@ -1157,4 +1243,29 @@ pub fn is_multi_champion_mode(json: &serde_json::Value, game_mode: Option<&str>)
     // Default: Single champion mode is safer (won't duplicate injections)
     println!("[Mode Detection] Defaulting to single-champion mode (safest option)");
     false
+}
+
+#[tauri::command]
+pub async fn force_inject_selected_skin(app: tauri::AppHandle, champion_id: u32) -> Result<(), String> {
+    // Load config to get selected skin for this champion
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    let config_file = app_data_dir.join("config").join("config.json");
+    if !config_file.exists() {
+        return Err("No config file found with skin selections".to_string());
+    }
+    let config: SavedConfig = serde_json::from_str(&std::fs::read_to_string(&config_file).map_err(|e| e.to_string())?)
+        .map_err(|e| format!("Failed to parse config: {}", e))?;
+    let skin = config.skins.iter().find(|s| s.champion_id == champion_id)
+        .ok_or_else(|| "No skin selected for this champion".to_string())?;
+    let league_path = config.league_path.clone().ok_or_else(|| "No League path configured".to_string())?;
+    let champions_dir = app_data_dir.join("champions");
+    let inject_skin = crate::injection::Skin {
+        champion_id: skin.champion_id,
+        skin_id: skin.skin_id,
+        chroma_id: skin.chroma_id,
+        fantome_path: skin.fantome.clone(),
+    };
+    crate::injection::inject_skins(&app, &league_path, &[inject_skin], &champions_dir)
+        .map_err(|e| format!("Injection failed: {}", e))
 }
