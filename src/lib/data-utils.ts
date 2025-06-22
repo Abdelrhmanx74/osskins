@@ -3,7 +3,7 @@ import { Champion, ChampionInSummary, Skin, Chroma } from "./types";
 const COMMUNITY_DRAGON_BASE_URL =
   "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default";
 const FANTOME_BASE_URL =
-  "https://raw.githubusercontent.com/darkseal-org/lol-skins-developer/main";
+  "https://raw.githubusercontent.com/YelehaUwU/lol-skins-developer/main";
 
 interface ChampionDetails {
   skins: Array<{
