@@ -129,7 +129,7 @@ pub struct Friend {
 }
 
 // Constants
-pub const GITHUB_API_URL: &str = "https://api.github.com/repos/darkseal-org/lol-skins-developer";
+pub const GITHUB_API_URL: &str = "https://api.github.com/repos/YelehaUwU/lol-skins-developer";
 pub const USER_AGENT: &str = "fuck-exalted-app/1.0";
 pub const _DATA_VERSION_FILE: &str = "data_version.json";
 pub const GITHUB_API_VERSION: &str = "2022-11-28";
