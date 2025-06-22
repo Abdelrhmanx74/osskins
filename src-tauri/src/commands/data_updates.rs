@@ -334,7 +334,7 @@ pub async fn update_champion_data_from_github(
     
     // Download updated champion data files
     // Use a central API endpoint for champion list if available, otherwise use CommunityDragon API
-    let data_url = "https://raw.githubusercontent.com/darkseal-org/lol-skins-developer/main/data_manifest.json";
+    let data_url = "https://raw.githubusercontent.com/YelehaUwU/lol-skins-developer/main/data_manifest.json";
     println!("Fetching data manifest from: {}", data_url);
     
     let manifest_response = client.get(data_url)
@@ -358,7 +358,7 @@ pub async fn update_champion_data_from_github(
                                 println!("Updating champion {}/{}: {}", index + 1, total, name);
                                 
                                 // Create the full URL to the champion data
-                                let champion_url = format!("https://raw.githubusercontent.com/darkseal-org/lol-skins-developer/main/{}", path);
+                                let champion_url = format!("https://raw.githubusercontent.com/YelehaUwU/lol-skins-developer/main/{}", path);
                                 
                                 // Download the champion data
                                 match client.get(&champion_url).send().await {
