@@ -5,6 +5,7 @@ use std::fs;
 use reqwest;
 use serde_json;
 use chrono;
+use futures::stream::{FuturesUnordered, StreamExt};
 
 #[tauri::command]
 pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResult, String> {
@@ -350,44 +351,51 @@ pub async fn update_champion_data_from_github(
                         let total = champions.len();
                         println!("Found {} champions in manifest", total);
                         
-                        for (index, champion) in champions.iter().enumerate() {
+                        let mut updated_champions = Vec::new();
+                        let mut download_tasks = FuturesUnordered::new();
+
+                        for champion in champions {
                             if let (Some(name), Some(path)) = (
                                 champion.get("name").and_then(|n| n.as_str()),
                                 champion.get("path").and_then(|p| p.as_str())
                             ) {
-                                println!("Updating champion {}/{}: {}", index + 1, total, name);
-                                
-                                // Create the full URL to the champion data
-                                let champion_url = format!("https://raw.githubusercontent.com/YelehaUwU/lol-skins-developer/main/{}", path);
-                                
-                                // Download the champion data
-                                match client.get(&champion_url).send().await {
-                                    Ok(champ_response) if champ_response.status().is_success() => {
-                                        match champ_response.text().await {
-                                            Ok(champ_data) => {
-                                                // Create champion directory
-                                                let champ_dir = champions_dir.join(name);
-                                                if !champ_dir.exists() {
-                                                    fs::create_dir_all(&champ_dir)
-                                                        .map_err(|e| format!("Failed to create champion directory for {}: {}", name, e))?;
+                                let name = name.to_string();
+                                let path = path.to_string();
+                                let client = client.clone();
+                                let champions_dir = champions_dir.clone();
+
+                                download_tasks.push(tokio::spawn(async move {
+                                    let champion_url = format!("https://raw.githubusercontent.com/YelehaUwU/lol-skins-developer/main/{}", path);
+                                    match client.get(&champion_url).send().await {
+                                        Ok(resp) if resp.status().is_success() => {
+                                            match resp.text().await {
+                                                Ok(data) => {
+                                                    let champ_dir = champions_dir.join(&name);
+                                                    if let Err(e) = fs::create_dir_all(&champ_dir) {
+                                                        return Err(format!("Failed to create directory for {}: {}", name, e));
+                                                    }
+
+                                                    let file_path = champ_dir.join(format!("{}.json", name));
+                                                    if let Err(e) = fs::write(&file_path, data) {
+                                                        return Err(format!("Failed to write data for {}: {}", name, e));
+                                                    }
+
+                                                    Ok(name)
                                                 }
-                                                
-                                                // Save the champion data
-                                                let json_file = champ_dir.join(format!("{}.json", name));
-                                                fs::write(json_file, &champ_data)
-                                                    .map_err(|e| format!("Failed to write champion data for {}: {}", name, e))?;
-                                                
-                                                updated_champions.push(name.to_string());
-                                            },
-                                            Err(e) => {
-                                                println!("Failed to download champion data for {}: {}", name, e);
+                                                Err(e) => Err(format!("Failed to read response text for {}: {}", name, e)),
                                             }
                                         }
-                                    },
-                                    _ => {
-                                        println!("Failed to download champion data for {}", name);
+                                        _ => Err(format!("Failed to fetch data for {}", name)),
                                     }
-                                }
+                                }));
+                            }
+                        }
+
+                        while let Some(result) = download_tasks.next().await {
+                            match result {
+                                Ok(Ok(name)) => updated_champions.push(name),
+                                Ok(Err(e)) => eprintln!("Download failed: {}", e),
+                                Err(e) => eprintln!("Join failed: {}", e),
                             }
                         }
                     }

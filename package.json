@@ -4,7 +4,7 @@
   "version": "1.1.1",
   "type": "module",
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "dev:admin": "powershell -Command \"Start-Process -FilePath pnpm -ArgumentList 'tauri dev' -Verb RunAs\"",
     "build": "next build",
     "start": "next start",
@@ -31,7 +31,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.487.0",
-    "next": "^15.3.0",
+    "next": "^15.3.4",
     "next-themes": "^0.4.6",
     "pako": "^2.1.0",
     "react": "^19.1.0",
