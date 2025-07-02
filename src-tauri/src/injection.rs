@@ -6,105 +6,17 @@ use tauri::{AppHandle, Manager, Emitter};
 use walkdir::WalkDir;
 use zip::ZipArchive;
 use std::env;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, Duration};
+use std::time::Instant;
 use once_cell::sync::Lazy;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
-use memmap2::{Mmap, MmapOptions};
+use memmap2::MmapOptions;
 
 // Define Windows-specific constants at the module level
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-// Add overlay cache to optimize injection performance
-pub static OVERLAY_CACHE: Lazy<Arc<Mutex<OverlayCache>>> = Lazy::new(|| {
-    Arc::new(Mutex::new(OverlayCache::new()))
-});
-
-// Structure to cache pre-built overlays
-#[derive(Debug, Default)]
-pub struct OverlayCache {
-    // Map mod directory hash to pre-built overlay directory
-    overlays: HashMap<String, (PathBuf, Instant)>,
-    // Last time the cache was cleaned up
-    last_cleanup: Option<Instant>,
-}
-
-impl OverlayCache {
-    // Create a new empty cache
-    pub fn new() -> Self {
-        Self {
-            overlays: HashMap::new(),
-            last_cleanup: None,
-        }
-    }
-    
-    // Generate a hash key for the set of mods
-    fn generate_hash(&self, mods: &[String]) -> String {
-        let mut sorted_mods = mods.to_vec();
-        sorted_mods.sort();
-        
-        // Create a simple hash by joining all mod names
-        let combined = sorted_mods.join("_");
-        format!("{:x}", md5::compute(combined))
-    }
-    
-    // Check if we have a valid cached overlay for the given mods
-    pub fn get_cached_overlay(&mut self, mods: &[String]) -> Option<PathBuf> {
-        // Clean up old entries first if needed
-        self.cleanup_old_entries();
-        
-        let hash = self.generate_hash(mods);
-        
-        // Check if we have a cached overlay
-        if let Some((path, time)) = self.overlays.get_mut(&hash) {
-            // Check if the overlay exists and is not too old (30 minutes max)
-            if path.exists() && time.elapsed() < Duration::from_secs(30 * 60) {
-                // Update the timestamp to keep this entry fresh
-                *time = Instant::now();
-                return Some(path.clone());
-            }
-        }
-        
-        None
-    }
-    
-    // Add a newly built overlay to the cache
-    pub fn add_overlay(&mut self, mods: &[String], path: PathBuf) {
-        let hash = self.generate_hash(mods);
-        self.overlays.insert(hash, (path, Instant::now()));
-        
-        // Maybe clean up old entries if we haven't in a while
-        self.cleanup_old_entries();
-    }
-    
-    // Clean up old cache entries
-    fn cleanup_old_entries(&mut self) {
-        // Only clean up once per hour
-        if let Some(last_time) = self.last_cleanup {
-            if last_time.elapsed() < Duration::from_secs(3600) {
-                return;
-            }
-        }
-        
-        // Remove entries older than 2 hours
-        let max_age = Duration::from_secs(2 * 3600);
-        let now = Instant::now();
-        
-        self.overlays.retain(|_, (path, time)| {
-            let keep = time.elapsed() < max_age && path.exists();
-            // Try to remove the directory if we're discarding it
-            if !keep && path.exists() {
-                let _ = std::fs::remove_dir_all(path);
-            }
-            keep
-        });
-        
-        self.last_cleanup = Some(now);
-    }
-}
 
 // Error handling similar to CS LOL Manager
 #[derive(Debug)]
@@ -114,7 +26,6 @@ pub enum InjectionError {
     MissingFantomeFile(String),
     ProcessError(String),
     ConfigError(String),
-    OverlayError(String),
     Timeout(String),
     Aborted(String),
     WalkdirError(walkdir::Error),
@@ -129,7 +40,6 @@ impl std::fmt::Display for InjectionError {
             Self::MissingFantomeFile(msg) => write!(f, "Missing fantome file: {}", msg),
             Self::ProcessError(msg) => write!(f, "Process error: {}", msg),
             Self::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
-            Self::OverlayError(msg) => write!(f, "Overlay error: {}", msg),
             Self::Timeout(msg) => write!(f, "Timeout: {}", msg),
             Self::Aborted(msg) => write!(f, "Aborted: {}", msg),
             Self::WalkdirError(err) => write!(f, "Walkdir error: {}", err),
@@ -627,70 +537,43 @@ impl SkinInjector {
         if let Some(champion_name) = self.get_champion_name(skin.champion_id) {
             let champ_dir = fantome_files_dir.join(champion_name);
             if champ_dir.exists() {
-                for entry in fs::read_dir(champ_dir)? {
+                for entry in fs::read_dir(&champ_dir)? {
                     let entry = entry?;
                     let path = entry.path();
-                    if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("fantome") {
-                        continue;
+                    // detect .fantome
+                    if path.extension().and_then(|e| e.to_str()) == Some("fantome") {
+                        if path.file_stem().and_then(|s| s.to_str()).map_or(false, |stem| stem.ends_with(&skin_id_str)) {
+                            return Ok(Some(path));
+                        }
                     }
-                    
-                    let file_name = path.file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy();
-                        
-                    if file_name.contains(&skin_id_str) {
-                        // Check for chroma
-                        if let Some(chroma_id) = skin.chroma_id {
-                            if file_name.contains("chroma") && file_name.contains(&chroma_id.to_string()) {
-                                self.log(&format!("Found chroma match: {}", path.display()));
-                                return Ok(Some(path.to_path_buf()));
-                            }
-                        } else if !file_name.contains("chroma") {
-                            self.log(&format!("Found non-chroma match: {}", path.display()));
-                            return Ok(Some(path.to_path_buf()));
+                    // detect .zip archives too
+                    if path.extension().and_then(|e| e.to_str()) == Some("zip") {
+                        if path.file_name().and_then(|s| s.to_str()).map_or(false, |name| name.contains(&skin_id_str)) {
+                            self.log(&format!("Found ZIP archive for skin: {}", path.display()));
+                            return Ok(Some(path));
                         }
                     }
                 }
             }
         }
         
-        // Search all files as last resort
+        // As a last fallback, scan entire directory for matching zip files
         for entry in WalkDir::new(fantome_files_dir) {
             let entry = entry?;
             if entry.file_type().is_file() {
                 let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) != Some("fantome") {
-                    continue;
-                }
-                
-                let file_name = path.file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
-                    
-                if file_name.contains(&skin_id_str) {
-                    // Check for chroma
-                    if let Some(chroma_id) = skin.chroma_id {
-                        if file_name.contains("chroma") && file_name.contains(&chroma_id.to_string()) {
-                            self.log(&format!("Found chroma match in full search: {}", path.display()));
+                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    if ext == "fantome" || ext == "zip" {
+                        let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                        if name.contains(&skin_id_str) {
+                            self.log(&format!("Found archive in fallback scan: {}", path.display()));
                             return Ok(Some(path.to_path_buf()));
                         }
-                    } else if !file_name.contains("chroma") {
-                        self.log(&format!("Found non-chroma match in full search: {}", path.display()));
-                        return Ok(Some(path.to_path_buf()));
                     }
                 }
             }
         }
-        
-        self.log(&format!("No fantome file found for skin: champion_id={}, skin_id={}, chroma_id={:?}",
-            skin.champion_id, skin.skin_id, skin.chroma_id));
-        self.set_state(ModState::Idle);
-        // Emit error to frontend
-        if let Some(app) = &self.app_handle {
-            let error_msg = format!("No fantome file found for skin: champion_id={}, skin_id={}, chroma_id={:?}", skin.champion_id, skin.skin_id, skin.chroma_id);
-            let _ = app.emit("injection-status", false);
-            let _ = app.emit("skin-injection-error", error_msg);
-        }
+
         Ok(None)
     }
     
@@ -895,14 +778,14 @@ impl SkinInjector {
         let mod_tools_path = match &self.mod_tools_path {
             Some(path) => {
                 if (!path.exists()) {
-                    return Err(InjectionError::OverlayError(format!(
+                    return Err(InjectionError::ProcessError(format!(
                         "mod-tools.exe was found during initialization but is no longer at path: {}. Please reinstall the application or obtain mod-tools.exe from CSLOL Manager.",
                         path.display()
                     )));
                 }
                 path.clone()
             },
-            None => return Err(InjectionError::OverlayError(
+            None => return Err(InjectionError::ProcessError(
                 "mod-tools.exe not found. Please install CSLOL Manager or copy mod-tools.exe to the application directory.".into()
             )),
         };
@@ -936,7 +819,7 @@ impl SkinInjector {
             
             // If still exists, return error
             if overlay_dir.exists() && attempts >= max_attempts {
-                return Err(InjectionError::OverlayError(
+                return Err(InjectionError::ProcessError(
                     "Cannot remove existing overlay directory. It may be locked by another process.".into()
                 ));
             }
@@ -984,231 +867,129 @@ impl SkinInjector {
         };
         
         if (!used_prebuilt_empty) {
-            // Check if we have a pre-built overlay for this set of mods in cache
-            let mut cached_overlay = None;
-            if let Ok(mut cache) = OVERLAY_CACHE.lock() {
-                cached_overlay = cache.get_cached_overlay(&mod_names);
+            // Join mod names with / as CSLOL expects
+            let mods_arg = mod_names.join("/");
+
+            self.log("Creating mod overlay...");
+            
+            // Try the mkoverlay command with retries for access violation errors (0xc0000005)
+            let max_retries = 5;
+            let mut retry_count = 0;
+            let mut last_error = None;
+            
+            while retry_count < max_retries {
+                // Small delay between retries to let resources free up
+                if retry_count > 0 {
+                    self.log(&format!("Retrying overlay creation (attempt {}/{})", retry_count + 1, max_retries));
+                    std::thread::sleep(std::time::Duration::from_millis(1000));
+                    
+                    // Make sure any lingering processes are killed
+                    self.cleanup_mod_tools_processes();
+                    
+                    // For additional retries, recreate the overlay directory to ensure it's clean
+                    if overlay_dir.exists() {
+                        match fs::remove_dir_all(&overlay_dir) {
+                            Ok(_) => fs::create_dir_all(&overlay_dir)?,
+                            Err(e) => {
+                                self.log(&format!("Could not clean overlay directory: {}", e));
+                                // Try to continue anyway
+                            }
+                        }
+                    } else {
+                        fs::create_dir_all(&overlay_dir)?;
+                    }
+                }
+                
+                // Add more explicit memory cleanup hint
+                #[cfg(target_os = "windows")]
+                {
+                    use std::process::Command;
+                    // Run a quick garbage collection via PowerShell to help free memory
+                    if retry_count > 0 {
+                        let mut gc_cmd = Command::new("powershell");
+                        gc_cmd.args(["-Command", "[System.GC]::Collect()"]);
+                        gc_cmd.creation_flags(CREATE_NO_WINDOW);
+                        let _ = gc_cmd.output(); // Ignore output
+                    }
+                }
+                
+                let mut command = std::process::Command::new(&mod_tools_path);
+                command.args([
+                    "mkoverlay",
+                    game_mods_dir.to_str().unwrap(),
+                    overlay_dir.to_str().unwrap(),
+                    &format!("--game:{}", self.game_path.to_str().unwrap()),
+                    &format!("--mods:{}", mods_arg),
+                    "--noTFT",
+                    "--ignoreConflict"
+                ]);
+                
+                #[cfg(target_os = "windows")]
+                command.creation_flags(CREATE_NO_WINDOW);
+                
+                // Hide command output for cleaner logs, just show we're working
+                if retry_count == 0 {
+                    self.log("Running mkoverlay command...");
+                }
+                
+                match command.output() {
+                    Ok(output) => {
+                        if output.status.success() {
+                            // Success - break out of retry loop
+                            self.log("Overlay creation succeeded!");
+                            break;
+                        } else {
+                            // Command ran but had error status
+                            let stderr_output = String::from_utf8_lossy(&output.stderr).into_owned();
+                            let stdout_output = String::from_utf8_lossy(&output.stdout).into_owned();
+                            let error_message = if stderr_output.is_empty() { stdout_output } else { stderr_output };
+                            
+                            // Check if it's an access violation error
+                            if output.status.to_string().contains("0xc0000005") {
+                                self.log(&format!("Access violation error in attempt {}/{}. Retrying...", 
+                                    retry_count + 1, max_retries));
+                                last_error = Some(InjectionError::ProcessError(format!(
+                                    "mkoverlay command failed: {}. Exit code: {}", 
+                                    error_message, output.status
+                                )));
+                                retry_count += 1;
+                                continue;
+                            } else {
+                                // Other error, only show error log if this is the final attempt
+                                if retry_count + 1 >= max_retries {
+                                    self.log(&format!("Overlay creation failed: {}", error_message));
+                                }
+                                retry_count += 1;
+                                
+                                last_error = Some(InjectionError::ProcessError(format!(
+                                    "mkoverlay command failed: {}. Exit code: {}", 
+                                    error_message, output.status
+                                )));
+                                
+                                // Try again if we haven't exhausted retries
+                                if retry_count < max_retries {
+                                    continue;
+                                }
+                                
+                                return Err(last_error.unwrap());
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        // Command couldn't be started
+                        return Err(InjectionError::ProcessError(format!(
+                            "Failed to create overlay: {}. The mod-tools.exe might be missing or incompatible.", e
+                        )));
+                    }
+                }
             }
             
-            if let Some(cached_dir) = cached_overlay {
-                self.log(&format!("Using pre-built overlay from cache: {}", cached_dir.display()));
-                
-                // Copy cached overlay to our overlay directory
-                for entry in WalkDir::new(&cached_dir) {
-                    let entry = entry?;
-                    let path = entry.path();
-                    let rel_path = path.strip_prefix(&cached_dir)
-                        .map_err(|e| InjectionError::ProcessError(format!("Path error: {}", e)))?;
-                    let target_path = overlay_dir.join(rel_path);
-
-                    if path.is_dir() {
-                        fs::create_dir_all(&target_path)?;
-                    } else if path.is_file() {
-                        if let Some(parent) = target_path.parent() {
-                            fs::create_dir_all(parent)?;
-                        }
-                        fs::copy(path, &target_path)?;
-                    }
+            // Check if we exhausted our retries
+            if retry_count >= max_retries {
+                if let Some(err) = last_error {
+                    return Err(err);
                 }
-                
-                self.log("Cached overlay copied successfully");
-            } else {
-                // Join mod names with / as CSLOL expects
-                let mods_arg = mod_names.join("/");
-
-                self.log("Creating mod overlay...");
-                
-                // Try the mkoverlay command with retries for access violation errors (0xc0000005)
-                let max_retries = 5; // Increased from 3 to 5
-                let mut retry_count = 0;
-                let mut last_error = None;
-                
-                // Create a temp directory for our overlay that will be moved to the cache later
-                let temp_overlay_dir = self.app_dir.join("temp_overlay");
-                if temp_overlay_dir.exists() {
-                    fs::remove_dir_all(&temp_overlay_dir)?;
-                }
-                fs::create_dir_all(&temp_overlay_dir)?;
-                
-                while retry_count < max_retries {
-                    // Small delay between retries to let resources free up
-                    if retry_count > 0 {
-                        self.log(&format!("Retrying overlay creation (attempt {}/{})", retry_count + 1, max_retries));
-                        // Increased delay between retries
-                        std::thread::sleep(std::time::Duration::from_millis(1000));
-                        
-                        // Make sure any lingering processes are killed
-                        self.cleanup_mod_tools_processes();
-                        
-                        // For additional retries, recreate the overlay directory to ensure it's clean
-                        if temp_overlay_dir.exists() {
-                            match fs::remove_dir_all(&temp_overlay_dir) {
-                                Ok(_) => fs::create_dir_all(&temp_overlay_dir)?,
-                                Err(e) => {
-                                    self.log(&format!("Could not clean overlay directory: {}", e));
-                                    // Try to continue anyway
-                                }
-                            }
-                        } else {
-                            fs::create_dir_all(&temp_overlay_dir)?;
-                        }
-                    }
-                    
-                    // Add more explicit memory cleanup hint
-                    #[cfg(target_os = "windows")]
-                    {
-                        use std::process::Command;
-                        // Run a quick garbage collection via PowerShell to help free memory
-                        if retry_count > 0 {
-                            let mut gc_cmd = Command::new("powershell");
-                            gc_cmd.args(["-Command", "[System.GC]::Collect()"]);
-                            gc_cmd.creation_flags(CREATE_NO_WINDOW);
-                            let _ = gc_cmd.output(); // Ignore output
-                        }
-                    }
-                    
-                    let mut command = std::process::Command::new(&mod_tools_path);
-                    command.args([
-                        "mkoverlay",
-                        game_mods_dir.to_str().unwrap(),
-                        temp_overlay_dir.to_str().unwrap(),
-                        &format!("--game:{}", self.game_path.to_str().unwrap()),  // Use game_path which points to Game directory
-                        &format!("--mods:{}", mods_arg),
-                        "--noTFT",
-                        "--ignoreConflict"
-                    ]);
-                    
-                    #[cfg(target_os = "windows")]
-                    command.creation_flags(CREATE_NO_WINDOW);
-                    
-                    // Hide command output for cleaner logs, just show we're working
-                    if retry_count == 0 {
-                        self.log("Running mkoverlay command...");
-                    }
-                    
-                    match command.output() {
-                        Ok(output) => {
-                            if output.status.success() {
-                                // Success - break out of retry loop
-                                self.log("Overlay creation succeeded!");
-                                
-                                // Cache the overlay if we have a non-empty list of mods
-                                if !mod_names.is_empty() {
-                                    // Create a permanent cache directory for this overlay
-                                    let cache_base = self.app_dir.join("overlay_cache");
-                                    if !cache_base.exists() {
-                                        fs::create_dir_all(&cache_base)?;
-                                    }
-                                    
-                                    // Use a timestamped name to avoid conflicts
-                                    let timestamp = chrono::Local::now().timestamp();
-                                    let cache_dir = cache_base.join(format!("overlay_{}", timestamp));
-                                    
-                                    // Copy files from temp_overlay_dir to cache_dir
-                                    fs::create_dir_all(&cache_dir)?;
-                                    for entry in WalkDir::new(&temp_overlay_dir) {
-                                        let entry = entry?;
-                                        let path = entry.path();
-                                        let rel_path = path.strip_prefix(&temp_overlay_dir)
-                                            .map_err(|e| InjectionError::ProcessError(format!("Path error: {}", e)))?;
-                                        let target_path = cache_dir.join(rel_path);
-                                        
-                                        if path.is_dir() {
-                                            fs::create_dir_all(&target_path)?;
-                                        } else if path.is_file() {
-                                            if let Some(parent) = target_path.parent() {
-                                                fs::create_dir_all(parent)?;
-                                            }
-                                            fs::copy(path, &target_path)?;
-                                        }
-                                    }
-                                    
-                                    // Add to our cache
-                                    if let Ok(mut cache) = OVERLAY_CACHE.lock() {
-                                        cache.add_overlay(&mod_names, cache_dir);
-                                    }
-                                    
-                                    self.log("Overlay saved to cache for faster future use");
-                                }
-                                
-                                // Now copy from temp directory to actual overlay directory
-                                for entry in WalkDir::new(&temp_overlay_dir) {
-                                    let entry = entry?;
-                                    let path = entry.path();
-                                    let rel_path = path.strip_prefix(&temp_overlay_dir)
-                                        .map_err(|e| InjectionError::ProcessError(format!("Path error: {}", e)))?;
-                                    let target_path = overlay_dir.join(rel_path);
-                                    
-                                    if path.is_dir() {
-                                        fs::create_dir_all(&target_path)?;
-                                    } else if path.is_file() {
-                                        if let Some(parent) = target_path.parent() {
-                                            fs::create_dir_all(parent)?;
-                                        }
-                                        fs::copy(path, &target_path)?;
-                                    }
-                                }
-                                
-                                // Clean up temp directory
-                                let _ = fs::remove_dir_all(&temp_overlay_dir);
-                                
-                                break;
-                            } else {
-                                // Command ran but had error status
-                                let stderr_output = String::from_utf8_lossy(&output.stderr).into_owned();
-                                let stdout_output = String::from_utf8_lossy(&output.stdout).into_owned();
-                                let error_message = if stderr_output.is_empty() { stdout_output } else { stderr_output };
-                                
-                                // Check if it's an access violation error
-                                if output.status.to_string().contains("0xc0000005") {
-                                    self.log(&format!("Access violation error in attempt {}/{}. Retrying...", 
-                                        retry_count + 1, max_retries));
-                                    last_error = Some(InjectionError::ProcessError(format!(
-                                        "mkoverlay command failed: {}. Exit code: {}", 
-                                        error_message, output.status
-                                    )));
-                                    retry_count += 1;
-                                    continue;
-                                } else {
-                                    // Other error, only show error log if this is the final attempt
-                                    if retry_count + 1 >= max_retries {
-                                        self.log(&format!("Overlay creation failed: {}", error_message));
-                                    }
-                                    retry_count += 1;
-                                    
-                                    last_error = Some(InjectionError::ProcessError(format!(
-                                        "mkoverlay command failed: {}. Exit code: {}", 
-                                        error_message, output.status
-                                    )));
-                                    
-                                    // Try again if we haven't exhausted retries
-                                    if retry_count < max_retries {
-                                        continue;
-                                    }
-                                    
-                                    // Clean up temp directory
-                                    let _ = fs::remove_dir_all(&temp_overlay_dir);
-                                    
-                                    return Err(last_error.unwrap());
-                                }
-                            }
-                        },
-                        Err(e) => {
-                            // Command couldn't be started
-                            return Err(InjectionError::ProcessError(format!(
-                                "Failed to create overlay: {}. The mod-tools.exe might be missing or incompatible.", e
-                            )));
-                        }
-                    }
-                }
-                
-                // Check if we exhausted our retries
-                if retry_count >= max_retries {
-                    if let Some(err) = last_error {
-                        return Err(err);
-                    }
-                    return Err(InjectionError::ProcessError("Failed to create overlay after multiple attempts".into()));
-                }
+                return Err(InjectionError::ProcessError("Failed to create overlay after multiple attempts".into()));
             }
         }
 
@@ -1259,14 +1040,14 @@ impl SkinInjector {
                     
                     // Store error for potential later use
                     last_run_error = Some(match e.kind() {
-                        io::ErrorKind::NotFound => InjectionError::OverlayError(format!(
+                        io::ErrorKind::NotFound => InjectionError::ProcessError(format!(
                             "mod-tools.exe not found or is inaccessible at path: {}. Please install CSLOL Manager or copy the correct mod-tools.exe to the application directory.", 
                             mod_tools_path.display()
                         )),
-                        io::ErrorKind::PermissionDenied => InjectionError::OverlayError(format!(
+                        io::ErrorKind::PermissionDenied => InjectionError::ProcessError(format!(
                             "Permission denied when trying to run mod-tools.exe. Try running the application as administrator."
                         )),
-                        _ => InjectionError::OverlayError(format!(
+                        _ => InjectionError::ProcessError(format!(
                             "Error running mod-tools.exe: {}. Please ensure it's correctly installed and compatible with your system.", 
                             e
                         ))
@@ -1287,7 +1068,7 @@ impl SkinInjector {
             self.log(&format!("Failed to start overlay process after {} attempts", max_run_retries));
             Err(err)
         } else {
-            Err(InjectionError::OverlayError("Failed to start overlay process after multiple attempts".into()))
+            Err(InjectionError::ProcessError("Failed to start overlay process after multiple attempts".into()))
         }
     }
     
@@ -1429,7 +1210,7 @@ impl SkinInjector {
                     // Both methods failed, return the original error
                     self.log(&format!("❌ Fallback injection also failed: {}", fallback_err));
                     self.set_state(ModState::Idle);
-                    return Err(InjectionError::OverlayError(format!(
+                    return Err(InjectionError::ProcessError(format!(
                         "Both overlay and fallback injection methods failed. Original error: {}",
                         e
                     )));
@@ -1514,133 +1295,6 @@ impl SkinInjector {
     // Add this method above the new method or other impl methods
     
     // Initialize cache for faster first-time injection
-    pub fn initialize_cache(&mut self) -> Result<(), InjectionError> {
-        self.log("Pre-building overlay cache for faster injections...");
-        
-        // First ensure we have the basic directories
-        let game_mods_dir = self.game_path.join("mods");
-        if !game_mods_dir.exists() {
-            fs::create_dir_all(&game_mods_dir)?;
-        }
-        
-        // Create empty overlay cache directories
-        let overlay_cache_dir = self.app_dir.join("overlay_cache");
-        let temp_overlay_dir = self.app_dir.join("temp_overlay");
-        
-        if !overlay_cache_dir.exists() {
-            fs::create_dir_all(&overlay_cache_dir)?;
-        }
-        
-        // Clean any temp directories
-        if temp_overlay_dir.exists() {
-            fs::remove_dir_all(&temp_overlay_dir)?;
-        }
-        
-        // Create a temporary empty mod for caching
-        fs::create_dir_all(&temp_overlay_dir)?;
-        let empty_mod_dir = temp_overlay_dir.join("empty_mod");
-        fs::create_dir_all(&empty_mod_dir.join("META"))?;
-        fs::create_dir_all(&empty_mod_dir.join("WAD"))?;
-        
-        // Create a basic info.json
-        let info_json = r#"{
-            "Name": "EmptyMod",
-            "Version": "1.0.0",
-            "Author": "osskins",
-            "Description": "Pre-built empty mod for faster first injection"
-        }"#;
-        fs::write(empty_mod_dir.join("META").join("info.json"), info_json)?;
-        
-        // Look for mod-tools.exe
-        let mod_tools_path = match &self.mod_tools_path {
-            Some(path) => {
-                if !path.exists() {
-                    self.log("mod-tools.exe not found at expected path");
-                    return Ok(());
-                }
-                path.clone()
-            },
-            None => {
-                self.log("mod-tools.exe not found");
-                return Ok(());
-            },
-        };
-        
-        self.log("Building empty overlay for cache...");
-        
-        // Create the overlay cache entry for empty mod (no skins)
-        let timestamp = chrono::Local::now().timestamp();
-        let cache_dir = overlay_cache_dir.join(format!("overlay_empty_{}", timestamp));
-        fs::create_dir_all(&cache_dir)?;
-        
-        #[cfg(target_os = "windows")]
-        {
-            // Build empty overlay
-            let mut command = std::process::Command::new(&mod_tools_path);
-            command.args([
-                "mkoverlay",
-                temp_overlay_dir.to_str().unwrap(),
-                cache_dir.to_str().unwrap(),
-                &format!("--game:{}", self.game_path.to_str().unwrap()),
-                "--mods:empty_mod",
-                "--noTFT",
-                "--ignoreConflict"
-            ]);
-            command.creation_flags(CREATE_NO_WINDOW);
-            
-            // This runs in the background during startup, so errors are non-fatal
-            match command.output() {
-                Ok(output) => {
-                    if output.status.success() {
-                        self.log("Successfully pre-built empty overlay cache");
-                        
-                        // Add to our cache
-                        if let Ok(mut cache) = OVERLAY_CACHE.lock() {
-                            cache.add_overlay(&Vec::<String>::new(), cache_dir);
-                            self.log("Added empty overlay to cache");
-                        }
-                    } else {
-                        self.log(&format!("Warning: Failed to pre-build empty overlay cache: {:?}", 
-                                output.status.code()));
-                    }
-                },
-                Err(e) => {
-                    self.log(&format!("Error pre-building empty overlay: {}", e));
-                }
-            }
-        }
-        
-        // Clean up temp directory
-        if temp_overlay_dir.exists() {
-            let _ = fs::remove_dir_all(&temp_overlay_dir);
-        }
-        
-        // Also initialize the global file index
-        if let Some(app_handle) = &self.app_handle {
-            if let Ok(index) = get_global_index(app_handle) {
-                let app_dir = match app_handle.path().app_data_dir() {
-                    Ok(dir) => dir,
-                    Err(e) => {
-                        // Convert tauri::Error to an io::Error with appropriate error kind
-                        self.log(&format!("Failed to get app data dir: {}", e));
-                        return Ok(()); // Continue instead of failing
-                    }
-                };
-                
-                let champions_dir = app_dir.join("champions");
-                
-                let mut index_guard = index.lock().unwrap();
-                let _ = index_guard.index_champions(&champions_dir);
-                let _ = index_guard.index_fantome_files(&champions_dir);
-                
-                self.log("Initialized global file index for faster lookups");
-            }
-        }
-        
-        self.log("Cache initialization completed");
-        Ok(())
-    }
-
     // Direct WAD injection fallback for when mod-tools overlay fails
     fn inject_skin_direct_fallback(&mut self, mod_names: &[String]) -> Result<(), InjectionError> {
         self.log("🔄 Attempting direct WAD injection fallback...");
@@ -1648,14 +1302,14 @@ impl SkinInjector {
         // Check if there are any valid mods
         if mod_names.is_empty() {
             self.log("❌ No valid mods found for direct injection");
-            return Err(InjectionError::OverlayError("No valid mods to inject".into()));
+            return Err(InjectionError::ProcessError("No valid mods to inject".into()));
         }
         
         // First, ensure game directory is accessible
         let game_data_dir = self.game_path.join("DATA");
         if !game_data_dir.exists() {
             self.log("❌ Game DATA directory not found");
-            return Err(InjectionError::OverlayError("Game DATA directory not found".into()));
+            return Err(InjectionError::ProcessError("Game DATA directory not found".into()));
         }
         
         // Create temporary directory for WAD files
@@ -1762,7 +1416,7 @@ impl SkinInjector {
             return Ok(());
         } else {
             self.log("❌ No WAD files were found to inject");
-            return Err(InjectionError::OverlayError("No WAD files found to inject".into()));
+            return Err(InjectionError::ProcessError("No WAD files found to inject".into()));
         }
     }
 }

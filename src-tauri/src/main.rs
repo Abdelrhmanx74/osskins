@@ -32,6 +32,7 @@ fn main() {
             get_champion_data,
             update_champion_data,
             save_fantome_file,
+            save_zip_file,
             select_league_directory,
             inject_skins,
             ensure_mod_tools,

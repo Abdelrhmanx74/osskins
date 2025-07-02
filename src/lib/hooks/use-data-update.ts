@@ -6,6 +6,7 @@ import {
   fetchChampionSummaries,
   fetchChampionDetails,
   fetchFantomeFile,
+  fetchSkinZip,
   transformChampionData,
   sanitizeForFileName,
 } from "../data-utils";
@@ -86,40 +87,66 @@ export function useDataUpdate() {
                 .filter((_, index) => index > 0) // Skip base skin
                 .map(async (skin) => {
                   try {
-                    // Extract base skin ID
+                    // Prepare local vs repo names
+                    const localChampionKey = sanitizeForFileName(summary.name);
+                    // Strip colons and slashes from name to match repo (e.g. K/DA -> KDA)
+                    const downloadName = skin.name
+                      .replace(/:/g, "")
+                      .replace(/\//g, "");
+                    const localSkinKey = sanitizeForFileName(downloadName);
+                    const repoChampionName = summary.name;
+                    const repoSkinName = downloadName;
+
+                    // Attempt to download and save regular skin ZIP
                     const baseSkinId = skin.id % 1000;
-                    const fantomeContent = await fetchFantomeFile(
-                      summary.id,
-                      baseSkinId
+                    const zipContent = await fetchSkinZip(
+                      repoChampionName,
+                      [],
+                      repoSkinName
                     );
+                    if (zipContent.byteLength > 0) {
+                      await invoke("save_zip_file", {
+                        championName: localChampionKey,
+                        fileName: `${localSkinKey}.zip`,
+                        content: Array.from(zipContent),
+                      });
+                    }
 
-                    // Save regular skin fantome file
-                    await invoke("save_fantome_file", {
-                      championName: sanitizeForFileName(summary.name),
-                      skinName: sanitizeForFileName(skin.name),
-                      isChroma: false,
-                      content: Array.from(fantomeContent),
-                    });
-
-                    // Process chromas in parallel
+                    // Download and save chroma ZIPs if present
                     if (skin.chromas && skin.chromas.length > 0) {
-                      const chromaPromises = skin.chromas.map(
-                        async (chroma) => {
-                          const chromaBaseSkinId = chroma.id % 1000;
-                          const chromaFantomeContent = await fetchFantomeFile(
-                            summary.id,
-                            chromaBaseSkinId
+                      await Promise.all(
+                        skin.chromas.map(async (chroma) => {
+                          // Repository uses this structure: champion/chromas/skinName/skinName chromaId.zip
+                          // For example: Kennen/chromas/Kennen M.D./Kennen M.D. 85009.zip
+                          const chromaId = chroma.id;
+
+                          // The full chroma filename in the repo includes both skin name and chroma ID
+                          const chromaFileName = `${repoSkinName} ${chromaId}`;
+
+                          // The path to the chroma directory
+                          const chromaPath = ["chromas", repoSkinName];
+
+                          // Fetch the chroma ZIP using the special chroma path structure
+                          const chromaContent = await fetchSkinZip(
+                            repoChampionName,
+                            chromaPath,
+                            chromaFileName
                           );
-                          await invoke("save_fantome_file", {
-                            championName: sanitizeForFileName(summary.name),
-                            skinName: sanitizeForFileName(skin.name),
-                            isChroma: true,
-                            chromaId: chroma.id,
-                            content: Array.from(chromaFantomeContent),
-                          });
-                        }
+
+                          if (chromaContent.byteLength > 0) {
+                            // The local filename format must match what's used in transformChampionData
+                            // In transformChampionData we use: `${baseDir}/${sanitizeForFileName(skin.name)}_chroma_${chroma.id}.zip`
+                            const chromaFileName = `${localSkinKey}_chroma_${chroma.id}.zip`;
+
+                            // Save the chroma ZIP locally
+                            await invoke("save_zip_file", {
+                              championName: localChampionKey,
+                              fileName: chromaFileName,
+                              content: Array.from(chromaContent),
+                            });
+                          }
+                        })
                       );
-                      await Promise.all(chromaPromises);
                     }
                   } catch (err) {
                     console.error(

@@ -1632,21 +1632,11 @@ async fn save_custom_skin(app: &tauri::AppHandle, custom_skin: &CustomSkinData) 
     Ok(())
 }
 
+
 // Preload resources function to improve first-time injection speed
 pub fn preload_resources(app_handle: &tauri::AppHandle) -> Result<(), String> {
     // Inform user that resources are loading
     println!("Preloading resources for faster first injection...");
-    
-    // Get app data directory
-    let app_data_dir = app_handle.path().app_data_dir()
-        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
-    
-    // Create essential directories if they don't exist
-    let overlay_cache_dir = app_data_dir.join("overlay_cache");
-    if !overlay_cache_dir.exists() {
-        std::fs::create_dir_all(&overlay_cache_dir)
-            .map_err(|e| format!("Failed to create overlay cache directory: {}", e))?;
-    }
     
     // Initialize the global file index to cache champion data
     if let Ok(index) = injection::get_global_index(app_handle) {
@@ -1657,17 +1647,16 @@ pub fn preload_resources(app_handle: &tauri::AppHandle) -> Result<(), String> {
     // Clone the app_handle before moving it into the thread
     let app_handle_clone = app_handle.clone();
     
-    // Pre-build empty overlay templates in the background
+    // Initialize basic resources in the background
     std::thread::spawn(move || {
         // This runs in a separate thread to not block UI
         if let Some(league_path) = get_league_path_from_config(&app_handle_clone) {
-            // Try to create a temporary injector that will initialize cache
-            if let Ok(mut injector) = injection::SkinInjector::new(&app_handle_clone, &league_path) {
-                let _ = injector.initialize_cache();
-                println!("Successfully preloaded injection resources");
+            // Try to create a temporary injector for basic initialization
+            if let Ok(_injector) = injection::SkinInjector::new(&app_handle_clone, &league_path) {
+                println!("Successfully initialized injection resources");
             }
         } else {
-            println!("League path not found, skipping preload");
+            println!("League path not found, skipping initialization");
         }
     });
     
@@ -1697,4 +1686,37 @@ fn get_league_path_from_config(app_handle: &AppHandle) -> Option<String> {
         }
     }
     None
+}
+
+#[tauri::command]
+/// Save a skin ZIP file to the champions directory
+pub async fn save_zip_file(
+    app: tauri::AppHandle,
+    champion_name: String,
+    file_name: String,
+    content: Vec<u8>,
+) -> Result<(), String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    let champions_dir = app_data_dir.join("champions");
+    std::fs::create_dir_all(&champions_dir)
+        .map_err(|e| format!("Failed to create champions directory: {}", e))?;
+
+    let champion_dir = champions_dir.join(&champion_name);
+    std::fs::create_dir_all(&champion_dir)
+        .map_err(|e| format!("Failed to create champion directory: {}", e))?;
+
+    let zip_path = champion_dir.join(&file_name);
+    if let Some(parent) = zip_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+    }
+
+    std::fs::write(&zip_path, &content)
+        .map_err(|e| format!("Failed to write ZIP file: {}", e))?;
+
+    Ok(())
 }

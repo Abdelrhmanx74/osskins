@@ -65,16 +65,108 @@ export async function fetchFantomeFile(
   championId: number,
   skinId: number
 ): Promise<Uint8Array> {
-  const response = await fetch(
-    `${FANTOME_BASE_URL}/${championId}/${skinId}.fantome`
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch fantome file for champion ${championId}, skin ${skinId}`
+  try {
+    const response = await fetch(
+      `${FANTOME_BASE_URL}/${championId}/${skinId}.fantome`
     );
+    if (!response.ok) {
+      console.warn(`Fantome not found: champion ${championId}, skin ${skinId}`);
+      return new Uint8Array();
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return new Uint8Array(arrayBuffer);
+  } catch (err) {
+    console.warn(
+      `Error fetching fantome for champion ${championId}, skin ${skinId}:`,
+      err
+    );
+    return new Uint8Array();
   }
-  const arrayBuffer = await response.arrayBuffer();
-  return new Uint8Array(arrayBuffer);
+}
+
+// Download skin ZIP from darkseal-org/lol-skins repository
+export async function fetchSkinZip(
+  championName: string,
+  subPath: string[] = [],
+  fileName: string
+): Promise<Uint8Array> {
+  // Special handling for K/DA skins - replace KDA with K DA for repo URLs
+  const normalizedChampion = championName.replace(/KDA/g, "K DA");
+
+  // Handle folder paths with special cases
+  const normalizedSubPath = subPath.map((segment) =>
+    segment.replace(/KDA/g, "K DA").replace(/\bM\.D(?!\.)(?=\s|$)/g, "M.D.")
+  );
+
+  // Handle both KDA and M.D. naming conventions in file names
+  let normalizedFileName = fileName.replace(/KDA/g, "K DA");
+
+  // Add period after M.D if missing, but don't double up periods
+  normalizedFileName = normalizedFileName.replace(
+    /\bM\.D(?!\.)(?=\s|$)/g,
+    "M.D."
+  );
+
+  // Construct URL with proper encoding for each path segment
+  const encodedSegments = [
+    "skins",
+    normalizedChampion,
+    ...normalizedSubPath,
+    `${normalizedFileName}.zip`,
+  ]
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+
+  const blobUrl = `https://github.com/darkseal-org/lol-skins/blob/main/${encodedSegments}`;
+
+  // Convert to raw URL
+  const rawUrl = blobUrl
+    .replace("github.com", "raw.githubusercontent.com")
+    .replace("/blob/", "/");
+
+  try {
+    // First, try the direct URL
+    const response = await fetch(rawUrl, { method: "HEAD" });
+
+    if (response.ok) {
+      // If successful, get the actual content
+      const contentResponse = await fetch(rawUrl);
+      if (contentResponse.ok) {
+        const buffer = await contentResponse.arrayBuffer();
+        return new Uint8Array(buffer);
+      }
+    }
+
+    // If it's a chroma and the first attempt failed, try alternative path structures
+    if (subPath.includes("chromas") && !response.ok) {
+      // Repository may have a different structure for some chromas
+      // Try a direct structure without nesting: champion/chromas/skinName chromaId.zip
+      const flatStructureSegments = [
+        "skins",
+        normalizedChampion,
+        "chromas",
+        `${normalizedFileName}.zip`,
+      ]
+        .map((segment) => encodeURIComponent(segment))
+        .join("/");
+
+      const flatBlobUrl = `https://github.com/darkseal-org/lol-skins/blob/main/${flatStructureSegments}`;
+      const flatRawUrl = flatBlobUrl
+        .replace("github.com", "raw.githubusercontent.com")
+        .replace("/blob/", "/");
+
+      const flatResponse = await fetch(flatRawUrl);
+      if (flatResponse.ok) {
+        const buffer = await flatResponse.arrayBuffer();
+        return new Uint8Array(buffer);
+      }
+    }
+  } catch {
+    // ignore fetch errors
+  }
+
+  // Silently return empty buffer (will fall back to fantome)
+  return new Uint8Array();
 }
 
 // Sanitize a string to be safe for use as a filename or path component
@@ -82,7 +174,7 @@ export function sanitizeForFileName(str: string): string {
   return str
     .toLowerCase()
     .trim()
-    .replace(/[/\\:?*"<>| ]+/g, "_") // replace invalid Windows path chars and spaces
+    .replace(/[/\\:?*"<>|()' ]+/g, "_") // replace invalid Windows path chars, spaces, apostrophes, parentheses
     .replace(/_+/g, "_") // collapse multiple underscores
     .replace(/^_+|_+$/g, ""); // trim leading/trailing underscores
 }
@@ -106,7 +198,7 @@ export function transformChampionData(
         rarity: chroma.rarity,
         fantome: `${baseDir}/${sanitizeForFileName(skin.name)}_chroma_${
           chroma.id
-        }.fantome`,
+        }.zip`,
       };
     });
 
@@ -118,7 +210,7 @@ export function transformChampionData(
       skinType: skin.skinType,
       rarity: skin.rarity || "kNoRarity",
       featuresText: skin.featuresText ?? null,
-      fantome: `${baseDir}/${sanitizeForFileName(skin.name)}.fantome`,
+      fantome: `${baseDir}/${sanitizeForFileName(skin.name)}.zip`,
       chromas,
     };
   });
