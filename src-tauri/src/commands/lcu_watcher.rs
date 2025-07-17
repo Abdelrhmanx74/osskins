@@ -26,6 +26,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
         let mut last_selected_skins: std::collections::HashMap<u32, SkinData> = std::collections::HashMap::new();
         let mut last_skin_check_time = std::time::Instant::now();
         let mut last_champion_id: Option<u32> = None;
+        let mut last_party_mode_check = std::time::Instant::now();
         
         loop {
             let mut sleep_duration = Duration::from_secs(5);
@@ -157,6 +158,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                         
                         if phase != last_phase {
                             println!("[LCU Watcher] LCU status changed: {} -> {}", last_phase, phase);
+                            emit_terminal_log(&app_handle, &format!("[LCU Watcher] LCU status changed: {} -> {}", last_phase, phase));
                             
                             // If entering ChampSelect, preload assets to speed up injection later
                             if phase == "ChampSelect" {
@@ -186,6 +188,14 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                             if now.duration_since(last_skin_check_time).as_secs() >= 1 {
                                 last_skin_check_time = now;
                                 
+                                // Check for party mode messages during ChampSelect
+                                if last_party_mode_check.elapsed().as_secs() >= 5 {
+                                    last_party_mode_check = std::time::Instant::now();
+                                    if let Err(e) = check_for_party_mode_messages_with_connection(&app_handle, &port, &token) {
+                                        eprintln!("Error checking party mode messages: {}", e);
+                                    }
+                                }
+                                
                                 let session_url = format!("https://127.0.0.1:{}/lol-champ-select/v1/session", port);
                                 let auth = base64::encode(format!("riot:{}", token));
                                 
@@ -209,15 +219,53 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                     
                                                     if let Ok(data) = std::fs::read_to_string(&cfg_file) {
                                                         if let Ok(config) = serde_json::from_str::<SavedConfig>(&data) {
+                                                            let mut skins_to_inject = Vec::new();
+                                                            
+                                                            // Add local skin if available
                                                             if let Some(skin) = config.skins.iter().find(|s| s.champion_id == current_champion_id) {
-                                                                
-                                                                let skins = vec![Skin {
+                                                                skins_to_inject.push(Skin {
                                                                     champion_id: skin.champion_id,
                                                                     skin_id: skin.skin_id,
                                                                     chroma_id: skin.chroma_id,
                                                                     fantome_path: skin.fantome.clone(),
-                                                                }];
+                                                                });
                                                                 
+                                                                // Send skin share to paired friends if auto-share is enabled
+                                                                if config.party_mode.auto_share && !config.party_mode.paired_friends.is_empty() {
+                                                                    let app_handle_clone = app_handle.clone();
+                                                                    let skin_clone = skin.clone();
+                                                                    tokio::spawn(async move {
+                                                                        if let Err(e) = crate::commands::party_mode::send_skin_share_to_paired_friends(
+                                                                            &app_handle_clone,
+                                                                            skin_clone.champion_id,
+                                                                            skin_clone.skin_id,
+                                                                            skin_clone.chroma_id,
+                                                                            skin_clone.fantome.clone(),
+                                                                        ).await {
+                                                                            eprintln!("Failed to send skin share: {}", e);
+                                                                        }
+                                                                    });
+                                                                }
+                                                                
+                                                                last_selected_skins.insert(current_champion_id, skin.clone());
+                                                            }
+                                                            
+                                                            // Add received skins from friends for this champion
+                                                            for (key, received_skin) in &config.party_mode.received_skins {
+                                                                if received_skin.champion_id == current_champion_id {
+                                                                    skins_to_inject.push(Skin {
+                                                                        champion_id: received_skin.champion_id,
+                                                                        skin_id: received_skin.skin_id,
+                                                                        chroma_id: received_skin.chroma_id,
+                                                                        fantome_path: received_skin.fantome_path.clone(),
+                                                                    });
+                                                                    println!("[Party Mode] Adding received skin from {} for champion {}", 
+                                                                             received_skin.from_summoner_name, current_champion_id);
+                                                                }
+                                                            }
+                                                            
+                                                            // Inject all skins (local + received)
+                                                            if !skins_to_inject.is_empty() {
                                                                 let champions_dir = app_handle.path().app_data_dir()
                                                                     .unwrap_or_else(|_| PathBuf::from("."))
                                                                     .join("champions");
@@ -225,21 +273,21 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                                 match crate::injection::inject_skins(
                                                                     &app_handle,
                                                                     &league_path_clone,
-                                                                    &skins,
+                                                                    &skins_to_inject,
                                                                     &champions_dir
                                                                 ) {
                                                                     Ok(_) => {
                                                                         let _ = app_handle.emit("injection-status", "success");
+                                                                        println!("[Party Mode] Successfully injected {} skins for champion {}", 
+                                                                                 skins_to_inject.len(), current_champion_id);
                                                                     },
                                                                     Err(e) => {
                                                                         let _ = app_handle.emit("skin-injection-error", format!(
-                                                                            "Failed to inject pre-selected skin for champion {}: {}", current_champion_id, e
+                                                                            "Failed to inject skins for champion {}: {}", current_champion_id, e
                                                                         ));
                                                                         let _ = app_handle.emit("injection-status", "error");
                                                                     }
                                                                 }
-                                                                
-                                                                last_selected_skins.insert(current_champion_id, skin.clone());
                                                             }
                                                         }
                                                     }
@@ -272,12 +320,24 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                    }) 
                                                 {
                                                     
-                                                    let skins = vec![Skin {
+                                                    let mut skins_to_inject = vec![Skin {
                                                         champion_id: skin.champion_id,
                                                         skin_id: skin.skin_id,
                                                         chroma_id: skin.chroma_id,
                                                         fantome_path: skin.fantome.clone(),
                                                     }];
+                                                    
+                                                    // Add received skins for this champion
+                                                    for (key, received_skin) in &config.party_mode.received_skins {
+                                                        if received_skin.champion_id == champ_id {
+                                                            skins_to_inject.push(Skin {
+                                                                champion_id: received_skin.champion_id,
+                                                                skin_id: received_skin.skin_id,
+                                                                chroma_id: received_skin.chroma_id,
+                                                                fantome_path: received_skin.fantome_path.clone(),
+                                                            });
+                                                        }
+                                                    }
                                                     
                                                     let champions_dir = app_handle.path().app_data_dir()
                                                         .unwrap_or_else(|_| PathBuf::from("."))
@@ -290,7 +350,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                     match crate::injection::inject_skins(
                                                         &app_handle,
                                                         &league_path_clone,
-                                                        &skins,
+                                                        &skins_to_inject,
                                                         &champions_dir
                                                     ) {
                                                         Ok(_) => {
@@ -324,6 +384,14 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                             sleep_duration = Duration::from_secs(1);
                         } else if phase == "InProgress" {
                             // Keep existing in-game phase behavior
+                        }
+                        
+                        // Check for party mode messages every 10 seconds when connected (except during ChampSelect - now handled above)
+                        if phase != "ChampSelect" && last_party_mode_check.elapsed().as_secs() >= 10 {
+                            last_party_mode_check = std::time::Instant::now();
+                            if let Err(e) = check_for_party_mode_messages_with_connection(&app_handle, &port, &token) {
+                                eprintln!("Error checking party mode messages: {}", e);
+                            }
                         }
 
                         // Handle Swift Play mode - detect Lobby -> Matchmaking transition
@@ -784,4 +852,182 @@ fn extract_swift_play_champions_from_lobby(json: &serde_json::Value) -> Vec<i64>
     }
     
     champion_ids
+}
+
+// Start monitoring LCU chat messages for party mode
+#[tauri::command]
+pub fn start_party_mode_chat_monitor(_app: AppHandle) -> Result<(), String> {
+    // Party mode monitoring is now integrated into the main LCU watcher
+    // This command is kept for backward compatibility but doesn't start a separate thread
+    println!("Party mode chat monitoring is integrated into the main LCU watcher");
+    Ok(())
+}
+
+// Check for party mode messages using existing connection info
+fn check_for_party_mode_messages_with_connection(
+    app: &AppHandle,
+    port: &str,
+    token: &str,
+) -> Result<(), String> {
+    let client = get_lcu_client();
+    let url = format!("https://127.0.0.1:{}/lol-chat/v1/conversations", port);
+    let auth = base64::encode(format!("riot:{}", token));
+    
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Basic {}", auth))
+        .send()
+        .map_err(|e| format!("Failed to get conversations: {}", e))?;
+    
+    if !response.status().is_success() {
+        return Ok(());
+    }
+    
+    let conversations: serde_json::Value = response
+        .json()
+        .map_err(|e| format!("Failed to parse conversations: {}", e))?;
+    
+    if let Some(conversations_array) = conversations.as_array() {
+        for conversation in conversations_array {
+            if let Some(conversation_id) = conversation.get("id").and_then(|id| id.as_str()) {
+                if let Err(e) = check_conversation_for_party_messages(app, &client, port, token, conversation_id) {
+                    eprintln!("Error checking conversation {}: {}", conversation_id, e);
+                }
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+// Check for new party mode messages (legacy function - kept for backward compatibility)
+fn check_for_party_mode_messages(app: &AppHandle) -> Result<(), String> {
+    // Get LCU connection details using the same logic as main LCU watcher
+    let config_dir = app.path().app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("config");
+    let config_file = config_dir.join("config.json");
+    
+    let mut search_dirs = vec![
+        PathBuf::from("C:\\Riot Games\\League of Legends"),
+        PathBuf::from("C:\\Program Files\\Riot Games\\League of Legends"),
+        PathBuf::from("C:\\Program Files (x86)\\Riot Games\\League of Legends"),
+    ];
+    
+    // If we have a configured league path, prioritize it
+    if config_file.exists() {
+        if let Ok(config_data) = std::fs::read_to_string(&config_file) {
+            if let Ok(config) = serde_json::from_str::<SavedConfig>(&config_data) {
+                if let Some(league_path) = config.league_path {
+                    search_dirs.insert(0, PathBuf::from(league_path));
+                }
+            }
+        }
+    }
+    
+    let mut port = None;
+    let mut token = None;
+    
+    for dir in &search_dirs {
+        for name in ["lockfile", "LeagueClientUx.lockfile", "LeagueClient.lockfile"] {
+            let path = dir.join(name);
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                let parts: Vec<&str> = content.split(':').collect();
+                if parts.len() >= 5 {
+                    port = Some(parts[2].to_string());
+                    token = Some(parts[3].to_string());
+                    break;
+                }
+            }
+        }
+        if port.is_some() && token.is_some() {
+            break;
+        }
+    }
+    
+    let port = port.ok_or("LCU port not found")?;
+    let token = token.ok_or("LCU token not found")?;
+    
+    let client = get_lcu_client();
+    let url = format!("https://127.0.0.1:{}/lol-chat/v1/conversations", port);
+    let auth = base64::encode(format!("riot:{}", token));
+    
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Basic {}", auth))
+        .send()
+        .map_err(|e| format!("Failed to get conversations: {}", e))?;
+    
+    if !response.status().is_success() {
+        return Ok(());
+    }
+    
+    let conversations: serde_json::Value = response
+        .json()
+        .map_err(|e| format!("Failed to parse conversations: {}", e))?;
+    
+    if let Some(conversations_array) = conversations.as_array() {
+        for conversation in conversations_array {
+            if let Some(conversation_id) = conversation.get("id").and_then(|id| id.as_str()) {
+                if let Err(e) = check_conversation_for_party_messages(app, &client, &port, &token, conversation_id) {
+                    eprintln!("Error checking conversation {}: {}", conversation_id, e);
+                }
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+// Check a specific conversation for party mode messages
+fn check_conversation_for_party_messages(
+    app: &AppHandle,
+    client: &reqwest::blocking::Client,
+    port: &str,
+    token: &str,
+    conversation_id: &str,
+) -> Result<(), String> {
+    let url = format!("https://127.0.0.1:{}/lol-chat/v1/conversations/{}/messages", port, conversation_id);
+    let auth = base64::encode(format!("riot:{}", token));
+    
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Basic {}", auth))
+        .send()
+        .map_err(|e| format!("Failed to get messages: {}", e))?;
+    
+    if !response.status().is_success() {
+        return Ok(());
+    }
+    
+    let messages: serde_json::Value = response
+        .json()
+        .map_err(|e| format!("Failed to parse messages: {}", e))?;
+    
+    if let Some(messages_array) = messages.as_array() {
+        // Get the last few messages to check for party mode messages
+        let recent_messages = messages_array.iter().rev().take(5);
+        
+        for message in recent_messages {
+            if let (Some(body), Some(from_summoner_id)) = (
+                message.get("body").and_then(|b| b.as_str()),
+                message.get("fromSummonerId").and_then(|id| id.as_str()),
+            ) {
+                println!("[Party Mode] Checking message body: {}", body);
+                if body.starts_with("OSS:") {
+                    println!("[Party Mode] Found OSS message from {}: {}", from_summoner_id, body);
+                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    if let Err(e) = rt.block_on(
+                        crate::commands::party_mode::handle_party_mode_message(app, body, from_summoner_id)
+                    ) {
+                        eprintln!("Error handling party mode message: {}", e);
+                    }
+                }
+            }
+        }
+    } else {
+        println!("[Party Mode] No messages array found in response for conversation {}", conversation_id);
+    }
+    
+    Ok(())
 }

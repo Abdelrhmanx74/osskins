@@ -94,6 +94,20 @@ fn main() {
             upload_custom_skin,
             get_custom_skins,
             delete_custom_skin,
+            
+            // party mode commands
+            get_lcu_friends,
+            send_pairing_request,
+            respond_to_pairing_request,
+            remove_paired_friend,
+            get_paired_friends,
+            update_party_mode_settings,
+            start_party_mode_chat_monitor,
+            // test commands
+            simulate_party_mode_test,
+            simulate_multiple_skin_shares,
+            simulate_multiple_skin_injection,
+            clear_test_data,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())

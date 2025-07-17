@@ -2,7 +2,7 @@ use tauri::{AppHandle, Manager};
 use std::fs;
 use std::path::{Path, PathBuf};
 use serde_json;
-use crate::commands::types::{SavedConfig, SkinData, ThemePreferences};
+use crate::commands::types::{SavedConfig, SkinData, ThemePreferences, PartyModeConfig};
 
 // Configuration management commands
 
@@ -94,7 +94,13 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
         .join("config");
     let file = config_dir.join("config.json");
     if !file.exists() {
-        return Ok(SavedConfig { league_path: None, skins: Vec::new(), favorites: Vec::new(), theme: None });
+        return Ok(SavedConfig { 
+            league_path: None, 
+            skins: Vec::new(), 
+            favorites: Vec::new(), 
+            theme: None,
+            party_mode: PartyModeConfig::default(),
+        });
     }
     let content = std::fs::read_to_string(&file)
         .map_err(|e| format!("Failed to read config.json: {}", e))?;

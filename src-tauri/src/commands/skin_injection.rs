@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Emitter, Manager};
 use std::path::Path;
 use std::fs;
-use crate::injection::{Skin, inject_skins as inject_skins_impl, SkinInjector, get_global_index};
+use crate::injection::{Skin, inject_skins as inject_skins_impl, SkinInjector};
 use crate::commands::types::{SkinInjectionRequest, SkinData};
 use crate::commands::config::{save_league_path, get_league_path_from_config};
 use crate::commands::lcu_watcher::start_lcu_watcher;
@@ -139,31 +139,8 @@ pub async fn start_auto_inject(app: AppHandle, leaguePath: String) -> Result<(),
 }
 
 // Preload resources function to improve first-time injection speed
-pub fn preload_resources(app_handle: &tauri::AppHandle) -> Result<(), String> {
-    // Inform user that resources are loading
-    println!("Preloading resources for faster first injection...");
-    
-    // Initialize the global file index to cache champion data
-    if let Ok(index) = get_global_index(app_handle) {
-        let _index_guard = index.lock().unwrap();
-        // Index is now initialized in background
-    }
-    
-    // Clone the app_handle before moving it into the thread
-    let app_handle_clone = app_handle.clone();
-    
-    // Initialize basic resources in the background
-    std::thread::spawn(move || {
-        // This runs in a separate thread to not block UI
-        if let Some(league_path) = get_league_path_from_config(&app_handle_clone) {
-            // Try to create a temporary injector for basic initialization
-            if let Ok(_injector) = SkinInjector::new(&app_handle_clone, &league_path) {
-                println!("Successfully initialized injection resources");
-            }
-        } else {
-            println!("League path not found, skipping initialization");
-        }
-    });
-    
+pub fn preload_resources(_app_handle: &tauri::AppHandle) -> Result<(), String> {
+    // Preloading is disabled - no caching or fallback logic
+    println!("Preloading disabled - using direct file access only");
     Ok(())
 }

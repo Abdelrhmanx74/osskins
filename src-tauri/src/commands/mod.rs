@@ -7,6 +7,7 @@ pub mod config;
 pub mod lcu_watcher;
 pub mod custom_skins;
 pub mod file_operations;
+pub mod party_mode;
 
 // Re-export all public types and functions
 pub use types::*;
@@ -17,3 +18,4 @@ pub use config::*;
 pub use lcu_watcher::*;
 pub use custom_skins::*;
 pub use file_operations::*;
+pub use party_mode::*;

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use crate::injection::Skin;
 
 // Data structures for various operations
@@ -59,6 +60,105 @@ pub struct SavedConfig {
     pub favorites: Vec<u32>,
     #[serde(default)]
     pub theme: Option<ThemePreferences>,
+    #[serde(default)]
+    pub party_mode: PartyModeConfig,
+}
+
+// Party Mode related types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PartyModeConfig {
+    #[serde(default)]
+    pub paired_friends: Vec<PairedFriend>,
+    #[serde(default)]
+    pub auto_share: bool,
+    #[serde(default)]
+    pub notifications: bool,
+    #[serde(default)]
+    pub received_skins: std::collections::HashMap<String, ReceivedSkinData>,
+}
+
+impl Default for PartyModeConfig {
+    fn default() -> Self {
+        Self {
+            paired_friends: Vec::new(),
+            auto_share: true,
+            notifications: true,
+            received_skins: std::collections::HashMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PairedFriend {
+    pub summoner_id: String,
+    pub summoner_name: String,
+    pub display_name: String,
+    pub paired_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReceivedSkinData {
+    pub from_summoner_id: String,
+    pub from_summoner_name: String,
+    pub champion_id: u32,
+    pub skin_id: u32,
+    pub chroma_id: Option<u32>,
+    pub fantome_path: Option<String>,
+    pub received_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FriendInfo {
+    pub summoner_id: String,
+    pub summoner_name: String,
+    pub display_name: String,
+    pub is_online: bool,
+    pub availability: Option<String>,
+    pub puuid: String,
+    pub pid: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectionRequest {
+    pub from_summoner_id: String,
+    pub from_summoner_name: String,
+    pub timestamp: u64,
+}
+
+// Party Mode message types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PartyModeMessage {
+    pub message_type: String,
+    pub data: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PairingRequest {
+    pub request_id: String,
+    pub from_summoner_id: String,
+    pub from_summoner_name: String,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PairingResponse {
+    pub request_id: String,
+    pub accepted: bool,
+    pub from_summoner_id: String,
+    pub from_summoner_name: String,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkinShare {
+    pub from_summoner_id: String,
+    pub from_summoner_name: String,
+    pub champion_id: u32,
+    pub skin_id: u32,
+    pub skin_name: String, // Add skin name field
+    pub chroma_id: Option<u32>,
+    pub fantome_path: Option<String>,
+    pub timestamp: u64,
 }
 
 // Copy paste your type definitions here - no additional imports needed as they're already included above

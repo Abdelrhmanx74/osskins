@@ -7,7 +7,6 @@ use walkdir::WalkDir;
 use memmap2::MmapOptions;
 use tauri::{AppHandle, Manager};
 use crate::injection::error::{InjectionError, Skin};
-use crate::injection::file_index::get_global_index;
 
 // Fantome file processing operations
 
@@ -120,106 +119,23 @@ impl crate::injection::core::SkinInjector {
         dir_path.join("META").join("info.json").exists()
     }
     
-    // Find appropriate .fantome file for a skin
+    // Find appropriate .fantome file for a skin - simplified without fallback
     pub(crate) fn find_fantome_for_skin(&mut self, skin: &Skin, fantome_files_dir: &Path) -> Result<Option<PathBuf>, InjectionError> {
-        if let Some(app) = &self.app_handle {
-            // Try to get the path from our optimized index first
-            if let Ok(index) = get_global_index(app) {
-                let start = Instant::now();
-                if let Some(path) = index.lock().unwrap().find_fantome_for_skin(skin, fantome_files_dir) {
-                    self.log(&format!("Found fantome file in index (took {:?}): {}", 
-                                     start.elapsed(), path.display()));
-                    return Ok(Some(path));
-                }
-            }
-        }
-        
-        // Fall back to the original slow method if index lookup failed
-        self.log("Using fallback file search method");
-        
-        // First try direct path from JSON
+        self.log(&format!("[DEBUG] find_fantome_for_skin: skin_id={}, champion_id={}, chroma_id={:?}, fantome_path={:?}", skin.skin_id, skin.champion_id, skin.chroma_id, skin.fantome_path));
+        // Only use direct path from JSON - no fallback searching
         if let Some(fantome_path) = &skin.fantome_path {
             self.log(&format!("Using fantome path from JSON: {}", fantome_path));
-            
             // Try direct path
             let direct_path = fantome_files_dir.join(fantome_path);
+            self.log(&format!("[DEBUG] Checking existence of: {}", direct_path.display()));
             if direct_path.exists() {
                 self.log(&format!("Found exact file at path: {}", direct_path.display()));
                 return Ok(Some(direct_path));
             }
-            
-            // Try path using champion name
-            if let Some(champion_name) = self.get_champion_name(skin.champion_id) {
-                let champ_path = fantome_files_dir.join(champion_name).join(fantome_path.split('/').last().unwrap_or(""));
-                if champ_path.exists() {
-                    self.log(&format!("Found file at champion path: {}", champ_path.display()));
-                    return Ok(Some(champ_path));
-                }
-            }
-            
-            // Search for matching filename
-            let file_name = fantome_path.split('/').last().unwrap_or("");
-            for entry in WalkDir::new(fantome_files_dir) {
-                let entry = entry?;
-                if entry.file_type().is_file() {
-                    let path = entry.path();
-                    if path.file_name()
-                       .map(|name| name.to_string_lossy() == file_name)
-                       .unwrap_or(false) {
-                        self.log(&format!("Found matching file: {}", path.display()));
-                        return Ok(Some(path.to_path_buf()));
-                    }
-                }
-            }
+            self.log(&format!("Fantome file not found at expected path: {}", direct_path.display()));
+        } else {
+            self.log("No fantome path provided in skin data");
         }
-        
-        // Fall back to searching by ID
-        self.log(&format!("Searching for skin with champion_id={}, skin_id={}, chroma_id={:?}", 
-            skin.champion_id, skin.skin_id, skin.chroma_id));
-            
-        let skin_id_str = skin.skin_id.to_string();
-        
-        // Try champion directory first
-        if let Some(champion_name) = self.get_champion_name(skin.champion_id) {
-            let champ_dir = fantome_files_dir.join(champion_name);
-            if champ_dir.exists() {
-                for entry in fs::read_dir(&champ_dir)? {
-                    let entry = entry?;
-                    let path = entry.path();
-                    // detect .fantome
-                    if path.extension().and_then(|e| e.to_str()) == Some("fantome") {
-                        if path.file_stem().and_then(|s| s.to_str()).map_or(false, |stem| stem.ends_with(&skin_id_str)) {
-                            return Ok(Some(path));
-                        }
-                    }
-                    // detect .zip archives too
-                    if path.extension().and_then(|e| e.to_str()) == Some("zip") {
-                        if path.file_name().and_then(|s| s.to_str()).map_or(false, |name| name.contains(&skin_id_str)) {
-                            self.log(&format!("Found ZIP archive for skin: {}", path.display()));
-                            return Ok(Some(path));
-                        }
-                    }
-                }
-            }
-        }
-        
-        // As a last fallback, scan entire directory for matching zip files
-        for entry in WalkDir::new(fantome_files_dir) {
-            let entry = entry?;
-            if entry.file_type().is_file() {
-                let path = entry.path();
-                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    if ext == "fantome" || ext == "zip" {
-                        let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                        if name.contains(&skin_id_str) {
-                            self.log(&format!("Found archive in fallback scan: {}", path.display()));
-                            return Ok(Some(path.to_path_buf()));
-                        }
-                    }
-                }
-            }
-        }
-
         Ok(None)
     }
     

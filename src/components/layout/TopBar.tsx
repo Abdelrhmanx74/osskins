@@ -2,7 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Menu } from "lucide-react";
+import { RefreshCw, Menu, Users, Users2, Users2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { InjectionStatusDot } from "@/components/InjectionStatusDot";
 import { TitleBar } from "@/components/ui/titlebar/TitleBar";
@@ -11,13 +11,16 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { TerminalLogsDialog } from "@/components/TerminalLogsDialog";
 import { SettingsDialog } from "@/components/SettingsDialog";
+import PartyModeDialog from "@/components/PartyModeDialog";
 import { useGameStore, SkinTab } from "@/lib/store";
 import { useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Champion } from "@/lib/types";
+import { Badge } from "../ui/badge";
 
 interface TopBarProps {
   champions: Champion[];
@@ -118,21 +121,12 @@ export function TopBar({
               <TabsTrigger value="custom">Custom</TabsTrigger>
             </TabsList>
           </Tabs>
-
           <InjectionStatusDot />
-
-          {/* Update Data button always visible but disabled in custom tab */}
-          <Button
-            onClick={() => {
-              void handleForceUpdateData();
-            }}
-            variant="outline"
-            className="flex items-center gap-2"
-            disabled={activeTab === "custom"}
-          >
-            <RefreshCw className="h-4 w-4" />
-            Update Data
-          </Button>
+          {/* Party Mode indicator */}
+          <Badge variant="default" className="gap-2 text-sm font-bold">
+            {1}
+            <Users2Icon className="size-4" />
+          </Badge>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" aria-label="Menu">
@@ -140,6 +134,20 @@ export function TopBar({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="min-w-50" align="end">
+              <PartyModeDialog />
+              {/* Update Data button always visible but disabled in custom tab */}
+              <DropdownMenuItem
+                onClick={() => {
+                  void handleForceUpdateData();
+                }}
+                onSelect={(e) => {
+                  e.preventDefault();
+                }}
+                disabled={activeTab === "custom"}
+              >
+                <RefreshCw className="h-4 w-4" />
+                Update Data
+              </DropdownMenuItem>
               <TerminalLogsDialog />
               <SettingsDialog />
             </DropdownMenuContent>

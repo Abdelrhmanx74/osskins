@@ -12,7 +12,6 @@ use memmap2::MmapOptions;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use crate::injection::error::{InjectionError, ModState, Skin};
-use crate::injection::file_index::get_global_index;
 use crate::injection::fantome::copy_default_overlay;
 
 #[cfg(target_os = "windows")]
@@ -27,7 +26,7 @@ pub struct SkinInjector {
     pub(crate) status: String,
     pub(crate) log_file: Option<File>,
     pub(crate) mod_tools_path: Option<PathBuf>, // Add mod_tools path
-    pub(crate) champion_names: HashMap<u32, String>, // Add cache for champion names
+    pub(crate) champion_names: HashMap<u32, String>, // Keep for compatibility but not used actively
     pub(crate) app_handle: Option<AppHandle>,
 }
 
@@ -226,50 +225,9 @@ impl SkinInjector {
         }
     }
 
-    // Replace the hardcoded get_champion_name with a function that uses JSON data
+    // Simplified champion name lookup - no longer uses cache or fallback
     pub(crate) fn get_champion_name(&mut self, champion_id: u32) -> Option<String> {
-        // Check cache first
-        if let Some(name) = self.champion_names.get(&champion_id) {
-            return Some(name.clone());
-        }
-
-        // If not in cache, look up in the champions directory
-        let champions_dir = self.app_dir.join("champions");
-        if !champions_dir.exists() {
-            return None;
-        }
-
-        // Look through all champion directories
-        if let Ok(entries) = fs::read_dir(&champions_dir) {
-            for entry in entries.filter_map(Result::ok) {
-                if !entry.path().is_dir() {
-                    continue;
-                }
-
-                let champion_file = entry.path().join(format!("{}.json", 
-                    entry.file_name().to_string_lossy()));
-
-                if let Ok(content) = fs::read_to_string(&champion_file) {
-                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
-                        // Check if this JSON contains the champion ID we're looking for
-                        if let Some(id) = data.get("id").and_then(|v| v.as_u64()) {
-                            if id as u32 == champion_id {
-                                // Found the champion, get their name
-                                if let Some(name) = data.get("name")
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.to_lowercase().replace(" ", "")) 
-                                {
-                                    // Cache it for future lookups
-                                    self.champion_names.insert(champion_id, name.clone());
-                                    return Some(name);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
+        // Champion names are not used in the simplified injection process
         None
     }
     
@@ -318,19 +276,10 @@ impl SkinInjector {
                     self.log("Mod structure is valid, copying to game directory");
                     self.copy_mod_to_game(&mod_dir)?;
                 } else {
-                    // If processing failed, fall back to direct copy
-                    self.log("WARNING: Processing failed, falling back to direct copy");
-                    let file_name = match fantome_path.file_name() {
-                        Some(f) => f,
-                        None => {
-                            self.log("ERROR: Could not get file name for fallback copy");
-                            continue;
-                        }
-                    };
-                    let game_fantome_path = game_mods_dir.join(file_name);
-                    if let Err(e) = fs::copy(&fantome_path, &game_fantome_path) {
-                        self.log(&format!("ERROR: Failed to copy fallback fantome file: {}", e));
-                    }
+                    // If processing failed, return error
+                    self.log("ERROR: Processing failed, mod structure is invalid");
+                    self.set_state(ModState::Idle);
+                    return Err(InjectionError::ProcessError("Failed to process fantome file".into()));
                 }
             } else {
                 let msg = format!(
@@ -366,33 +315,9 @@ impl SkinInjector {
         
         // Start the overlay process - THIS is the key part that makes skins actually show in-game!
         if let Err(e) = self.run_overlay() {
-            self.log(&format!("WARNING: Failed to start overlay process: {}. Trying fallback injection method...", e));
-            
-            // Try our fallback direct WAD injection method
-            match self.inject_skin_direct_fallback(&mod_names) {
-                Ok(_) => {
-                    self.log("✅ Fallback injection successful! Skins will work but the game may show integrity warnings.");
-                    
-                    // Set state to running so the cleanup function will be called later
-                    self.set_state(ModState::Running);
-                    
-                    // All steps complete successfully with fallback, emit success event
-                    if let Some(app) = &self.app_handle {
-                        let _ = app.emit("injection-status", "completed");
-                    }
-                    
-                    return Ok(());
-                },
-                Err(fallback_err) => {
-                    // Both methods failed, return the original error
-                    self.log(&format!("❌ Fallback injection also failed: {}", fallback_err));
-                    self.set_state(ModState::Idle);
-                    return Err(InjectionError::ProcessError(format!(
-                        "Both overlay and fallback injection methods failed. Original error: {}",
-                        e
-                    )));
-                }
-            }
+            self.log(&format!("ERROR: Failed to start overlay process: {}", e));
+            self.set_state(ModState::Idle);
+            return Err(e);
         }
         
         self.log("Skin injection completed successfully");
@@ -508,133 +433,6 @@ impl SkinInjector {
         Ok(())
     }
 
-    // Add this method above the new method or other impl methods
-    
-    // Initialize cache for faster first-time injection
-    // Direct WAD injection fallback for when mod-tools overlay fails
-    fn inject_skin_direct_fallback(&mut self, mod_names: &[String]) -> Result<(), InjectionError> {
-        self.log("🔄 Attempting direct WAD injection fallback...");
-        
-        // Check if there are any valid mods
-        if mod_names.is_empty() {
-            self.log("❌ No valid mods found for direct injection");
-            return Err(InjectionError::ProcessError("No valid mods to inject".into()));
-        }
-        
-        // First, ensure game directory is accessible
-        let game_data_dir = self.game_path.join("DATA");
-        if !game_data_dir.exists() {
-            self.log("❌ Game DATA directory not found");
-            return Err(InjectionError::ProcessError("Game DATA directory not found".into()));
-        }
-        
-        // Create temporary directory for WAD files
-        let temp_wad_dir = self.app_dir.join("temp_wad");
-        if temp_wad_dir.exists() {
-            fs::remove_dir_all(&temp_wad_dir)?;
-        }
-        fs::create_dir_all(&temp_wad_dir)?;
-        
-        // Get paths to all mods
-        let game_mods_dir = self.game_path.join("mods");
-        let mut success_count = 0;
-        
-        // Process each mod
-        for mod_name in mod_names {
-            let mod_dir = game_mods_dir.join(mod_name);
-            if !mod_dir.exists() {
-                continue;
-            }
-            
-            // Check if mod has WAD directory
-            let wad_dir = mod_dir.join("WAD");
-            if !wad_dir.exists() {
-                continue;
-            }
-            
-            // Find all WAD files - use a reference to wad_dir here to avoid moving it
-            for entry in WalkDir::new(&wad_dir) {
-                let entry = entry?;
-                let path = entry.path();
-                
-                // Only process WAD files
-                if path.is_file() && 
-                   (path.extension().and_then(|ext| ext.to_str()) == Some("wad") ||
-                    path.to_string_lossy().ends_with(".wad.client")) {
-                    
-                    // Get relative path from WAD directory
-                    let rel_path = path.strip_prefix(&wad_dir)
-                        .map_err(|e| InjectionError::ProcessError(format!("Path error: {}", e)))?;
-                    
-                    // Target path in game's DATA directory
-                    let target_path = game_data_dir.join(rel_path);
-                    
-                    // Create parent directories if needed
-                    if let Some(parent) = target_path.parent() {
-                        if !parent.exists() {
-                            fs::create_dir_all(parent)?;
-                        }
-                    }
-                    
-                    // Copy WAD file directly
-                    let mut options = fs::OpenOptions::new();
-                    options.write(true).create(true);
-                    
-                    if target_path.exists() {
-                        // If file exists, back it up first if we haven't already 
-                        let backup_path = temp_wad_dir.join(rel_path);
-                        if let Some(parent) = backup_path.parent() {
-                            if !parent.exists() {
-                                fs::create_dir_all(parent)?;
-                            }
-                        }
-                        
-                        // Only back up if we haven't already
-                        if !backup_path.exists() {
-                            if let Err(e) = fs::copy(&target_path, &backup_path) {
-                                self.log(&format!("⚠️ Couldn't back up WAD file: {}", e));
-                            } else {
-                                self.log(&format!("💾 Backed up original WAD: {}", rel_path.display()));
-                            }
-                        }
-                    }
-                    
-                    // Now copy the modded WAD
-                    if let Err(e) = fs::copy(path, &target_path) {
-                        self.log(&format!("❌ Failed to copy modded WAD: {}", e));
-                    } else {
-                        self.log(&format!("✅ Directly injected WAD: {}", rel_path.display()));
-                        success_count += 1;
-                    }
-                }
-            }
-        }
-        
-        // Check if we were able to inject any WAD files
-        if success_count > 0 {
-            self.log(&format!("✅ Successfully injected {} WAD files directly", success_count));
-            
-            // Create a file to track our injections for cleanup later
-            let tracking_file = self.app_dir.join("direct_injection.json");
-            let tracking_data = serde_json::json!({
-                "mods": mod_names,
-                "timestamp": chrono::Local::now().timestamp(),
-                "backup_dir": temp_wad_dir.to_string_lossy().to_string()
-            });
-            
-            if let Err(e) = fs::write(&tracking_file, 
-                                    serde_json::to_string_pretty(&tracking_data).unwrap_or_default()) {
-                self.log(&format!("⚠️ Failed to write tracking file: {}", e));
-            }
-            
-            self.log("⚠️ Using fallback injection method - skins should work but league may show integrity warning");
-            
-            return Ok(());
-        } else {
-            self.log("❌ No WAD files were found to inject");
-            return Err(InjectionError::ProcessError("No WAD files found to inject".into()));
-        }
-    }
 }
 
 // Main wrapper function that is called from commands.rs
