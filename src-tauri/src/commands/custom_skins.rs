@@ -1,6 +1,7 @@
 use tauri::{AppHandle, Manager};
 use std::fs;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use serde_json;
@@ -203,4 +204,91 @@ async fn save_custom_skin(app: &tauri::AppHandle, custom_skin: &CustomSkinData) 
         .map_err(|e| format!("Failed to write custom_skins.json: {}", e))?;
     
     Ok(())
+}
+
+#[tauri::command]
+pub async fn upload_multiple_custom_skins(
+    app: tauri::AppHandle,
+    champion_id: u32,
+) -> Result<Vec<CustomSkinData>, String> {
+    println!("Uploading multiple custom skins for champion ID: {}", champion_id);
+    
+    // Show file dialog for multiple file selection
+    let files = rfd::FileDialog::new()
+        .add_filter("Skin files", &["fantome", "wad", "client", "zip"])
+        .set_title("Select Custom Skin Files")
+        .pick_files()
+        .ok_or("No files selected")?;
+
+    if files.is_empty() {
+        return Err("No files selected".to_string());
+    }
+
+    // Get app data directory
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    // Create custom_skins directory if it doesn't exist
+    let custom_skins_dir = app_data_dir.join("custom_skins");
+    std::fs::create_dir_all(&custom_skins_dir)
+        .map_err(|e| format!("Failed to create custom skins directory: {}", e))?;
+
+    let mut uploaded_skins = Vec::new();
+
+    // Process each selected file
+    for file_path in files {
+        let file_name = file_path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("untitled");
+
+        // Generate unique ID
+        let skin_id = format!("custom_{}_{}_{}",
+            champion_id,
+            file_name.replace(' ', "_"),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis()
+        );
+
+        // Get file extension
+        let file_extension = file_path.extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("fantome");
+
+        // Create safe filename
+        let safe_name = file_name.chars()
+            .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == ' ')
+            .collect::<String>();
+        let dest_filename = format!("{}_{}.{}", champion_id, safe_name, file_extension);
+        let dest_path = custom_skins_dir.join(&dest_filename);
+
+        // Copy the selected file to the custom skins directory
+        std::fs::copy(&file_path, &dest_path)
+            .map_err(|e| format!("Failed to copy custom skin file {}: {}", file_name, e))?;
+
+        // Get champion name - use a simple fallback since this is in a synchronous context
+        let champion_name = format!("Champion {}", champion_id);
+
+        // Create custom skin entry
+        let custom_skin = CustomSkinData {
+            id: skin_id,
+            name: safe_name,
+            champion_id,
+            champion_name,
+            file_path: dest_path.to_string_lossy().to_string(),
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            preview_image: None,
+        };
+
+        // Save the custom skin
+        save_custom_skin(&app, &custom_skin).await?;
+        uploaded_skins.push(custom_skin);
+    }
+
+    println!("Successfully uploaded {} custom skins for champion {}", uploaded_skins.len(), champion_id);
+    Ok(uploaded_skins)
 }

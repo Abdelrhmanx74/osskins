@@ -1,0 +1,160 @@
+"use client";
+
+import React, { useState } from "react";
+import { MiscItemType, useGameStore } from "@/lib/store";
+import { useMiscItems } from "@/lib/hooks/use-misc-items";
+import { Button } from "./ui/button";
+import { Plus } from "lucide-react";
+import { toast } from "sonner";
+
+interface MiscItemViewProps {
+  type: MiscItemType;
+}
+
+export function MiscItemView({ type }: MiscItemViewProps) {
+  const { selectedMiscItems, selectMiscItem, toggleMiscItemSelection } = useGameStore();
+  const { 
+    miscItems, 
+    isLoading, 
+    error, 
+    uploadMultipleMiscItems, 
+    deleteMiscItem, 
+    getTypeDisplayName 
+  } = useMiscItems();
+  
+  // State for uploading
+  const [isUploading, setIsUploading] = useState(false);
+
+  // Get items for this type
+  const typeItems = miscItems.get(type) ?? [];
+  const selectedItemIds = selectedMiscItems.get(type) ?? [];
+
+  // Handler for adding a new misc item (now supports multiple files)
+  const handleAddNewItem = async () => {
+    setIsUploading(true);
+    try {
+      const success = await uploadMultipleMiscItems(type);
+      if (success) {
+        // Success is already handled in the hook with toast
+      }
+    } catch (err) {
+      console.error("Error uploading items:", err);
+      toast.error("Error uploading items. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Handle item selection (toggle selection)
+  const handleItemSelect = (itemId: string) => {
+    toggleMiscItemSelection(type, itemId);
+  };
+
+  // Handle item deletion
+  const handleItemDelete = async (itemId: string) => {
+    const success = await deleteMiscItem(itemId);
+    if (success) {
+      toast.success("Item deleted successfully");
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full w-full">
+        <p className="text-muted-foreground">Loading {getTypeDisplayName(type).toLowerCase()} items...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full w-full">
+        <p className="text-destructive">Error loading {getTypeDisplayName(type).toLowerCase()} items: {error}</p>
+        <Button
+          variant="outline"
+          className="mt-4"
+          onClick={() => {
+            window.location.reload();
+          }}
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="size-full space-y-3 px-20 py-10">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold">{getTypeDisplayName(type)} Items</h2>
+        </div>
+
+        {typeItems.map((item) => (
+          <div
+            key={item.id}
+            className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+              selectedItemIds.includes(item.id)
+                ? "border-primary bg-primary/10"
+                : "border-border hover:border-primary/50"
+            }`}
+            onClick={() => {
+              handleItemSelect(item.id);
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-medium">{item.name}</h3>
+                <p className="text-sm text-muted-foreground">
+                  Type: {item.item_type}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {selectedItemIds.includes(item.id) && (
+                  <div className="px-2 py-1 bg-primary text-primary-foreground text-xs rounded">
+                    Selected
+                  </div>
+                )}
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleItemDelete(item.id);
+                  }}
+                >
+                  Delete
+                </Button>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {typeItems.length === 0 && (
+          <div className="flex flex-col items-center mt-8">
+            <p className="text-muted-foreground mb-4">
+              No {getTypeDisplayName(type).toLowerCase()} items found.
+            </p>
+          </div>
+        )}
+
+        {/* Add item button that supports multiple file selection */}
+        <Button
+          size={"lg"}
+          variant="outline"
+          className="w-full border-dashed py-6 mt-1 justify-start"
+          onClick={() => {
+            void handleAddNewItem();
+          }}
+          disabled={isUploading}
+        >
+          <Plus className="size-8 opacity-50" />
+          <span className="text-lg font-medium">
+            {isUploading ? "Uploading..." : `Add ${getTypeDisplayName(type)} Items`}
+          </span>
+        </Button>
+
+      </div>
+    </>
+  );
+}

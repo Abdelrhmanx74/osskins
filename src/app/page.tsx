@@ -4,7 +4,7 @@ import { useState, Suspense, useCallback, useEffect } from "react";
 import { useDataUpdate } from "@/lib/hooks/use-data-update";
 import { useChampions } from "@/lib/hooks/use-champions";
 import { GameDirectorySelector } from "@/components/game-directory/GameDirectorySelector";
-import { useGameStore } from "@/lib/store";
+import { useGameStore, MiscItemType } from "@/lib/store";
 import { Loader2 } from "lucide-react";
 import { useInitialization } from "@/lib/hooks/use-initialization";
 import { useChampionPersistence } from "@/lib/hooks/use-champion-persistence";
@@ -12,6 +12,7 @@ import { filterAndSortChampions } from "@/lib/utils/champion-utils";
 import { ChampionGrid } from "@/components/ChampionGrid";
 import { SkinGrid } from "@/components/SkinGrid";
 import { CustomSkinList } from "@/components/CustomSkinList";
+import { MiscItemView } from "@/components/MiscItemView";
 import { TopBar } from "@/components/layout/TopBar";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
@@ -38,6 +39,19 @@ export default function Home() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedChampion, setSelectedChampion] = useState<number | null>(null);
+  const [selectedMiscItem, setSelectedMiscItem] = useState<MiscItemType | null>(null);
+
+  // Handle misc item selection
+  const handleMiscItemClick = useCallback((type: MiscItemType) => {
+    setSelectedMiscItem(type);
+    setSelectedChampion(null); // Clear champion selection when selecting misc item
+  }, []);
+
+  // Handle champion selection
+  const handleChampionSelect = useCallback((id: number) => {
+    setSelectedChampion(id);
+    setSelectedMiscItem(null); // Clear misc item selection when selecting champion
+  }, []);
 
   // Filter champions based on search
   const filteredChampions = filterAndSortChampions(
@@ -136,7 +150,7 @@ export default function Home() {
           selectedChampionId={selectedChampion}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onChampionSelect={setSelectedChampion}
+          onChampionSelect={handleChampionSelect}
           onUpdateData={() => {
             void updateData();
           }}
@@ -150,8 +164,10 @@ export default function Home() {
               champions={filteredChampions}
               selectedChampion={selectedChampion}
               favorites={favorites}
-              onSelectChampion={setSelectedChampion}
+              onSelectChampion={handleChampionSelect}
               onToggleFavorite={toggleFavorite}
+              isCustomMode={activeTab === "custom"}
+              onMiscItemClick={handleMiscItemClick}
             />
           </div>
 
@@ -159,6 +175,8 @@ export default function Home() {
           <div className="w-3/4 xl:w-4/5 flex justify-center overflow-y-auto p-2 size-full">
             {activeTab === "official" ? (
               <SkinGrid champion={selectedChampionData ?? null} />
+            ) : selectedMiscItem ? (
+              <MiscItemView type={selectedMiscItem} />
             ) : (
               <CustomSkinList championId={selectedChampion} />
             )}

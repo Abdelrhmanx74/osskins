@@ -11,11 +11,26 @@ use zip::ZipArchive;
 use memmap2::MmapOptions;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
-use crate::injection::error::{InjectionError, ModState, Skin};
+use crate::injection::error::{InjectionError, ModState, Skin, MiscItem};
 use crate::injection::fantome::copy_default_overlay;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+
+// 3674208","from_summoner_name":"sisi","request_id":"","timestamp":1753201855535}}
+// [DEBUG] Current summoner: ID=148331403, display_name=rogolax
+// [Party Mode] Found OSS message from d56d6f6e-5540-5a46-9724-116f99cf98f0@eu1.pvp.net: OSS:{"message_type":"pairing_response","data":{"accepted":true,"from_summoner_id":"3458743863674208","from_summoner_name":"sisi","request_id":"","timestamp":1753201855535}}
+// [DEBUG] Current summoner: ID=148331403, display_name=rogolax
+// [LCU Watcher] LCU status changed: Lobby -> ChampSelect
+// [LCU Watcher] LCU status changed: Lobby -> ChampSelect
+
+// thread '<unnamed>' panicked at src\commands\lcu_watcher.rs:240:69:
+// there is no reactor running, must be called from the context of a Tokio 1.x runtime
+// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+// thread '<unnamed>' panicked at src\commands\lcu_watcher.rs:240:69:
+// there is no reactor running, must be called from the context of a Tokio 1.x runtime
 
 // Main skin injector class - simplified without profiles
 pub struct SkinInjector {
@@ -237,6 +252,10 @@ impl SkinInjector {
     // - game_config.rs: enable_mods_in_game_cfg
     
     pub fn inject_skins(&mut self, skins: &[Skin], fantome_files_dir: &Path) -> Result<(), InjectionError> {
+        self.inject_skins_and_misc(skins, &[], fantome_files_dir)
+    }
+
+    pub fn inject_skins_and_misc(&mut self, skins: &[Skin], misc_items: &[MiscItem], fantome_files_dir: &Path) -> Result<(), InjectionError> {
         // Emit start event to frontend
         if let Some(app) = &self.app_handle {
             let _ = app.emit("injection-status", "injecting");
@@ -289,6 +308,46 @@ impl SkinInjector {
                 self.log(&format!("ERROR: {}", msg));
                 self.set_state(ModState::Idle);
                 return Err(InjectionError::MissingFantomeFile(msg));
+            }
+        }
+
+        // Process misc items
+        for (i, misc_item) in misc_items.iter().enumerate() {
+            self.log(&format!("Processing misc item {}/{}: type={}, name={}", 
+                i + 1, misc_items.len(), misc_item.item_type, misc_item.name));
+                
+            // Find the fantome file for the misc item in the misc_items directory
+            let misc_items_dir = if let Some(app_handle) = &self.app_handle {
+                app_handle.path().app_data_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join("misc_items")
+            } else {
+                PathBuf::from(".").join("misc_items")
+            };
+            let fantome_path = misc_items_dir.join(&misc_item.fantome_path);
+            
+            self.log(&format!("[DEBUG] Looking for misc item fantome at: {}", fantome_path.display()));
+            
+            if fantome_path.exists() {
+                self.log(&format!("Found misc item fantome file: {}", fantome_path.display()));
+                
+                // Process the fantome file to create a proper mod structure
+                let mod_dir = self.process_fantome_file(&fantome_path)?;
+                
+                // Copy the processed mod to the game
+                if self.is_valid_mod_dir(&mod_dir) {
+                    self.log("Misc item mod structure is valid, copying to game directory");
+                    self.copy_mod_to_game(&mod_dir)?;
+                } else {
+                    self.log("ERROR: Misc item processing failed, mod structure is invalid");
+                    self.set_state(ModState::Idle);
+                    return Err(InjectionError::ProcessError("Failed to process misc item fantome file".into()));
+                }
+            } else {
+                let msg = format!("No fantome file found for misc item: {} (looked in {})", 
+                    misc_item.fantome_path, fantome_path.display());
+                self.log(&format!("WARNING: {}", msg));
+                // Continue processing other items even if one is missing
             }
         }
         
@@ -442,6 +501,17 @@ pub fn inject_skins(
     skins: &[Skin], 
     fantome_files_dir: &Path
 ) -> Result<(), String> {
+    inject_skins_and_misc(app_handle, game_path, skins, &[], fantome_files_dir)
+}
+
+// Enhanced wrapper function that supports both skins and misc items
+pub fn inject_skins_and_misc(
+    app_handle: &AppHandle, 
+    game_path: &str, 
+    skins: &[Skin], 
+    misc_items: &[MiscItem],
+    fantome_files_dir: &Path
+) -> Result<(), String> {
     // Create injector
     let mut injector = SkinInjector::new(app_handle, game_path)
         .map_err(|e| format!("Failed to create injector: {}", e))?;
@@ -450,9 +520,9 @@ pub fn inject_skins(
     injector.initialize()
         .map_err(|e| format!("Failed to initialize: {}", e))?;
     
-    // Inject skins
-    injector.inject_skins(skins, fantome_files_dir)
-        .map_err(|e| format!("Failed to inject skins: {}", e))
+    // Inject skins and misc items
+    injector.inject_skins_and_misc(skins, misc_items, fantome_files_dir)
+        .map_err(|e| format!("Failed to inject: {}", e))
 }
 
 // New function to clean up the injection when needed

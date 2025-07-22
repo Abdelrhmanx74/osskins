@@ -23,13 +23,16 @@ interface CustomSkinListProps {
 }
 
 export function CustomSkinList({ championId }: CustomSkinListProps) {
-  const { customSkins, isLoading, error, deleteCustomSkin, uploadCustomSkin } =
-    useCustomSkins();
+  const {
+    customSkins,
+    isLoading,
+    error,
+    deleteCustomSkin,
+    uploadMultipleCustomSkins,
+  } = useCustomSkins();
   const { champions } = useChampions();
 
-  // Add state for the dialog
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [skinName, setSkinName] = useState("");
+  // State for uploading
   const [isUploading, setIsUploading] = useState(false);
 
   // Get the champion data if ID is provided
@@ -41,54 +44,46 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
   const championCustomSkins =
     championId !== null ? customSkins.get(championId) ?? [] : [];
 
-  // Handler for adding a new custom skin
-  const handleAddNewSkin = () => {
+  // Handler for adding new custom skins (now supports multiple files)
+  const handleAddNewSkin = async () => {
     if (!championId) {
       toast.error("Please select a champion first");
-      return;
-    }
-
-    // Set default skin name and open dialog
-    const defaultName = champion
-      ? `Custom ${champion.name} Skin`
-      : "Custom Skin";
-    setSkinName(defaultName);
-    setIsDialogOpen(true);
-  };
-
-  // Handler for uploading the skin
-  const handleUploadSkin = async () => {
-    if (!championId) {
-      toast.error("Please select a champion first");
-      return;
-    }
-
-    if (!skinName.trim()) {
-      toast.error("Please enter a skin name");
       return;
     }
 
     setIsUploading(true);
     try {
-      const result = await uploadCustomSkin(championId, skinName);
-      if (result) {
-        toast.success(`Custom skin "${skinName}" added successfully`);
-        setIsDialogOpen(false);
-        resetForm();
-      } else {
-        toast.error("Failed to add custom skin. Please try again.");
+      const result = await uploadMultipleCustomSkins(championId);
+      if (result && result.length > 0) {
+        // Success is already handled in the hook with toast
       }
     } catch (err) {
-      console.error("Error uploading skin:", err);
-      toast.error("Error uploading skin. Please try again.");
+      console.error("Error uploading skins:", err);
+      toast.error("Error uploading skins. Please try again.");
     } finally {
       setIsUploading(false);
     }
   };
 
-  // Reset the form
-  const resetForm = () => {
-    setSkinName("");
+  // Handler for uploading multiple skins
+  const handleUploadMultipleSkins = async () => {
+    if (!championId) {
+      toast.error("Please select a champion first");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const result = await uploadMultipleCustomSkins(championId);
+      if (result && result.length > 0) {
+        // Success is already handled in the hook with toast
+      }
+    } catch (err) {
+      console.error("Error uploading multiple skins:", err);
+      toast.error("Error uploading skins. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   if (isLoading) {
@@ -146,65 +141,21 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
           </div>
         )}
 
-        {/* Add skin button always shown at the end of the list */}
+        {/* Add skin button that supports multiple file selection */}
         <Button
           size={"lg"}
           variant="outline"
           className="w-full border-dashed py-6 mt-1 justify-start"
-          onClick={handleAddNewSkin}
+          onClick={() => {
+            void handleAddNewSkin();
+          }}
+          disabled={isUploading}
         >
           <Plus className="size-8 opacity-50" />
-          <span className="text-lg font-medium">Add Custom Skin</span>
+          <span className="text-lg font-medium">
+            {isUploading ? "Uploading..." : "Add Custom Skins"}
+          </span>
         </Button>
-
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Add Custom Skin</DialogTitle>
-              <DialogDescription>
-                Upload a custom skin file (.fantome) for{" "}
-                {champion?.name ?? "your champion"}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="grid gap-4 py-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="name">Skin Name</Label>
-                <Input
-                  id="name"
-                  value={skinName}
-                  onChange={(e) => {
-                    setSkinName(e.target.value);
-                  }}
-                  placeholder="Enter a name for this skin"
-                />
-              </div>
-            </div>
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setIsDialogOpen(false);
-                  resetForm();
-                }}
-                disabled={isUploading}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={() => {
-                  void handleUploadSkin();
-                }}
-                disabled={isUploading || !skinName.trim()}
-              >
-                {isUploading ? "Uploading..." : "Upload Skin"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </>
   );

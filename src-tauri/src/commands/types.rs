@@ -75,6 +75,10 @@ pub struct PartyModeConfig {
     pub notifications: bool,
     #[serde(default)]
     pub received_skins: std::collections::HashMap<String, ReceivedSkinData>,
+    #[serde(default)]
+    pub ignored_request_ids: Vec<String>,
+    #[serde(default)]
+    pub ignored_summoners: Vec<String>,
 }
 
 impl Default for PartyModeConfig {
@@ -84,6 +88,8 @@ impl Default for PartyModeConfig {
             auto_share: true,
             notifications: true,
             received_skins: std::collections::HashMap::new(),
+            ignored_request_ids: Vec::new(),
+            ignored_summoners: Vec::new(),
         }
     }
 }

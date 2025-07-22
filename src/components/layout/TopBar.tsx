@@ -1,6 +1,7 @@
 "use client";
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Menu, Users, Users2, Users2Icon } from "lucide-react";
 import { toast } from "sonner";
@@ -13,11 +14,17 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { TerminalLogsDialog } from "@/components/TerminalLogsDialog";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import PartyModeDialog from "@/components/PartyModeDialog";
 import { useGameStore, SkinTab } from "@/lib/store";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Champion } from "@/lib/types";
 import { Badge } from "../ui/badge";
@@ -41,6 +48,7 @@ export function TopBar({
 }: TopBarProps) {
   // Get tab state from the store
   const { activeTab, setActiveTab } = useGameStore();
+  const [pairedFriendsCount, setPairedFriendsCount] = useState(0);
 
   // Load saved tab preference from localStorage
   useEffect(() => {
@@ -51,6 +59,76 @@ export function TopBar({
       }
     }
   }, [setActiveTab]);
+
+  // Load paired friends count
+  useEffect(() => {
+    const loadPairedFriendsCount = async () => {
+      try {
+        const pairedFriends = await invoke("get_paired_friends");
+        setPairedFriendsCount((pairedFriends as any[]).length);
+      } catch (error) {
+        console.error("Failed to load paired friends count:", error);
+        setPairedFriendsCount(0);
+      }
+    };
+
+    void loadPairedFriendsCount();
+
+    // Set up event listeners for real-time updates
+    const setupEventListeners = async () => {
+      try {
+        // Listen for pairing accepted events to update count
+        const unsubscribePairingAccepted = await listen(
+          "party-mode-pairing-accepted",
+          () => {
+            void loadPairedFriendsCount();
+          }
+        );
+
+        // Listen for pairing declined events (in case count needs updating)
+        const unsubscribePairingDeclined = await listen(
+          "party-mode-pairing-declined",
+          () => {
+            void loadPairedFriendsCount();
+          }
+        );
+
+        // Listen for paired friends updates (add/remove)
+        const unsubscribePairedFriendsUpdated = await listen(
+          "party-mode-paired-friends-updated",
+          () => {
+            void loadPairedFriendsCount();
+          }
+        );
+
+        return () => {
+          unsubscribePairingAccepted();
+          unsubscribePairingDeclined();
+          unsubscribePairedFriendsUpdated();
+        };
+      } catch (error) {
+        console.error("Failed to set up party mode event listeners:", error);
+        return () => {};
+      }
+    };
+
+    let unsubscribeEvents: (() => void) | null = null;
+    void setupEventListeners().then((cleanup) => {
+      unsubscribeEvents = cleanup;
+    });
+
+    // Set up an interval to refresh the count periodically as backup
+    const interval = setInterval(() => {
+      void loadPairedFriendsCount();
+    }, 30000); // Update every 30 seconds (reduced frequency since we have real-time events)
+
+    return () => {
+      clearInterval(interval);
+      if (unsubscribeEvents) {
+        unsubscribeEvents();
+      }
+    };
+  }, []);
 
   // Force update by deleting cache and updating
   async function handleForceUpdateData() {
@@ -123,10 +201,27 @@ export function TopBar({
           </Tabs>
           <InjectionStatusDot />
           {/* Party Mode indicator */}
-          <Badge variant="default" className="gap-2 text-sm font-bold">
-            {1}
-            <Users2Icon className="size-4" />
-          </Badge>
+          {pairedFriendsCount > 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="default"
+                    className="gap-2 text-sm font-bold cursor-default"
+                  >
+                    {pairedFriendsCount}
+                    <Users2Icon className="size-4" />
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    {pairedFriendsCount} paired friend
+                    {pairedFriendsCount === 1 ? "" : "s"}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" aria-label="Menu">

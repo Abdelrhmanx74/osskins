@@ -50,6 +50,7 @@ rayon = "1.8.0"           # For parallel processing
 md5 = "0.7.0"             # Added for overlay cache hash generation
 uuid = { version = "1.0", features = ["v4"] } # For generating unique IDs
 tokio = { version = "1.0", features = ["full"] } # For async operations
+rfd = "0.14" # For file dialogs
 
 [features]
 # by default Tauri runs in production mode

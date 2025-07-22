@@ -45,6 +45,27 @@ interface Friend {
   connected_at?: number;
 }
 
+// Helper function to format time ago
+const formatTimeAgo = (timestamp: number): string => {
+  const now = Date.now();
+  const diff = now - timestamp;
+
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) {
+    return `${days} day${days > 1 ? "s" : ""} ago`;
+  } else if (hours > 0) {
+    return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+  } else if (minutes > 0) {
+    return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
+  } else {
+    return "Just now";
+  }
+};
+
 export default function PartyModeDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -62,22 +83,21 @@ export default function PartyModeDialog() {
   const [incomingRequest, setIncomingRequest] =
     useState<PartyConnectionRequest | null>(null);
 
-  // Initialize component and set up event listeners
+  // Set up global event listeners that work even when dialog is closed
   useEffect(() => {
-    const initPartyMode = async () => {
+    let unsubscribeFunctions: (() => void)[] = [];
+
+    const setupGlobalEventListeners = async () => {
       try {
-        // Start chat monitor
+        // Start chat monitor once on component mount
         await partyModeApi.startChatMonitor();
 
-        // Load initial data
-        await loadFriends();
-        await loadPairedFriends();
-
-        // Set up event listeners
+        // Set up global event listeners that persist even when dialog is closed
         const unsubscribeConnection = await partyModeApi.onConnectionRequest(
           (request) => {
             setIncomingRequest(request);
             setShowConnectionRequest(true);
+            setIsOpen(true); // Auto-open the dialog when receiving a connection request
             toast.info(
               `${request.from_summoner_name} wants to connect for skin sharing`
             );
@@ -89,6 +109,7 @@ export default function PartyModeDialog() {
             toast.success(
               `${response.from_summoner_name} accepted your pairing request!`
             );
+            // Reload paired friends regardless of dialog state
             void loadPairedFriends();
           }
         );
@@ -111,23 +132,41 @@ export default function PartyModeDialog() {
           }
         );
 
-        // Cleanup function
-        return () => {
-          unsubscribeConnection();
-          unsubscribePairingAccepted();
-          unsubscribePairingDeclined();
-          unsubscribeSkinReceived();
-        };
+        // Store unsubscribe functions for cleanup
+        unsubscribeFunctions = [
+          unsubscribeConnection,
+          unsubscribePairingAccepted,
+          unsubscribePairingDeclined,
+          unsubscribeSkinReceived,
+        ];
       } catch (error) {
         console.error("Failed to initialize party mode:", error);
         toast.error("Failed to initialize party mode");
       }
     };
 
+    // Set up global listeners on component mount, not just when dialog opens
+    void setupGlobalEventListeners();
+
+    // Return synchronous cleanup function
+    return () => {
+      unsubscribeFunctions.forEach((unsub) => {
+        try {
+          unsub();
+        } catch (error) {
+          console.error("Error during cleanup:", error);
+        }
+      });
+    };
+  }, [notificationsEnabled]);
+
+  // Load data when dialog opens
+  useEffect(() => {
     if (isOpen) {
-      void initPartyMode();
+      void loadFriends();
+      void loadPairedFriends();
     }
-  }, [isOpen, notificationsEnabled]);
+  }, [isOpen]);
 
   const loadFriends = async () => {
     try {
@@ -177,9 +216,15 @@ export default function PartyModeDialog() {
   };
 
   const handleConnectWithFriend = async (friendSummonerId: string) => {
+    console.log(
+      "[DEBUG] handleConnectWithFriend called with friendSummonerId:",
+      friendSummonerId
+    );
     setIsLoading(true);
     try {
+      console.log("[DEBUG] About to call partyModeApi.sendPairingRequest...");
       await partyModeApi.sendPairingRequest(friendSummonerId);
+      console.log("[DEBUG] Successfully sent pairing request");
       toast.success("Pairing request sent!");
     } catch (error) {
       console.error("Failed to send pairing request:", error);
@@ -283,13 +328,12 @@ export default function PartyModeDialog() {
           </DialogHeader>
 
           <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="connect">Friends</TabsTrigger>
               <TabsTrigger value="connected">
                 Connected ({pairedFriends.length})
               </TabsTrigger>
               <TabsTrigger value="settings">Settings</TabsTrigger>
-              <TabsTrigger value="debug">Debug/Test</TabsTrigger>
             </TabsList>
 
             <TabsContent value="connect" className="space-y-4">
@@ -464,64 +508,6 @@ export default function PartyModeDialog() {
                 </CardContent>
               </Card>
             </TabsContent>
-
-            <TabsContent value="debug" className="space-y-4">
-              <Card>
-                <CardContent className="space-y-4">
-                  {/* System Tests */}
-                  <div className="space-y-3">
-                    <h4 className="font-medium">System Tests</h4>
-                    
-                    <div className="space-y-2">
-                      <Button
-                        onClick={() => void partyModeApi.simulatePartyModeTest()}
-                        variant="outline"
-                        size="sm"
-                        className="w-full"
-                      >
-                        Simulate Party Mode Test
-                      </Button>
-                      
-                      <Button
-                        onClick={() => void partyModeApi.simulateMultipleSkinShares()}
-                        variant="outline"
-                        size="sm"
-                        className="w-full"
-                      >
-                        Simulate Multiple Skin Shares
-                      </Button>
-                      
-                      <Button
-                        onClick={() => void partyModeApi.clearTestData()}
-                        variant="outline"
-                        size="sm"
-                        className="w-full"
-                      >
-                        Clear Test Data
-                      </Button>
-                      <Button
-                        onClick={() => void partyModeApi.simulateMultipleSkinInjection()}
-                        variant="outline"
-                        size="sm"
-                        className="w-full"
-                      >
-                        Simulate Multiple Skin Injection
-                      </Button>
-                    </div>
-                    
-                    <div className="text-sm text-muted-foreground">
-                      <p>These tests simulate party mode scenarios for debugging:</p>
-                      <ul className="list-disc list-inside mt-2 space-y-1">
-                        <li>Party Mode Test: Simulates pairing request, acceptance, and skin sharing</li>
-                        <li>Multiple Skin Shares: Simulates multiple friends sharing skins for different champions</li>
-                        <li>Multiple Skin Injection: Simulates injecting all received skins as if everyone is locked in</li>
-                        <li>Clear Test Data: Removes all test friends and received skins</li>
-                      </ul>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
           </Tabs>
         </DialogContent>
       </Dialog>
@@ -543,7 +529,8 @@ export default function PartyModeDialog() {
             <div className="space-y-4">
               <div className="text-center space-y-2">
                 <div className="text-lg font-semibold">
-                  {incomingRequest.from_summoner_name}
+                  {incomingRequest.from_summoner_name ||
+                    `User ${incomingRequest.from_summoner_id}`}
                 </div>
                 <div className="text-sm text-muted-foreground">
                   wants to connect for skin sharing
@@ -551,6 +538,11 @@ export default function PartyModeDialog() {
                 <div className="text-xs text-muted-foreground">
                   Summoner ID: {incomingRequest.from_summoner_id}
                 </div>
+                {incomingRequest.timestamp && (
+                  <div className="text-xs text-muted-foreground">
+                    Sent: {formatTimeAgo(incomingRequest.timestamp)}
+                  </div>
+                )}
               </div>
 
               <Separator />

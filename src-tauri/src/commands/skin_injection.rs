@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Emitter, Manager};
 use std::path::Path;
 use std::fs;
-use crate::injection::{Skin, inject_skins as inject_skins_impl, SkinInjector};
+use crate::injection::{Skin, MiscItem, inject_skins as inject_skins_impl, inject_skins_and_misc, SkinInjector};
 use crate::commands::types::{SkinInjectionRequest, SkinData};
 use crate::commands::config::{save_league_path, get_league_path_from_config};
 use crate::commands::lcu_watcher::start_lcu_watcher;
@@ -112,6 +112,78 @@ pub async fn inject_game_skins(
         Err(e) => {
             println!("Skin injection failed: {}", e);
             Err(format!("Skin injection failed: {}", e))
+        }
+    };
+
+    // Always emit injection ended event, regardless of success/failure
+    let _ = app_handle.emit("injection-status", false);
+    
+    result
+}
+
+// Enhanced injection command that supports both skins and misc items
+#[tauri::command]
+pub async fn inject_skins_with_misc(
+    app_handle: AppHandle,
+    game_path: String,
+    skins: Vec<SkinData>,
+    misc_items: Vec<MiscItem>,
+    fantome_files_dir: String
+) -> Result<String, String> {
+    println!("Starting enhanced skin injection process");
+    println!("League path: {}", game_path);
+    println!("Number of skins to inject: {}", skins.len());
+    println!("Number of misc items to inject: {}", misc_items.len());
+
+    // Emit injection started event
+    let _ = app_handle.emit("injection-status", true);
+
+    // Validate game path exists
+    if !Path::new(&game_path).exists() {
+        let _ = app_handle.emit("injection-status", false);
+        return Err(format!("League of Legends directory not found: {}", game_path));
+    }
+    
+    // Validate fantome directory exists
+    let base_path = Path::new(&fantome_files_dir);
+    if !base_path.exists() {
+        // Create the directory if it doesn't exist
+        println!("Creating fantome files directory: {}", base_path.display());
+        fs::create_dir_all(base_path)
+            .map_err(|e| {
+                let _ = app_handle.emit("injection-status", false);
+                format!("Failed to create fantome directory: {}", e)
+            })?;
+    }
+
+    // Save the league path for future use
+    save_league_path(app_handle.clone(), game_path.clone()).await?;
+
+    // Convert SkinData to the internal Skin type
+    let internal_skins: Vec<Skin> = skins.iter().map(|s| {
+        Skin {
+            champion_id: s.champion_id,
+            skin_id: s.skin_id,
+            chroma_id: s.chroma_id,
+            fantome_path: s.fantome.clone(),
+        }
+    }).collect();
+
+    // Call the enhanced injection function
+    let result = match inject_skins_and_misc(
+        &app_handle,
+        &game_path,
+        &internal_skins,
+        &misc_items,
+        base_path
+    ) {
+        Ok(_) => {
+            println!("Enhanced skin injection completed successfully");
+            Ok("Enhanced skin injection completed successfully".to_string())
+        },
+        Err(e) => {
+            println!("Enhanced skin injection failed: {}", e);
+            Err(format!("Enhanced skin injection failed: {}", e))
         }
     };
 

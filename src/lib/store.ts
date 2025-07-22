@@ -15,6 +15,16 @@ export type InjectionStatus = "idle" | "injecting" | "success" | "error";
 // Custom skin tabs
 export type SkinTab = "official" | "custom";
 
+// Misc items types
+export type MiscItemType = "map" | "language" | "hud" | "misc";
+
+export interface MiscItem {
+  id: string;
+  name: string;
+  item_type: string; // "map", "language", "blocks", "settings"
+  fantome_path: string;
+}
+
 interface GameState {
   leaguePath: string | null;
   lcuStatus: string | null;
@@ -24,6 +34,8 @@ interface GameState {
   hasCompletedOnboarding: boolean;
   activeTab: SkinTab;
   customSkins: Map<number, CustomSkin[]>;
+  miscItems: Map<MiscItemType, MiscItem[]>;
+  selectedMiscItems: Map<MiscItemType, string[]>; // Multiple selected misc items per type
   setLeaguePath: (path: string) => void;
   setLcuStatus: (status: string) => void;
   setInjectionStatus: (status: InjectionStatus) => void; // Add this
@@ -42,6 +54,12 @@ interface GameState {
   addCustomSkin: (skin: CustomSkin) => void;
   removeCustomSkin: (skinId: string) => void;
   setCustomSkins: (skins: CustomSkin[]) => void;
+  addMiscItem: (item: MiscItem) => void;
+  removeMiscItem: (itemId: string) => void;
+  setMiscItems: (items: MiscItem[]) => void;
+  selectMiscItem: (type: MiscItemType, itemId: string | null) => void;
+  selectMultipleMiscItems: (type: MiscItemType, itemIds: string[]) => void;
+  toggleMiscItemSelection: (type: MiscItemType, itemId: string) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -53,6 +71,8 @@ export const useGameStore = create<GameState>((set) => ({
   hasCompletedOnboarding: false,
   activeTab: "official", // Default to official skins tab
   customSkins: new Map(),
+  miscItems: new Map(),
+  selectedMiscItems: new Map(),
   setLeaguePath: (path) => {
     set({ leaguePath: path });
   },
@@ -154,6 +174,102 @@ export const useGameStore = create<GameState>((set) => ({
       });
 
       return { customSkins: customSkinsMap };
+    });
+  },
+  addMiscItem: (item) => {
+    set((state) => {
+      const newMiscItems = new Map(state.miscItems);
+      const existingItems = newMiscItems.get(item.item_type as MiscItemType) ?? [];
+      newMiscItems.set(item.item_type as MiscItemType, [...existingItems, item]);
+      return { miscItems: newMiscItems };
+    });
+  },
+  removeMiscItem: (itemId) => {
+    set((state) => {
+      const newMiscItems = new Map(state.miscItems);
+      const newSelectedMiscItems = new Map(state.selectedMiscItems);
+
+      // Find and remove the item from the appropriate type
+      for (const [type, items] of newMiscItems.entries()) {
+        const updatedItems = items.filter((item) => item.id !== itemId);
+        if (updatedItems.length !== items.length) {
+          // We found and removed the item
+          if (updatedItems.length === 0) {
+            newMiscItems.delete(type);
+          } else {
+            newMiscItems.set(type, updatedItems);
+          }
+          
+          // If this was a selected item, remove it from the selection
+          const currentSelections = newSelectedMiscItems.get(type) ?? [];
+          const updatedSelections = currentSelections.filter(id => id !== itemId);
+          if (updatedSelections.length === 0) {
+            newSelectedMiscItems.delete(type);
+          } else if (updatedSelections.length !== currentSelections.length) {
+            newSelectedMiscItems.set(type, updatedSelections);
+          }
+          break;
+        }
+      }
+
+      return { miscItems: newMiscItems, selectedMiscItems: newSelectedMiscItems };
+    });
+  },
+  setMiscItems: (items) => {
+    set(() => {
+      const miscItemsMap = new Map<MiscItemType, MiscItem[]>();
+
+      // Group items by type
+      items.forEach((item) => {
+        const existingItems = miscItemsMap.get(item.item_type as MiscItemType) ?? [];
+        miscItemsMap.set(item.item_type as MiscItemType, [...existingItems, item]);
+      });
+
+      return { miscItems: miscItemsMap };
+    });
+  },
+  selectMiscItem: (type, itemId) => {
+    set((state) => {
+      const newSelectedMiscItems = new Map(state.selectedMiscItems);
+      if (itemId === null) {
+        newSelectedMiscItems.delete(type);
+      } else {
+        // For backward compatibility, selecting a single item replaces all selections for that type
+        newSelectedMiscItems.set(type, [itemId]);
+      }
+      return { selectedMiscItems: newSelectedMiscItems };
+    });
+  },
+  selectMultipleMiscItems: (type, itemIds) => {
+    set((state) => {
+      const newSelectedMiscItems = new Map(state.selectedMiscItems);
+      if (itemIds.length === 0) {
+        newSelectedMiscItems.delete(type);
+      } else {
+        newSelectedMiscItems.set(type, itemIds);
+      }
+      return { selectedMiscItems: newSelectedMiscItems };
+    });
+  },
+  toggleMiscItemSelection: (type, itemId) => {
+    set((state) => {
+      const newSelectedMiscItems = new Map(state.selectedMiscItems);
+      const currentSelections = newSelectedMiscItems.get(type) ?? [];
+      
+      if (currentSelections.includes(itemId)) {
+        // Remove if already selected
+        const filtered = currentSelections.filter(id => id !== itemId);
+        if (filtered.length === 0) {
+          newSelectedMiscItems.delete(type);
+        } else {
+          newSelectedMiscItems.set(type, filtered);
+        }
+      } else {
+        // Add to selection
+        newSelectedMiscItems.set(type, [...currentSelections, itemId]);
+      }
+      
+      return { selectedMiscItems: newSelectedMiscItems };
     });
   },
 }));

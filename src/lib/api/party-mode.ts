@@ -23,10 +23,16 @@ export const partyModeApi = {
 
   // Send pairing request to a friend
   async sendPairingRequest(friendSummonerId: string): Promise<string> {
+    console.log(
+      "[DEBUG] partyModeApi.sendPairingRequest called with:",
+      friendSummonerId
+    );
     try {
-      return await invoke("send_pairing_request", {
+      const result = await invoke("send_pairing_request", {
         friendSummonerId,
       });
+      console.log("[DEBUG] invoke result:", result);
+      return result as string;
     } catch (error) {
       console.error("Failed to send pairing request:", error);
       throw error;
@@ -120,43 +126,6 @@ export const partyModeApi = {
     return listen("party-mode-skin-received", (event) => {
       callback(event.payload as SkinShare);
     });
-  },
-
-  // Test functions for simulating party mode scenarios
-  async simulatePartyModeTest(): Promise<void> {
-    try {
-      await invoke("simulate_party_mode_test");
-    } catch (error) {
-      console.error("Failed to simulate party mode test:", error);
-      throw error;
-    }
-  },
-
-  async simulateMultipleSkinShares(): Promise<void> {
-    try {
-      await invoke("simulate_multiple_skin_shares");
-    } catch (error) {
-      console.error("Failed to simulate multiple skin shares:", error);
-      throw error;
-    }
-  },
-
-  async clearTestData(): Promise<void> {
-    try {
-      await invoke("clear_test_data");
-    } catch (error) {
-      console.error("Failed to clear test data:", error);
-      throw error;
-    }
-  },
-
-  async simulateMultipleSkinInjection(): Promise<void> {
-    try {
-      await invoke("simulate_multiple_skin_injection");
-    } catch (error) {
-      console.error("Failed to simulate multiple skin injection:", error);
-      throw error;
-    }
   },
 };
 

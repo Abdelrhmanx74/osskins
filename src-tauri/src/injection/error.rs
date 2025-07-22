@@ -63,6 +63,22 @@ pub struct Skin {
     pub fantome_path: Option<String>, // Add fantome path from the JSON
 }
 
+// Misc item for injection alongside skins
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MiscItem {
+    pub id: String,
+    pub name: String,
+    pub item_type: String, // "map", "language", "hud", "misc"
+    pub fantome_path: String,
+}
+
+// Injection request that includes both skins and misc items
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InjectionRequest {
+    pub skins: Vec<Skin>,
+    pub misc_items: Vec<MiscItem>,
+}
+
 // ModState enum - Similar to CS LOL Manager's state machine
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModState {

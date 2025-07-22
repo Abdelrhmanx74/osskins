@@ -2,6 +2,9 @@
 
 import { Champion } from "@/lib/types";
 import { ChampionCard } from "./ChampionCard";
+import { MiscCard } from "./MiscCard";
+import { Map, Languages, Shapes, Package } from "lucide-react";
+import { MiscItemType } from "@/lib/store";
 
 interface ChampionGridProps {
   champions: Champion[];
@@ -9,6 +12,8 @@ interface ChampionGridProps {
   favorites: Set<number>;
   onSelectChampion: (id: number) => void;
   onToggleFavorite: (id: number) => void;
+  isCustomMode?: boolean;
+  onMiscItemClick?: (type: MiscItemType) => void;
 }
 
 export function ChampionGrid({
@@ -17,7 +22,30 @@ export function ChampionGrid({
   favorites,
   onSelectChampion,
   onToggleFavorite,
+  isCustomMode = false,
+  onMiscItemClick,
 }: ChampionGridProps) {
+  // Misc card handlers
+  const handleMapClick = () => {
+    console.log("Map misc card clicked");
+    onMiscItemClick?.("map");
+  };
+
+  const handleLanguageClick = () => {
+    console.log("Language misc card clicked");
+    onMiscItemClick?.("language");
+  };
+
+  const handleHudClick = () => {
+    console.log("HUD misc card clicked");
+    onMiscItemClick?.("hud");
+  };
+
+  const handleMiscClick = () => {
+    console.log("Misc misc card clicked");
+    onMiscItemClick?.("misc");
+  };
+
   if (champions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
@@ -28,6 +56,36 @@ export function ChampionGrid({
 
   return (
     <div className="w-fit mx-auto grid grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2">
+      {/* Show misc cards only in custom mode */}
+      {isCustomMode && (
+        <>
+          <MiscCard
+            icon={Map}
+            type="map"
+            onClick={handleMapClick}
+            title="Map"
+          />
+          <MiscCard
+            icon={Languages}
+            type="language"
+            onClick={handleLanguageClick}
+            title="Language"
+          />
+          <MiscCard
+            icon={Shapes}
+            type="hud"
+            onClick={handleHudClick}
+            title="HUD"
+          />
+          <MiscCard
+            icon={Package}
+            type="misc"
+            onClick={handleMiscClick}
+            title="Misc"
+          />
+        </>
+      )}
+
       {champions.map((champion) => (
         <ChampionCard
           key={champion.id}

@@ -3,9 +3,10 @@ use std::{thread, time::Duration};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
+use std::collections::HashSet;
 use base64;
 use serde_json;
-use crate::injection::Skin;
+use crate::injection::{Skin, MiscItem, inject_skins_and_misc};
 use crate::commands::types::{SavedConfig, SkinData};
 
 // LCU (League Client) watcher and communication
@@ -27,6 +28,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
         let mut last_skin_check_time = std::time::Instant::now();
         let mut last_champion_id: Option<u32> = None;
         let mut last_party_mode_check = std::time::Instant::now();
+        let mut processed_message_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
         
         loop {
             let mut sleep_duration = Duration::from_secs(5);
@@ -183,18 +185,19 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                             }
                         }
                         
+                        // Check for party mode messages continuously (every 3 seconds) regardless of phase
+                        // This ensures we don't miss connection requests when not in champion select
+                        if last_party_mode_check.elapsed().as_secs() >= 3 {
+                            last_party_mode_check = std::time::Instant::now();
+                            if let Err(e) = check_for_party_mode_messages_with_connection(&app_handle, &port, &token, &mut processed_message_ids) {
+                                eprintln!("Error checking party mode messages: {}", e);
+                            }
+                        }
+                        
                         if phase == "ChampSelect" {
                             let now = std::time::Instant::now();
                             if now.duration_since(last_skin_check_time).as_secs() >= 1 {
                                 last_skin_check_time = now;
-                                
-                                // Check for party mode messages during ChampSelect
-                                if last_party_mode_check.elapsed().as_secs() >= 5 {
-                                    last_party_mode_check = std::time::Instant::now();
-                                    if let Err(e) = check_for_party_mode_messages_with_connection(&app_handle, &port, &token) {
-                                        eprintln!("Error checking party mode messages: {}", e);
-                                    }
-                                }
                                 
                                 let session_url = format!("https://127.0.0.1:{}/lol-champ-select/v1/session", port);
                                 let auth = base64::encode(format!("riot:{}", token));
@@ -264,26 +267,30 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                                 }
                                                             }
                                                             
-                                                            // Inject all skins (local + received)
+                                                            // Inject all skins (local + received) and misc items
                                                             if !skins_to_inject.is_empty() {
                                                                 let champions_dir = app_handle.path().app_data_dir()
                                                                     .unwrap_or_else(|_| PathBuf::from("."))
                                                                     .join("champions");
                                                                 
-                                                                match crate::injection::inject_skins(
+                                                                // Get selected misc items
+                                                                let misc_items = get_selected_misc_items(&app_handle);
+                                                                
+                                                                match inject_skins_and_misc(
                                                                     &app_handle,
                                                                     &league_path_clone,
                                                                     &skins_to_inject,
+                                                                    &misc_items,
                                                                     &champions_dir
                                                                 ) {
                                                                     Ok(_) => {
                                                                         let _ = app_handle.emit("injection-status", "success");
-                                                                        println!("[Party Mode] Successfully injected {} skins for champion {}", 
-                                                                                 skins_to_inject.len(), current_champion_id);
+                                                                        println!("[Party Mode] Successfully injected {} skins and {} misc items for champion {}", 
+                                                                                 skins_to_inject.len(), misc_items.len(), current_champion_id);
                                                                     },
                                                                     Err(e) => {
                                                                         let _ = app_handle.emit("skin-injection-error", format!(
-                                                                            "Failed to inject skins for champion {}: {}", current_champion_id, e
+                                                                            "Failed to inject skins and misc items for champion {}: {}", current_champion_id, e
                                                                         ));
                                                                         let _ = app_handle.emit("injection-status", "error");
                                                                     }
@@ -347,18 +354,24 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                         continue;
                                                     }
                                                     
-                                                    match crate::injection::inject_skins(
+                                                    // Get selected misc items
+                                                    let misc_items = get_selected_misc_items(&app_handle);
+                                                    
+                                                    match inject_skins_and_misc(
                                                         &app_handle,
                                                         &league_path_clone,
                                                         &skins_to_inject,
+                                                        &misc_items,
                                                         &champions_dir
                                                     ) {
                                                         Ok(_) => {
                                                             let _ = app_handle.emit("injection-status", "success");
+                                                            println!("[Enhanced] Successfully injected {} skins and {} misc items for champion {}", 
+                                                                     skins_to_inject.len(), misc_items.len(), champ_id);
                                                         },
                                                         Err(e) => {
                                                             let _ = app_handle.emit("skin-injection-error", format!(
-                                                                "Failed to inject skin for champion {}: {}", champ_id, e
+                                                                "Failed to inject skins and misc items for champion {}: {}", champ_id, e
                                                             ));
                                                             let _ = app_handle.emit("injection-status", "error");
                                                         }
@@ -386,14 +399,6 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                             // Keep existing in-game phase behavior
                         }
                         
-                        // Check for party mode messages every 10 seconds when connected (except during ChampSelect - now handled above)
-                        if phase != "ChampSelect" && last_party_mode_check.elapsed().as_secs() >= 10 {
-                            last_party_mode_check = std::time::Instant::now();
-                            if let Err(e) = check_for_party_mode_messages_with_connection(&app_handle, &port, &token) {
-                                eprintln!("Error checking party mode messages: {}", e);
-                            }
-                        }
-
                         // Handle Swift Play mode - detect Lobby -> Matchmaking transition
                         if last_phase == "Lobby" && phase == "Matchmaking" {
                             emit_terminal_log(&app_handle, "[LCU Watcher] Detected transition from Lobby to Matchmaking, checking for Swift Play mode");
@@ -808,25 +813,33 @@ fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_ids: 
                 }
             }
             
-            // If we found skins to inject, do it
-            if !skins_to_inject.is_empty() {
+            // Get selected misc items
+            let misc_items = get_selected_misc_items(app);
+            
+            // If we found skins to inject or misc items, do it
+            if !skins_to_inject.is_empty() || !misc_items.is_empty() {
                 
                 let champions_dir = app.path().app_data_dir()
                     .unwrap_or_else(|_| PathBuf::from("."))
                     .join("champions");
                 
-                match crate::injection::inject_skins(
+                match inject_skins_and_misc(
                     app,
                     league_path,
                     &skins_to_inject,
+                    &misc_items,
                     &champions_dir
                 ) {
                     Ok(_) => {
                         let _ = app.emit("injection-status", "success");
+                        if !skins_to_inject.is_empty() {
+                            println!("[Enhanced] Successfully injected {} skins and {} misc items", 
+                                     skins_to_inject.len(), misc_items.len());
+                        }
                     },
                     Err(e) => {
                         let _ = app.emit("skin-injection-error", format!(
-                            "Failed to inject Swift Play skins: {}", e
+                            "Failed to inject Swift Play skins and misc items: {}", e
                         ));
                         let _ = app.emit("injection-status", "error");
                     }
@@ -834,6 +847,29 @@ fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_ids: 
             }
         }
     }
+}
+
+// Helper function to get selected misc items from localStorage-like config
+fn get_selected_misc_items(app: &AppHandle) -> Vec<MiscItem> {
+    let mut selected_misc_items = Vec::new();
+    
+    // Load misc items from the misc_items directory
+    let misc_items_dir = app.path().app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("misc_items");
+    let misc_items_file = misc_items_dir.join("misc_items.json");
+    
+    if misc_items_file.exists() {
+        if let Ok(content) = std::fs::read_to_string(&misc_items_file) {
+            if let Ok(all_items) = serde_json::from_str::<Vec<MiscItem>>(&content) {
+                // For now, we'll include all misc items that are available
+                // TODO: In the future, we can add a selection mechanism to only inject selected ones
+                selected_misc_items = all_items;
+            }
+        }
+    }
+    
+    selected_misc_items
 }
 // Extract Swift Play champion IDs from the lobby data directly
 fn extract_swift_play_champions_from_lobby(json: &serde_json::Value) -> Vec<i64> {
@@ -868,6 +904,7 @@ fn check_for_party_mode_messages_with_connection(
     app: &AppHandle,
     port: &str,
     token: &str,
+    processed_message_ids: &mut std::collections::HashSet<String>,
 ) -> Result<(), String> {
     let client = get_lcu_client();
     let url = format!("https://127.0.0.1:{}/lol-chat/v1/conversations", port);
@@ -890,86 +927,7 @@ fn check_for_party_mode_messages_with_connection(
     if let Some(conversations_array) = conversations.as_array() {
         for conversation in conversations_array {
             if let Some(conversation_id) = conversation.get("id").and_then(|id| id.as_str()) {
-                if let Err(e) = check_conversation_for_party_messages(app, &client, port, token, conversation_id) {
-                    eprintln!("Error checking conversation {}: {}", conversation_id, e);
-                }
-            }
-        }
-    }
-    
-    Ok(())
-}
-
-// Check for new party mode messages (legacy function - kept for backward compatibility)
-fn check_for_party_mode_messages(app: &AppHandle) -> Result<(), String> {
-    // Get LCU connection details using the same logic as main LCU watcher
-    let config_dir = app.path().app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("config");
-    let config_file = config_dir.join("config.json");
-    
-    let mut search_dirs = vec![
-        PathBuf::from("C:\\Riot Games\\League of Legends"),
-        PathBuf::from("C:\\Program Files\\Riot Games\\League of Legends"),
-        PathBuf::from("C:\\Program Files (x86)\\Riot Games\\League of Legends"),
-    ];
-    
-    // If we have a configured league path, prioritize it
-    if config_file.exists() {
-        if let Ok(config_data) = std::fs::read_to_string(&config_file) {
-            if let Ok(config) = serde_json::from_str::<SavedConfig>(&config_data) {
-                if let Some(league_path) = config.league_path {
-                    search_dirs.insert(0, PathBuf::from(league_path));
-                }
-            }
-        }
-    }
-    
-    let mut port = None;
-    let mut token = None;
-    
-    for dir in &search_dirs {
-        for name in ["lockfile", "LeagueClientUx.lockfile", "LeagueClient.lockfile"] {
-            let path = dir.join(name);
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                let parts: Vec<&str> = content.split(':').collect();
-                if parts.len() >= 5 {
-                    port = Some(parts[2].to_string());
-                    token = Some(parts[3].to_string());
-                    break;
-                }
-            }
-        }
-        if port.is_some() && token.is_some() {
-            break;
-        }
-    }
-    
-    let port = port.ok_or("LCU port not found")?;
-    let token = token.ok_or("LCU token not found")?;
-    
-    let client = get_lcu_client();
-    let url = format!("https://127.0.0.1:{}/lol-chat/v1/conversations", port);
-    let auth = base64::encode(format!("riot:{}", token));
-    
-    let response = client
-        .get(&url)
-        .header("Authorization", format!("Basic {}", auth))
-        .send()
-        .map_err(|e| format!("Failed to get conversations: {}", e))?;
-    
-    if !response.status().is_success() {
-        return Ok(());
-    }
-    
-    let conversations: serde_json::Value = response
-        .json()
-        .map_err(|e| format!("Failed to parse conversations: {}", e))?;
-    
-    if let Some(conversations_array) = conversations.as_array() {
-        for conversation in conversations_array {
-            if let Some(conversation_id) = conversation.get("id").and_then(|id| id.as_str()) {
-                if let Err(e) = check_conversation_for_party_messages(app, &client, &port, &token, conversation_id) {
+                if let Err(e) = check_conversation_for_party_messages(app, &client, port, token, conversation_id, processed_message_ids) {
                     eprintln!("Error checking conversation {}: {}", conversation_id, e);
                 }
             }
@@ -986,6 +944,7 @@ fn check_conversation_for_party_messages(
     port: &str,
     token: &str,
     conversation_id: &str,
+    processed_message_ids: &mut std::collections::HashSet<String>,
 ) -> Result<(), String> {
     let url = format!("https://127.0.0.1:{}/lol-chat/v1/conversations/{}/messages", port, conversation_id);
     let auth = base64::encode(format!("riot:{}", token));
@@ -1005,17 +964,30 @@ fn check_conversation_for_party_messages(
         .map_err(|e| format!("Failed to parse messages: {}", e))?;
     
     if let Some(messages_array) = messages.as_array() {
-        // Get the last few messages to check for party mode messages
-        let recent_messages = messages_array.iter().rev().take(5);
-        
-        for message in recent_messages {
-            if let (Some(body), Some(from_summoner_id)) = (
-                message.get("body").and_then(|b| b.as_str()),
-                message.get("fromSummonerId").and_then(|id| id.as_str()),
-            ) {
-                println!("[Party Mode] Checking message body: {}", body);
+        // Check all messages, not just recent ones, but skip already processed messages
+        for message in messages_array.iter() {
+            // Get message ID to track processed messages
+            let message_id = message.get("id").and_then(|id| id.as_str()).unwrap_or("unknown");
+            
+            // Skip if we've already processed this message
+            if processed_message_ids.contains(message_id) {
+                continue;
+            }
+            
+            let body = message.get("body").and_then(|b| b.as_str());
+            let from_summoner_id = message.get("fromSummonerId")
+                .and_then(|id| id.as_str())
+                .or_else(|| message.get("fromId").and_then(|id| id.as_str()))
+                .or_else(|| message.get("senderId").and_then(|id| id.as_str()));
+            
+            if let (Some(body), Some(from_summoner_id)) = (body, from_summoner_id) {
+                // Only print debug info for OSS messages to reduce noise
                 if body.starts_with("OSS:") {
                     println!("[Party Mode] Found OSS message from {}: {}", from_summoner_id, body);
+                    
+                    // Mark this message as processed before handling it
+                    processed_message_ids.insert(message_id.to_string());
+                    
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     if let Err(e) = rt.block_on(
                         crate::commands::party_mode::handle_party_mode_message(app, body, from_summoner_id)
@@ -1023,6 +995,24 @@ fn check_conversation_for_party_messages(
                         eprintln!("Error handling party mode message: {}", e);
                     }
                 }
+            } else {
+                // Debug: Check what fields are available in the message
+                if message.as_object().is_some() {
+                    let available_fields: Vec<String> = message.as_object().unwrap().keys().cloned().collect();
+                    println!("[Party Mode] Debug: Message has fields: {:?}", available_fields);
+                }
+            }
+        }
+        
+        // Clean up old message IDs to prevent memory growth
+        // Keep only the last 100 message IDs
+        if processed_message_ids.len() > 100 {
+            let mut ids_vec: Vec<String> = processed_message_ids.iter().cloned().collect();
+            ids_vec.sort(); // Not perfect ordering, but good enough for cleanup
+            let keep_count = 50;
+            processed_message_ids.clear();
+            for id in ids_vec.into_iter().rev().take(keep_count) {
+                processed_message_ids.insert(id);
             }
         }
     } else {
