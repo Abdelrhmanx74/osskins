@@ -11,8 +11,11 @@ pub enum InjectionError {
     InvalidGamePath(String),
     MissingFantomeFile(String),
     ProcessError(String),
+    #[allow(dead_code)]
     ConfigError(String),
+    #[allow(dead_code)]
     Timeout(String),
+    #[allow(dead_code)]
     Aborted(String),
     WalkdirError(walkdir::Error),
     ZipError(zip::result::ZipError),
@@ -68,7 +71,7 @@ pub struct Skin {
 pub struct MiscItem {
     pub id: String,
     pub name: String,
-    pub item_type: String, // "map", "language", "hud", "misc"
+    pub item_type: String, // "map", "font", "hud", "misc"
     pub fantome_path: String,
 }
 
@@ -86,11 +89,13 @@ pub enum ModState {
     Idle,
     Busy,
     Running,
+    #[allow(dead_code)]
     CriticalError,
 }
 
 // This represents a message event for the patcher
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum PatcherMessage {
     WaitStart,
     Found,
@@ -104,6 +109,7 @@ pub enum PatcherMessage {
 }
 
 impl PatcherMessage {
+    #[allow(dead_code)]
     pub fn to_string(&self) -> &'static str {
         match self {
             Self::WaitStart => "Waiting for league match to start",

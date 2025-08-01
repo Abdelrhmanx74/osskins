@@ -3,19 +3,29 @@ use std::{thread, time::Duration};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
-use std::collections::HashSet;
-use base64;
+use base64::{Engine, engine::general_purpose};
 use serde_json;
-use crate::injection::{Skin, MiscItem, inject_skins_and_misc};
+use crate::injection::{Skin, inject_skins_and_misc};
 use crate::commands::types::{SavedConfig, SkinData};
+use crate::commands::misc_items::get_selected_misc_items;
+use crate::commands::party_mode::{RECEIVED_SKINS, clear_received_skins};
+use std::sync::atomic::{AtomicU8, Ordering};
+use once_cell::sync::Lazy;
 
 // LCU (League Client) watcher and communication
 
+// 0 = Unknown, 1 = ChampSelect, 2 = Other
+pub static PHASE_STATE: Lazy<AtomicU8> = Lazy::new(|| AtomicU8::new(0));
+
+pub fn is_in_champ_select() -> bool {
+    PHASE_STATE.load(Ordering::Relaxed) == 1
+}
+
 #[tauri::command]
-pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), String> {
-    println!("Starting LCU status watcher for path: {}", leaguePath);
+pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), String> {
+    println!("Starting LCU status watcher for path: {}", league_path);
     let app_handle = app.clone();
-    let league_path_clone = leaguePath.clone();
+    let league_path_clone = league_path.clone();
     
     thread::spawn(move || {
         let mut last_phase = String::new();
@@ -75,15 +85,20 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                 }
             }
             
-            if (!found_any_lockfile) {
+            if !found_any_lockfile {
                 // Handle no lockfile found cases...
                 if was_in_game && (last_phase == "InProgress" || was_reconnecting) {
                     thread::sleep(Duration::from_secs(5));
                     continue;
                 } else if was_in_game && last_phase == "None" {
+                    // Fallback cleanup when no lockfile is found after being in game
+                    // The primary cleanup is now handled by phase change detection for better performance
                     if let Err(e) = crate::injection::cleanup_injection(&app_handle, &league_path_clone) {
-                        println!("[LCU Watcher] Error cleaning up injection: {}", e);
-                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] Error cleaning up injection: {}", e));
+                        println!("[LCU Watcher] Error in fallback cleanup after game exit: {}", e);
+                        emit_terminal_log(&app_handle, &format!("[LCU Watcher] Error in fallback cleanup after game exit: {}", e));
+                    } else {
+                        println!("[LCU Watcher] Fallback cleanup completed after game exit");
+                        emit_terminal_log(&app_handle, "[LCU Watcher] Fallback cleanup completed after game exit");
                     }
                     was_in_game = false;
                 }
@@ -119,7 +134,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                         
                         for endpoint in endpoints {
                             let url = format!("https://127.0.0.1:{}{}", port, endpoint);
-                            let auth = base64::encode(format!("riot:{}", token));
+                            let auth = general_purpose::STANDARD.encode(format!("riot:{}", token));
                             
                             match client.get(&url)
                                 .header("Authorization", format!("Basic {}", auth))
@@ -151,7 +166,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                             }
                         }
                         
-                        if (!connected) {
+                        if !connected {
                             thread::sleep(Duration::from_secs(5));
                             continue;
                         }
@@ -161,6 +176,66 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                         if phase != last_phase {
                             println!("[LCU Watcher] LCU status changed: {} -> {}", last_phase, phase);
                             emit_terminal_log(&app_handle, &format!("[LCU Watcher] LCU status changed: {} -> {}", last_phase, phase));
+                            
+                            // Only clean up injection on specific phase transitions where injection is no longer needed
+                            // Keep injection active during InProgress (in-game) and Reconnect phases
+                            let should_cleanup = match (&*last_phase, &*phase) {
+                                // Clean up when leaving game back to lobby/none
+                                ("InProgress", "None") => true,
+                                ("InProgress", "Lobby") => true,
+                                ("InProgress", "Matchmaking") => true,
+                                ("Reconnect", "None") => true,
+                                ("Reconnect", "Lobby") => true,
+                                ("Reconnect", "Matchmaking") => true,
+                                // Clean up when going from ChampSelect to lobby/none (cancelled queue)
+                                ("ChampSelect", "None") => true,
+                                ("ChampSelect", "Lobby") => true,
+                                ("ChampSelect", "Matchmaking") => true,
+                                // Clean up when client disconnects
+                                (_, "None") if last_phase != "None" => true,
+                                // Don't clean up when entering game phases
+                                ("ChampSelect", "InProgress") => false,
+                                ("ChampSelect", "Reconnect") => false,
+                                ("InProgress", "Reconnect") => false,
+                                ("Reconnect", "InProgress") => false,
+                                // Default: don't clean up for other transitions
+                                _ => false,
+                            };
+                            
+                            if should_cleanup {
+                                match crate::injection::needs_injection_cleanup(&app_handle, &league_path_clone) {
+                                    Ok(needs_cleanup) => {
+                                        if needs_cleanup {
+                                            let log_msg = format!("[LCU Watcher] Injection cleanup needed for phase transition {} -> {}, cleaning up...", last_phase, phase);
+                                            println!("{}", log_msg);
+                                            emit_terminal_log(&app_handle, &log_msg);
+                                            
+                                            if let Err(e) = crate::injection::cleanup_injection(&app_handle, &league_path_clone) {
+                                                let error_msg = format!("[LCU Watcher] Error cleaning up injection on phase change: {}", e);
+                                                println!("{}", error_msg);
+                                                emit_terminal_log(&app_handle, &error_msg);
+                                            } else {
+                                                let success_msg = "[LCU Watcher] ✅ Injection cleanup completed successfully";
+                                                println!("{}", success_msg);
+                                                emit_terminal_log(&app_handle, success_msg);
+                                            }
+                                        } else {
+                                            let log_msg = format!("[LCU Watcher] Phase transition {} -> {} would trigger cleanup, but no injection active", last_phase, phase);
+                                            println!("{}", log_msg);
+                                            emit_terminal_log(&app_handle, &log_msg);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        let error_msg = format!("[LCU Watcher] Error checking if cleanup is needed: {}", e);
+                                        println!("{}", error_msg);
+                                        emit_terminal_log(&app_handle, &error_msg);
+                                    }
+                                }
+                            } else {
+                                let log_msg = format!("[LCU Watcher] Phase transition {} -> {} does not require cleanup, keeping injection active", last_phase, phase);
+                                println!("{}", log_msg);
+                                emit_terminal_log(&app_handle, &log_msg);
+                            }
                             
                             // If entering ChampSelect, preload assets to speed up injection later
                             if phase == "ChampSelect" {
@@ -200,7 +275,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                 last_skin_check_time = now;
                                 
                                 let session_url = format!("https://127.0.0.1:{}/lol-champ-select/v1/session", port);
-                                let auth = base64::encode(format!("riot:{}", token));
+                                let auth = general_purpose::STANDARD.encode(format!("riot:{}", token));
                                 
                                 if let Ok(resp) = client.get(&session_url)
                                     .header("Authorization", format!("Basic {}", auth))
@@ -237,34 +312,100 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                                 if config.party_mode.auto_share && !config.party_mode.paired_friends.is_empty() {
                                                                     let app_handle_clone = app_handle.clone();
                                                                     let skin_clone = skin.clone();
-                                                                    tokio::spawn(async move {
-                                                                        if let Err(e) = crate::commands::party_mode::send_skin_share_to_paired_friends(
-                                                                            &app_handle_clone,
-                                                                            skin_clone.champion_id,
-                                                                            skin_clone.skin_id,
-                                                                            skin_clone.chroma_id,
-                                                                            skin_clone.fantome.clone(),
-                                                                        ).await {
-                                                                            eprintln!("Failed to send skin share: {}", e);
-                                                                        }
-                                                                    });
+                                                                    // Use a Tokio runtime if not already inside one
+                                                                    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                                                                        handle.spawn(async move {
+                                                                            if let Err(e) = crate::commands::party_mode::send_skin_share_to_paired_friends(
+                                                                                &app_handle_clone,
+                                                                                skin_clone.champion_id,
+                                                                                skin_clone.skin_id,
+                                                                                skin_clone.chroma_id,
+                                                                                skin_clone.fantome.clone(),
+                                                                            ).await {
+                                                                                eprintln!("Failed to send skin share: {}", e);
+                                                                            }
+                                                                        });
+                                                                    } else {
+                                                                        // No runtime, so create one just for this task
+                                                                        std::thread::spawn(move || {
+                                                                            let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+                                                                            rt.block_on(async move {
+                                                                                if let Err(e) = crate::commands::party_mode::send_skin_share_to_paired_friends(
+                                                                                    &app_handle_clone,
+                                                                                    skin_clone.champion_id,
+                                                                                    skin_clone.skin_id,
+                                                                                    skin_clone.chroma_id,
+                                                                                    skin_clone.fantome.clone(),
+                                                                                ).await {
+                                                                                    eprintln!("Failed to send skin share: {}", e);
+                                                                                }
+                                                                            });
+                                                                        });
+                                                                    }
                                                                 }
                                                                 
                                                                 last_selected_skins.insert(current_champion_id, skin.clone());
                                                             }
                                                             
                                                             // Add received skins from friends for this champion
-                                                            for (key, received_skin) in &config.party_mode.received_skins {
+                                                            let mut friend_skins_info = Vec::new();
+                                                            for (_key, received_skin) in RECEIVED_SKINS.lock().unwrap().iter() {
                                                                 if received_skin.champion_id == current_champion_id {
+                                                                    // Get skin name using the helper function
+                                                                    let skin_name = crate::commands::party_mode::get_skin_name_from_config(&app_handle, received_skin.champion_id, received_skin.skin_id)
+                                                                        .unwrap_or_else(|| format!("Skin {}", received_skin.skin_id));
+                                                                    
+                                                                    // Check if fantome file exists before adding to injection list
+                                                                    if let Some(fantome_path_str) = &received_skin.fantome_path {
+                                                                        let fantome_path = std::path::Path::new(fantome_path_str);
+                                                                        if !fantome_path.exists() {
+                                                                            println!("[Party Mode] ⚠️  WARNING: Friend skin fantome file not found: {}", fantome_path_str);
+                                                                            println!("[Party Mode] This friend skin from {} will not be injected!", received_skin.from_summoner_name);
+                                                                            continue; // Skip this skin if fantome file doesn't exist
+                                                                        }
+                                                                        
+                                                                        println!("[Party Mode] ✅ Friend skin fantome file verified: {}", fantome_path_str);
+                                                                    } else {
+                                                                        println!("[Party Mode] ⚠️  WARNING: Friend skin has no fantome path from {}", received_skin.from_summoner_name);
+                                                                        continue; // Skip this skin if no fantome path
+                                                                    }
+                                                                    
                                                                     skins_to_inject.push(Skin {
                                                                         champion_id: received_skin.champion_id,
                                                                         skin_id: received_skin.skin_id,
                                                                         chroma_id: received_skin.chroma_id,
                                                                         fantome_path: received_skin.fantome_path.clone(),
                                                                     });
-                                                                    println!("[Party Mode] Adding received skin from {} for champion {}", 
-                                                                             received_skin.from_summoner_name, current_champion_id);
+                                                                    
+                                                                    friend_skins_info.push(format!("{} - {}", 
+                                                                                                  received_skin.from_summoner_name, 
+                                                                                                  skin_name));
+                                                                    
+                                                                    println!("[Party Mode] Adding received skin from {} for champion {} - {}", 
+                                                                             received_skin.from_summoner_name, 
+                                                                             current_champion_id,
+                                                                             skin_name);
                                                                 }
+                                                            }
+                                                            
+                                                            // Check if we should inject now (wait for friends to share their skins)
+                                                            let should_inject = {
+                                                                // Create a runtime to handle the async call
+                                                                let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+                                                                rt.block_on(async {
+                                                                    match crate::commands::party_mode::should_inject_now(&app_handle, current_champion_id).await {
+                                                                        Ok(should) => should,
+                                                                        Err(e) => {
+                                                                            println!("[Party Mode] Error checking injection timing: {}", e);
+                                                                            true // Default to inject if there's an error
+                                                                        }
+                                                                    }
+                                                                })
+                                                            };
+                                                            
+                                                            if !should_inject {
+                                                                println!("[Party Mode] Delaying injection for champion {}, waiting for more friends to share", current_champion_id);
+                                                                continue;
                                                             }
                                                             
                                                             // Inject all skins (local + received) and misc items
@@ -274,7 +415,10 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                                     .join("champions");
                                                                 
                                                                 // Get selected misc items
-                                                                let misc_items = get_selected_misc_items(&app_handle);
+                                                                let misc_items = get_selected_misc_items(&app_handle).unwrap_or_else(|err| {
+                                                                    println!("Failed to get selected misc items: {}", err);
+                                                                    Vec::new()
+                                                                });
                                                                 
                                                                 match inject_skins_and_misc(
                                                                     &app_handle,
@@ -285,8 +429,51 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                                 ) {
                                                                     Ok(_) => {
                                                                         let _ = app_handle.emit("injection-status", "success");
-                                                                        println!("[Party Mode] Successfully injected {} skins and {} misc items for champion {}", 
+                                                                        println!("[Injection] ✅ Successfully injected {} skins and {} misc items for champion {}", 
                                                                                  skins_to_inject.len(), misc_items.len(), current_champion_id);
+                                                                        
+                                                                        // Log details of each injected skin with better descriptions
+                                                                        let mut your_skin_count = 0;
+                                                                        let mut friend_skin_count = 0;
+                                                                        
+                                                                        for (i, skin) in skins_to_inject.iter().enumerate() {
+                                                                            let skin_name = crate::commands::party_mode::get_skin_name_from_config(&app_handle, skin.champion_id, skin.skin_id)
+                                                                                .unwrap_or_else(|| format!("Skin {}", skin.skin_id));
+                                                                                
+                                                                            if i == 0 && !config.skins.iter().any(|s| s.champion_id == current_champion_id) {
+                                                                                // First skin but no local skin configured - must be friend skin
+                                                                                if i < friend_skins_info.len() {
+                                                                                    println!("[Injection] 🎨 FRIEND skin: {} ({})", friend_skins_info[i], skin_name);
+                                                                                    friend_skin_count += 1;
+                                                                                } else {
+                                                                                    println!("[Injection] ❓ UNKNOWN skin: Champion {}, {} (Skin ID: {})", 
+                                                                                             skin.champion_id, skin_name, skin.skin_id);
+                                                                                }
+                                                                            } else if i == 0 {
+                                                                                // First skin and we have local skin configured - this is your skin
+                                                                                println!("[Injection] 👤 YOUR skin: Champion {}, {} (Skin ID: {})", 
+                                                                                         skin.champion_id, skin_name, skin.skin_id);
+                                                                                your_skin_count += 1;
+                                                                            } else {
+                                                                                // Subsequent skins are friend skins
+                                                                                let friend_index = if your_skin_count > 0 { i - 1 } else { i };
+                                                                                if friend_index < friend_skins_info.len() {
+                                                                                    println!("[Injection] 🎨 FRIEND skin: {} ({})", friend_skins_info[friend_index], skin_name);
+                                                                                    friend_skin_count += 1;
+                                                                                } else {
+                                                                                    println!("[Injection] ❓ UNKNOWN skin: Champion {}, {} (Skin ID: {})", 
+                                                                                             skin.champion_id, skin_name, skin.skin_id);
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                        
+                                                                        // Show final summary
+                                                                        println!("[Injection] 📊 Injection Summary: {} your skins, {} friend skins, {} misc items", 
+                                                                                 your_skin_count, friend_skin_count, misc_items.len());
+                                                                        
+                                                                        if !friend_skins_info.is_empty() {
+                                                                            println!("[Injection] 👥 Friends who shared: {}", friend_skins_info.join(", "));
+                                                                        }
                                                                     },
                                                                     Err(e) => {
                                                                         let _ = app_handle.emit("skin-injection-error", format!(
@@ -335,7 +522,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                     }];
                                                     
                                                     // Add received skins for this champion
-                                                    for (key, received_skin) in &config.party_mode.received_skins {
+                                                    for (_key, received_skin) in RECEIVED_SKINS.lock().unwrap().iter() {
                                                         if received_skin.champion_id == champ_id {
                                                             skins_to_inject.push(Skin {
                                                                 champion_id: received_skin.champion_id,
@@ -355,7 +542,10 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                                                     }
                                                     
                                                     // Get selected misc items
-                                                    let misc_items = get_selected_misc_items(&app_handle);
+                                                    let misc_items = get_selected_misc_items(&app_handle).unwrap_or_else(|err| {
+                                                        println!("Failed to get selected misc items: {}", err);
+                                                        Vec::new()
+                                                    });
                                                     
                                                     match inject_skins_and_misc(
                                                         &app_handle,
@@ -391,7 +581,13 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                             }
                             
                             if phase != "ChampSelect" && phase != "None" && last_phase == "ChampSelect" {
-                                let _ = crate::injection::cleanup_injection(&app_handle, &league_path_clone);
+                                // Cleanup is now handled automatically by the phase change detection above
+                                // This removes redundant cleanup and improves performance
+                                let log_msg = "[LCU Watcher] Left ChampSelect phase - cleanup handled by phase change detection";
+                                println!("{}", log_msg);
+                                emit_terminal_log(&app_handle, log_msg);
+                                clear_received_skins();
+                                println!("[Party Mode] Cleared in-memory received skins after leaving ChampSelect");
                             }
                             
                             sleep_duration = Duration::from_secs(1);
@@ -405,7 +601,7 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                             
                             // Check current queue information
                             let queue_url = format!("https://127.0.0.1:{}/lol-gameflow/v1/session", port);
-                            let auth = base64::encode(format!("riot:{}", token));
+                            let auth = general_purpose::STANDARD.encode(format!("riot:{}", token));
                             
                             match client.get(&queue_url)
                                 .header("Authorization", format!("Basic {}", auth))
@@ -520,6 +716,11 @@ pub fn start_lcu_watcher(app: AppHandle, leaguePath: String) -> Result<(), Strin
                         last_phase = phase.to_string();
                         was_reconnecting = phase == "Reconnect";
                         was_in_game = phase == "InProgress" || was_reconnecting;
+                        if phase == "ChampSelect" {
+                            PHASE_STATE.store(1, Ordering::Relaxed);
+                        } else {
+                            PHASE_STATE.store(2, Ordering::Relaxed);
+                        }
                     },
                     Err(e) => println!("Failed to build HTTP client: {}", e),
                 }
@@ -538,6 +739,7 @@ fn emit_terminal_log(app: &AppHandle, message: &str) {
 }
 
 // Add helper function for cleaner log messages
+#[allow(dead_code)]
 fn format_json_summary(json: &serde_json::Value) -> String {
     let mut summary = String::new();
     
@@ -545,7 +747,7 @@ fn format_json_summary(json: &serde_json::Value) -> String {
         summary.push_str(&format!("phase: {}, ", phase.as_str().unwrap_or("unknown")));
     }
     
-    if let Some(game_data) = json.get("gameData") {
+    if let Some(_game_data) = json.get("gameData") {
         summary.push_str("gameData: {...}, ");
     }
     
@@ -561,6 +763,7 @@ fn format_json_summary(json: &serde_json::Value) -> String {
 }
 
 // Helper function for delayed logging
+#[allow(dead_code)]
 fn delayed_log(app: &AppHandle, message: &str) {
     emit_terminal_log(app, message);
     thread::sleep(Duration::from_millis(100)); // Small delay for better readability
@@ -814,7 +1017,10 @@ fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_ids: 
             }
             
             // Get selected misc items
-            let misc_items = get_selected_misc_items(app);
+            let misc_items = get_selected_misc_items(app).unwrap_or_else(|err| {
+                println!("Failed to get selected misc items: {}", err);
+                Vec::new()
+            });
             
             // If we found skins to inject or misc items, do it
             if !skins_to_inject.is_empty() || !misc_items.is_empty() {
@@ -849,28 +1055,6 @@ fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_ids: 
     }
 }
 
-// Helper function to get selected misc items from localStorage-like config
-fn get_selected_misc_items(app: &AppHandle) -> Vec<MiscItem> {
-    let mut selected_misc_items = Vec::new();
-    
-    // Load misc items from the misc_items directory
-    let misc_items_dir = app.path().app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("misc_items");
-    let misc_items_file = misc_items_dir.join("misc_items.json");
-    
-    if misc_items_file.exists() {
-        if let Ok(content) = std::fs::read_to_string(&misc_items_file) {
-            if let Ok(all_items) = serde_json::from_str::<Vec<MiscItem>>(&content) {
-                // For now, we'll include all misc items that are available
-                // TODO: In the future, we can add a selection mechanism to only inject selected ones
-                selected_misc_items = all_items;
-            }
-        }
-    }
-    
-    selected_misc_items
-}
 // Extract Swift Play champion IDs from the lobby data directly
 fn extract_swift_play_champions_from_lobby(json: &serde_json::Value) -> Vec<i64> {
     let mut champion_ids = Vec::new();
@@ -908,7 +1092,7 @@ fn check_for_party_mode_messages_with_connection(
 ) -> Result<(), String> {
     let client = get_lcu_client();
     let url = format!("https://127.0.0.1:{}/lol-chat/v1/conversations", port);
-    let auth = base64::encode(format!("riot:{}", token));
+    let auth = general_purpose::STANDARD.encode(format!("riot:{}", token));
     
     let response = client
         .get(&url)
@@ -947,7 +1131,7 @@ fn check_conversation_for_party_messages(
     processed_message_ids: &mut std::collections::HashSet<String>,
 ) -> Result<(), String> {
     let url = format!("https://127.0.0.1:{}/lol-chat/v1/conversations/{}/messages", port, conversation_id);
-    let auth = base64::encode(format!("riot:{}", token));
+    let auth = general_purpose::STANDARD.encode(format!("riot:{}", token));
     
     let response = client
         .get(&url)

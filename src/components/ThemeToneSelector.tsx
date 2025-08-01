@@ -231,6 +231,7 @@ async function saveThemePreferences(tone: string, isDark: boolean) {
         tone?: string;
         isDark?: boolean;
       };
+      selected_misc_items?: Record<string, string[]>;
     }
     const config: ThemeConfig = (await invoke("load_config").catch(
       () => ({})
@@ -252,6 +253,7 @@ async function saveThemePreferences(tone: string, isDark: boolean) {
       skins: updatedConfig.skins,
       favorites: updatedConfig.favorites,
       theme: updatedConfig.theme,
+      selectedMiscItems: config.selected_misc_items ?? {},
     }).catch((err: unknown) => {
       console.error("Failed to save theme to config:", err);
     });

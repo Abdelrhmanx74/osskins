@@ -31,9 +31,9 @@ export function ChampionGrid({
     onMiscItemClick?.("map");
   };
 
-  const handleLanguageClick = () => {
-    console.log("Language misc card clicked");
-    onMiscItemClick?.("language");
+  const handleFontClick = () => {
+    console.log("Font misc card clicked");
+    onMiscItemClick?.("font");
   };
 
   const handleHudClick = () => {
@@ -67,9 +67,9 @@ export function ChampionGrid({
           />
           <MiscCard
             icon={Languages}
-            type="language"
-            onClick={handleLanguageClick}
-            title="Language"
+            type="font"
+            onClick={handleFontClick}
+            title="Font"
           />
           <MiscCard
             icon={Shapes}

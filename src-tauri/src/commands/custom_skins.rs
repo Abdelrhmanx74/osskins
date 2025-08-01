@@ -1,7 +1,4 @@
-use tauri::{AppHandle, Manager};
-use std::fs;
-use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{Manager};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use serde_json;
@@ -13,11 +10,11 @@ use crate::commands::champion_data::get_champion_name;
 #[tauri::command]
 pub async fn upload_custom_skin(
     app: tauri::AppHandle,
-    championId: u32,
-    skinName: String,
+    champion_id: u32,
+    skin_name: String,
 ) -> Result<CustomSkinData, String> {
-    println!("Uploading custom skin: {}", skinName);
-    println!("For champion ID: {}", championId);
+    println!("Uploading custom skin: {}", skin_name);
+    println!("For champion ID: {}", champion_id);
     
     // Open file dialog for the user to select a skin file
     #[cfg(target_os = "windows")]
@@ -74,10 +71,10 @@ pub async fn upload_custom_skin(
         .map_err(|e| format!("Failed to create custom skins directory: {}", e))?;
         
     // Get champion name (for organization)
-    let champion_name = if let Ok(champion_data) = get_champion_name(&app, championId).await {
+    let champion_name = if let Ok(champion_data) = get_champion_name(&app, champion_id).await {
         champion_data
     } else {
-        format!("champion_{}", championId) // Fallback if name not found
+        format!("champion_{}", champion_id) // Fallback if name not found
     };
     
     // Create directory for this champion's custom skins
@@ -86,7 +83,7 @@ pub async fn upload_custom_skin(
         .map_err(|e| format!("Failed to create champion directory: {}", e))?;
         
     // Generate a unique ID for this skin
-    let skin_id = format!("custom_{}_{}", championId, chrono::Utc::now().timestamp());
+    let skin_id = format!("custom_{}_{}", champion_id, chrono::Utc::now().timestamp());
     
     // Copy the file to the custom skins directory with a new name
     let source_path = std::path::Path::new(&file_path);
@@ -105,8 +102,8 @@ pub async fn upload_custom_skin(
     // Create metadata for the custom skin
     let custom_skin = CustomSkinData {
         id: skin_id,
-        name: skinName,
-        champion_id: championId,
+        name: skin_name,
+        champion_id: champion_id,
         champion_name,
         file_path: dest_path.to_string_lossy().to_string(),
         created_at: chrono::Utc::now().timestamp() as u64,

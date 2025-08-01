@@ -88,6 +88,7 @@ fn main() {
             save_selected_skins,
             start_auto_inject,
             load_config,
+            debug_config,
             delete_champions_cache,
             auto_detect_league,
             
@@ -109,6 +110,8 @@ fn main() {
             respond_to_pairing_request,
             remove_paired_friend,
             get_paired_friends,
+            get_sent_requests,
+            get_party_mode_settings,
             update_party_mode_settings,
             clear_ignored_summoner,
             start_party_mode_chat_monitor,

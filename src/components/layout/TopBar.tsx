@@ -24,6 +24,7 @@ import { TerminalLogsDialog } from "@/components/TerminalLogsDialog";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import PartyModeDialog from "@/components/PartyModeDialog";
 import { useGameStore, SkinTab } from "@/lib/store";
+import { usePartyModeStore } from "@/lib/store/party-mode";
 import { useEffect, useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Champion } from "@/lib/types";
@@ -48,7 +49,7 @@ export function TopBar({
 }: TopBarProps) {
   // Get tab state from the store
   const { activeTab, setActiveTab } = useGameStore();
-  const [pairedFriendsCount, setPairedFriendsCount] = useState(0);
+  const pairedFriendsCount = usePartyModeStore((s) => s.pairedFriends.length);
 
   // Load saved tab preference from localStorage
   useEffect(() => {
@@ -62,72 +63,7 @@ export function TopBar({
 
   // Load paired friends count
   useEffect(() => {
-    const loadPairedFriendsCount = async () => {
-      try {
-        const pairedFriends = await invoke("get_paired_friends");
-        setPairedFriendsCount((pairedFriends as any[]).length);
-      } catch (error) {
-        console.error("Failed to load paired friends count:", error);
-        setPairedFriendsCount(0);
-      }
-    };
-
-    void loadPairedFriendsCount();
-
-    // Set up event listeners for real-time updates
-    const setupEventListeners = async () => {
-      try {
-        // Listen for pairing accepted events to update count
-        const unsubscribePairingAccepted = await listen(
-          "party-mode-pairing-accepted",
-          () => {
-            void loadPairedFriendsCount();
-          }
-        );
-
-        // Listen for pairing declined events (in case count needs updating)
-        const unsubscribePairingDeclined = await listen(
-          "party-mode-pairing-declined",
-          () => {
-            void loadPairedFriendsCount();
-          }
-        );
-
-        // Listen for paired friends updates (add/remove)
-        const unsubscribePairedFriendsUpdated = await listen(
-          "party-mode-paired-friends-updated",
-          () => {
-            void loadPairedFriendsCount();
-          }
-        );
-
-        return () => {
-          unsubscribePairingAccepted();
-          unsubscribePairingDeclined();
-          unsubscribePairedFriendsUpdated();
-        };
-      } catch (error) {
-        console.error("Failed to set up party mode event listeners:", error);
-        return () => {};
-      }
-    };
-
-    let unsubscribeEvents: (() => void) | null = null;
-    void setupEventListeners().then((cleanup) => {
-      unsubscribeEvents = cleanup;
-    });
-
-    // Set up an interval to refresh the count periodically as backup
-    const interval = setInterval(() => {
-      void loadPairedFriendsCount();
-    }, 30000); // Update every 30 seconds (reduced frequency since we have real-time events)
-
-    return () => {
-      clearInterval(interval);
-      if (unsubscribeEvents) {
-        unsubscribeEvents();
-      }
-    };
+    // Party mode is now handled by the provider, no need for manual loading
   }, []);
 
   // Force update by deleting cache and updating

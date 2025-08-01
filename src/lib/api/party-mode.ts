@@ -6,6 +6,7 @@ import type {
   ConnectionRequest,
   PairingResponse,
   SkinShare,
+  SentPairingRequest,
 } from "@/lib/types/party-mode";
 
 // API functions for party mode
@@ -77,6 +78,16 @@ export const partyModeApi = {
     }
   },
 
+  // Get list of sent requests
+  async getSentRequests(): Promise<Record<string, SentPairingRequest>> {
+    try {
+      return await invoke("get_sent_requests");
+    } catch (error) {
+      console.error("Failed to get sent requests:", error);
+      throw error;
+    }
+  },
+
   // Update party mode settings
   async updateSettings(
     autoShare: boolean,
@@ -89,6 +100,18 @@ export const partyModeApi = {
       });
     } catch (error) {
       console.error("Failed to update party mode settings:", error);
+      throw error;
+    }
+  },
+
+  // Get party mode settings
+  async getSettings(): Promise<{ autoShare: boolean; notifications: boolean }> {
+    try {
+      const result = await invoke("get_party_mode_settings");
+      const [autoShare, notifications] = result as [boolean, boolean];
+      return { autoShare, notifications };
+    } catch (error) {
+      console.error("Failed to get party mode settings:", error);
       throw error;
     }
   },

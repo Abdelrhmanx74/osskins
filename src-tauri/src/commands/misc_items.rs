@@ -1,17 +1,16 @@
 use tauri::{AppHandle, Manager};
-use std::path::Path;
 use std::fs;
-use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use crate::injection::MiscItem;
+use crate::commands::types::SavedConfig;
 
 // Misc item management commands
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UploadMiscItemRequest {
     pub name: String,
-    pub item_type: String, // "map", "language", "hud", "misc"
+    pub item_type: String, // "map", "font", "hud", "misc"
 }
 
 #[tauri::command]
@@ -235,4 +234,64 @@ pub async fn upload_multiple_misc_items(app: AppHandle, item_type: String) -> Re
 
     println!("Successfully uploaded {} misc items of type {}", uploaded_items.len(), item_type);
     Ok(uploaded_items)
+}
+
+/// Get the list of misc items that are selected by the user
+pub fn get_selected_misc_items(app: &AppHandle) -> Result<Vec<MiscItem>, String> {
+    println!("=== DEBUG: Getting selected misc items ===");
+    
+    // First, get all available misc items
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    let misc_items_dir = app_data_dir.join("misc_items");
+    let misc_items_file = misc_items_dir.join("misc_items.json");
+    
+    if !misc_items_file.exists() {
+        println!("DEBUG: misc_items.json does not exist");
+        return Ok(Vec::new());
+    }
+    
+    // Read all available misc items
+    let content = fs::read_to_string(&misc_items_file)
+        .map_err(|e| format!("Failed to read misc items file: {}", e))?;
+    let all_misc_items: Vec<MiscItem> = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse misc items: {}", e))?;
+    
+    println!("DEBUG: Found {} total misc items", all_misc_items.len());
+    
+    // Read the config to get selected item IDs
+    let config_dir = app_data_dir.join("config");
+    let config_file = config_dir.join("config.json");
+    
+    if !config_file.exists() {
+        println!("DEBUG: config.json does not exist, no selections");
+        // No config file means no selections
+        return Ok(Vec::new());
+    }
+    
+    let config_content = fs::read_to_string(&config_file)
+        .map_err(|e| format!("Failed to read config file: {}", e))?;
+    
+    println!("DEBUG: Config file content: {}", config_content);
+    
+    let config: SavedConfig = serde_json::from_str(&config_content)
+        .map_err(|e| format!("Failed to parse config: {}", e))?;
+    
+    println!("DEBUG: Parsed config, selected_misc_items: {:?}", config.selected_misc_items);
+    
+    // Filter misc items based on selections
+    let mut selected_items = Vec::new();
+    
+    for (item_type, selected_ids) in &config.selected_misc_items {
+        println!("DEBUG: Processing type '{}' with {} selected IDs: {:?}", item_type, selected_ids.len(), selected_ids);
+        for misc_item in &all_misc_items {
+            if misc_item.item_type == *item_type && selected_ids.contains(&misc_item.id) {
+                println!("DEBUG: Adding selected item: {} ({})", misc_item.name, misc_item.id);
+                selected_items.push(misc_item.clone());
+            }
+        }
+    }
+    
+    println!("DEBUG: Found {} selected misc items total", selected_items.len());
+    Ok(selected_items)
 }

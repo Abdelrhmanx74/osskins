@@ -3,44 +3,25 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::env;
 use std::collections::HashMap;
-use std::process::Command;
-use std::time::Instant;
-use tauri::{AppHandle, Emitter, Manager};
-use walkdir::WalkDir;
-use zip::ZipArchive;
-use memmap2::MmapOptions;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+use tauri::{AppHandle, Emitter, Manager};
 use crate::injection::error::{InjectionError, ModState, Skin, MiscItem};
-use crate::injection::fantome::copy_default_overlay;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-
-// 3674208","from_summoner_name":"sisi","request_id":"","timestamp":1753201855535}}
-// [DEBUG] Current summoner: ID=148331403, display_name=rogolax
-// [Party Mode] Found OSS message from d56d6f6e-5540-5a46-9724-116f99cf98f0@eu1.pvp.net: OSS:{"message_type":"pairing_response","data":{"accepted":true,"from_summoner_id":"3458743863674208","from_summoner_name":"sisi","request_id":"","timestamp":1753201855535}}
-// [DEBUG] Current summoner: ID=148331403, display_name=rogolax
-// [LCU Watcher] LCU status changed: Lobby -> ChampSelect
-// [LCU Watcher] LCU status changed: Lobby -> ChampSelect
-
-// thread '<unnamed>' panicked at src\commands\lcu_watcher.rs:240:69:
-// there is no reactor running, must be called from the context of a Tokio 1.x runtime
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-
-// thread '<unnamed>' panicked at src\commands\lcu_watcher.rs:240:69:
-// there is no reactor running, must be called from the context of a Tokio 1.x runtime
 
 // Main skin injector class - simplified without profiles
 pub struct SkinInjector {
     pub(crate) state: ModState,
     pub(crate) app_dir: PathBuf,
+    #[allow(dead_code)]
     pub(crate) root_path: PathBuf,  // Store the root League directory path
     pub(crate) game_path: PathBuf,  // Store the Game subdirectory path
     pub(crate) status: String,
     pub(crate) log_file: Option<File>,
     pub(crate) mod_tools_path: Option<PathBuf>, // Add mod_tools path
+    #[allow(dead_code)]
     pub(crate) champion_names: HashMap<u32, String>, // Keep for compatibility but not used actively
     pub(crate) app_handle: Option<AppHandle>,
 }
@@ -241,7 +222,8 @@ impl SkinInjector {
     }
 
     // Simplified champion name lookup - no longer uses cache or fallback
-    pub(crate) fn get_champion_name(&mut self, champion_id: u32) -> Option<String> {
+    #[allow(dead_code)]
+    pub(crate) fn get_champion_name(&mut self, _champion_id: u32) -> Option<String> {
         // Champion names are not used in the simplified injection process
         None
     }
@@ -251,6 +233,7 @@ impl SkinInjector {
     // - mod_tools.rs: copy_mod_to_game, run_overlay
     // - game_config.rs: enable_mods_in_game_cfg
     
+    #[allow(dead_code)]
     pub fn inject_skins(&mut self, skins: &[Skin], fantome_files_dir: &Path) -> Result<(), InjectionError> {
         self.inject_skins_and_misc(skins, &[], fantome_files_dir)
     }
@@ -261,9 +244,8 @@ impl SkinInjector {
             let _ = app.emit("injection-status", "injecting");
         }
 
-        // First, ensure that we clean up any existing running processes
-        // We do this even if we're not in Running state to avoid issues with orphaned processes
-        self.cleanup()?;
+        // NOTE: Cleanup is now handled by the LCU watcher on phase changes instead of before each injection
+        // This improves performance and is better design
         
         // Now we can properly initialize for a new injection
         self.set_state(ModState::Busy);
@@ -279,20 +261,21 @@ impl SkinInjector {
         
         // Process each skin
         for (i, skin) in skins.iter().enumerate() {
-            self.log(&format!("Processing skin {}/{}: champion_id={}, skin_id={}, chroma_id={:?}", 
+            self.log(&format!("🔄 Processing skin {}/{}: champion_id={}, skin_id={}, chroma_id={:?}", 
                 i + 1, skins.len(), skin.champion_id, skin.skin_id, skin.chroma_id));
+            self.log(&format!("📁 Skin fantome path: {:?}", skin.fantome_path));
                 
             // Find the fantome file
             let fantome_path = self.find_fantome_for_skin(skin, fantome_files_dir)?;
             if let Some(fantome_path) = fantome_path {
-                self.log(&format!("Found fantome file: {}", fantome_path.display()));
+                self.log(&format!("✅ Found fantome file: {}", fantome_path.display()));
                 
                 // Process the fantome file to create a proper mod structure
                 let mod_dir = self.process_fantome_file(&fantome_path)?;
                 
                 // Copy the processed mod to the game
                 if self.is_valid_mod_dir(&mod_dir) {
-                    self.log("Mod structure is valid, copying to game directory");
+                    self.log(&format!("✅ Mod structure is valid, copying to game directory for skin {}", skin.skin_id));
                     self.copy_mod_to_game(&mod_dir)?;
                 } else {
                     // If processing failed, return error
@@ -453,6 +436,41 @@ impl SkinInjector {
         Ok(())
     }
 
+    // Check if injection cleanup is needed (non-destructive check)
+    pub fn needs_cleanup(&self) -> bool {
+        // Check if we have running mod-tools processes
+        #[cfg(target_os = "windows")]
+        {
+            let mut check_command = std::process::Command::new("wmic");
+            check_command.args(["process", "where", "name='mod-tools.exe'", "get", "processid"]);
+            
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            check_command.creation_flags(CREATE_NO_WINDOW);
+            
+            if let Ok(output) = check_command.output() {
+                if output.status.success() {
+                    let output_str = String::from_utf8_lossy(&output.stdout);
+                    for line in output_str.lines() {
+                        let line = line.trim();
+                        if line != "ProcessId" && !line.is_empty() && line.chars().all(|c| c.is_digit(10)) {
+                            return true; // Found at least one mod-tools process
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Also check if overlay directory exists with content
+        let overlay_dir = self.app_dir.join("overlay");
+        if overlay_dir.exists() {
+            if let Ok(entries) = fs::read_dir(&overlay_dir) {
+                return entries.count() > 0;
+            }
+        }
+        
+        false
+    }
+
     // Cleanup mod-tools processes specifically
     pub(crate) fn cleanup_mod_tools_processes(&mut self) -> Result<(), InjectionError> {
         self.log("Cleaning up mod-tools processes...");
@@ -523,6 +541,19 @@ pub fn inject_skins_and_misc(
     // Inject skins and misc items
     injector.inject_skins_and_misc(skins, misc_items, fantome_files_dir)
         .map_err(|e| format!("Failed to inject: {}", e))
+}
+
+// New function to check if cleanup is needed without performing it
+pub fn needs_injection_cleanup(
+    app_handle: &AppHandle,
+    game_path: &str
+) -> Result<bool, String> {
+    // Create injector
+    let injector = SkinInjector::new(app_handle, game_path)
+        .map_err(|e| format!("Failed to create injector: {}", e))?;
+    
+    // Check if cleanup is needed
+    Ok(injector.needs_cleanup())
 }
 
 // New function to clean up the injection when needed

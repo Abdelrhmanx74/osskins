@@ -1,9 +1,9 @@
 use tauri::{AppHandle, Emitter, Manager};
 use std::path::Path;
 use std::fs;
-use crate::injection::{Skin, MiscItem, inject_skins as inject_skins_impl, inject_skins_and_misc, SkinInjector};
+use crate::injection::{Skin, MiscItem, inject_skins as inject_skins_impl, inject_skins_and_misc};
 use crate::commands::types::{SkinInjectionRequest, SkinData};
-use crate::commands::config::{save_league_path, get_league_path_from_config};
+use crate::commands::config::{save_league_path};
 use crate::commands::lcu_watcher::start_lcu_watcher;
 
 // Skin injection related commands
@@ -201,16 +201,17 @@ pub async fn ensure_mod_tools(_app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn start_auto_inject(app: AppHandle, leaguePath: String) -> Result<(), String> {
-    println!("Starting auto-inject for path: {}", leaguePath);
+pub async fn start_auto_inject(app: AppHandle, league_path: String) -> Result<(), String> {
+    println!("Starting auto-inject for path: {}", league_path);
     
     // Start the LCU watcher in a separate thread
-    start_lcu_watcher(app, leaguePath)?;
+    start_lcu_watcher(app, league_path)?;
     
     Ok(())
 }
 
 // Preload resources function to improve first-time injection speed
+#[allow(dead_code)]
 pub fn preload_resources(_app_handle: &tauri::AppHandle) -> Result<(), String> {
     // Preloading is disabled - no caching or fallback logic
     println!("Preloading disabled - using direct file access only");

@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use crate::injection::Skin;
 
 // Data structures for various operations
@@ -50,7 +49,7 @@ pub struct CustomSkinData {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ThemePreferences {
     pub tone: Option<String>,
-    pub isDark: Option<bool>,
+    pub is_dark: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -62,6 +61,8 @@ pub struct SavedConfig {
     pub theme: Option<ThemePreferences>,
     #[serde(default)]
     pub party_mode: PartyModeConfig,
+    #[serde(default)]
+    pub selected_misc_items: std::collections::HashMap<String, Vec<String>>,
 }
 
 // Party Mode related types
@@ -74,11 +75,11 @@ pub struct PartyModeConfig {
     #[serde(default)]
     pub notifications: bool,
     #[serde(default)]
-    pub received_skins: std::collections::HashMap<String, ReceivedSkinData>,
-    #[serde(default)]
     pub ignored_request_ids: Vec<String>,
     #[serde(default)]
     pub ignored_summoners: Vec<String>,
+    #[serde(default)]
+    pub sent_requests: std::collections::HashMap<String, SentPairingRequest>,
 }
 
 impl Default for PartyModeConfig {
@@ -87,9 +88,9 @@ impl Default for PartyModeConfig {
             paired_friends: Vec::new(),
             auto_share: true,
             notifications: true,
-            received_skins: std::collections::HashMap::new(),
             ignored_request_ids: Vec::new(),
             ignored_summoners: Vec::new(),
+            sent_requests: std::collections::HashMap::new(),
         }
     }
 }
@@ -100,17 +101,6 @@ pub struct PairedFriend {
     pub summoner_name: String,
     pub display_name: String,
     pub paired_at: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReceivedSkinData {
-    pub from_summoner_id: String,
-    pub from_summoner_name: String,
-    pub champion_id: u32,
-    pub skin_id: u32,
-    pub chroma_id: Option<u32>,
-    pub fantome_path: Option<String>,
-    pub received_at: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,6 +155,14 @@ pub struct SkinShare {
     pub chroma_id: Option<u32>,
     pub fantome_path: Option<String>,
     pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SentPairingRequest {
+    pub request_id: String,
+    pub to_summoner_id: String,
+    pub to_summoner_name: String,
+    pub sent_at: u64,
 }
 
 // Copy paste your type definitions here - no additional imports needed as they're already included above

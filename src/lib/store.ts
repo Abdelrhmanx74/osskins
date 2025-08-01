@@ -16,12 +16,12 @@ export type InjectionStatus = "idle" | "injecting" | "success" | "error";
 export type SkinTab = "official" | "custom";
 
 // Misc items types
-export type MiscItemType = "map" | "language" | "hud" | "misc";
+export type MiscItemType = "map" | "font" | "hud" | "misc";
 
 export interface MiscItem {
   id: string;
   name: string;
-  item_type: string; // "map", "language", "blocks", "settings"
+  item_type: string; // "map", "font", "blocks", "settings"
   fantome_path: string;
 }
 
@@ -60,6 +60,7 @@ interface GameState {
   selectMiscItem: (type: MiscItemType, itemId: string | null) => void;
   selectMultipleMiscItems: (type: MiscItemType, itemIds: string[]) => void;
   toggleMiscItemSelection: (type: MiscItemType, itemId: string) => void;
+  setSelectedMiscItems: (selections: Record<string, string[]>) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -179,9 +180,29 @@ export const useGameStore = create<GameState>((set) => ({
   addMiscItem: (item) => {
     set((state) => {
       const newMiscItems = new Map(state.miscItems);
-      const existingItems = newMiscItems.get(item.item_type as MiscItemType) ?? [];
-      newMiscItems.set(item.item_type as MiscItemType, [...existingItems, item]);
-      return { miscItems: newMiscItems };
+      const newSelectedMiscItems = new Map(state.selectedMiscItems);
+      const itemType = item.item_type as MiscItemType;
+
+      const existingItems = newMiscItems.get(itemType) ?? [];
+      const updatedItems = [...existingItems, item];
+      newMiscItems.set(itemType, updatedItems);
+
+      // Check if this is a completely new type or if we should preserve user selections
+      const hasExistingSelections = newSelectedMiscItems.has(itemType);
+
+      if (hasExistingSelections) {
+        // User has made selections before, just add the new item to the selected list
+        const currentSelections = newSelectedMiscItems.get(itemType) ?? [];
+        newSelectedMiscItems.set(itemType, [...currentSelections, item.id]);
+      } else {
+        // This is a new type, start with just the new item selected
+        newSelectedMiscItems.set(itemType, [item.id]);
+      }
+
+      return {
+        miscItems: newMiscItems,
+        selectedMiscItems: newSelectedMiscItems,
+      };
     });
   },
   removeMiscItem: (itemId) => {
@@ -199,10 +220,12 @@ export const useGameStore = create<GameState>((set) => ({
           } else {
             newMiscItems.set(type, updatedItems);
           }
-          
+
           // If this was a selected item, remove it from the selection
           const currentSelections = newSelectedMiscItems.get(type) ?? [];
-          const updatedSelections = currentSelections.filter(id => id !== itemId);
+          const updatedSelections = currentSelections.filter(
+            (id) => id !== itemId
+          );
           if (updatedSelections.length === 0) {
             newSelectedMiscItems.delete(type);
           } else if (updatedSelections.length !== currentSelections.length) {
@@ -212,20 +235,36 @@ export const useGameStore = create<GameState>((set) => ({
         }
       }
 
-      return { miscItems: newMiscItems, selectedMiscItems: newSelectedMiscItems };
+      return {
+        miscItems: newMiscItems,
+        selectedMiscItems: newSelectedMiscItems,
+      };
     });
   },
   setMiscItems: (items) => {
-    set(() => {
+    set((state) => {
       const miscItemsMap = new Map<MiscItemType, MiscItem[]>();
 
       // Group items by type
       items.forEach((item) => {
-        const existingItems = miscItemsMap.get(item.item_type as MiscItemType) ?? [];
-        miscItemsMap.set(item.item_type as MiscItemType, [...existingItems, item]);
+        const existingItems =
+          miscItemsMap.get(item.item_type as MiscItemType) ?? [];
+        miscItemsMap.set(item.item_type as MiscItemType, [
+          ...existingItems,
+          item,
+        ]);
       });
 
-      return { miscItems: miscItemsMap };
+      // Load saved selections from backend config instead of localStorage
+      const newSelectedMiscItems = new Map(state.selectedMiscItems);
+
+      // For initial load, selections will be loaded from config.json via the persistence hook
+      // We don't need to load from localStorage anymore since everything goes through config.json
+
+      return {
+        miscItems: miscItemsMap,
+        selectedMiscItems: newSelectedMiscItems,
+      };
     });
   },
   selectMiscItem: (type, itemId) => {
@@ -237,6 +276,7 @@ export const useGameStore = create<GameState>((set) => ({
         // For backward compatibility, selecting a single item replaces all selections for that type
         newSelectedMiscItems.set(type, [itemId]);
       }
+
       return { selectedMiscItems: newSelectedMiscItems };
     });
   },
@@ -248,6 +288,20 @@ export const useGameStore = create<GameState>((set) => ({
       } else {
         newSelectedMiscItems.set(type, itemIds);
       }
+
+      return { selectedMiscItems: newSelectedMiscItems };
+    });
+  },
+  setSelectedMiscItems: (selections: Record<string, string[]>) => {
+    set(() => {
+      const newSelectedMiscItems = new Map<MiscItemType, string[]>();
+
+      for (const [type, itemIds] of Object.entries(selections)) {
+        if (Array.isArray(itemIds)) {
+          newSelectedMiscItems.set(type as MiscItemType, itemIds);
+        }
+      }
+
       return { selectedMiscItems: newSelectedMiscItems };
     });
   },
@@ -255,10 +309,10 @@ export const useGameStore = create<GameState>((set) => ({
     set((state) => {
       const newSelectedMiscItems = new Map(state.selectedMiscItems);
       const currentSelections = newSelectedMiscItems.get(type) ?? [];
-      
+
       if (currentSelections.includes(itemId)) {
         // Remove if already selected
-        const filtered = currentSelections.filter(id => id !== itemId);
+        const filtered = currentSelections.filter((id) => id !== itemId);
         if (filtered.length === 0) {
           newSelectedMiscItems.delete(type);
         } else {
@@ -268,7 +322,7 @@ export const useGameStore = create<GameState>((set) => ({
         // Add to selection
         newSelectedMiscItems.set(type, [...currentSelections, itemId]);
       }
-      
+
       return { selectedMiscItems: newSelectedMiscItems };
     });
   },

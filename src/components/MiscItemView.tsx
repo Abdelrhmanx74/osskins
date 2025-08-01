@@ -12,16 +12,17 @@ interface MiscItemViewProps {
 }
 
 export function MiscItemView({ type }: MiscItemViewProps) {
-  const { selectedMiscItems, selectMiscItem, toggleMiscItemSelection } = useGameStore();
-  const { 
-    miscItems, 
-    isLoading, 
-    error, 
-    uploadMultipleMiscItems, 
-    deleteMiscItem, 
-    getTypeDisplayName 
+  const { selectedMiscItems, selectMiscItem, toggleMiscItemSelection } =
+    useGameStore();
+  const {
+    miscItems,
+    isLoading,
+    error,
+    uploadMultipleMiscItems,
+    deleteMiscItem,
+    getTypeDisplayName,
   } = useMiscItems();
-  
+
   // State for uploading
   const [isUploading, setIsUploading] = useState(false);
 
@@ -61,7 +62,9 @@ export function MiscItemView({ type }: MiscItemViewProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full w-full">
-        <p className="text-muted-foreground">Loading {getTypeDisplayName(type).toLowerCase()} items...</p>
+        <p className="text-muted-foreground">
+          Loading {getTypeDisplayName(type).toLowerCase()} items...
+        </p>
       </div>
     );
   }
@@ -69,7 +72,9 @@ export function MiscItemView({ type }: MiscItemViewProps) {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full w-full">
-        <p className="text-destructive">Error loading {getTypeDisplayName(type).toLowerCase()} items: {error}</p>
+        <p className="text-destructive">
+          Error loading {getTypeDisplayName(type).toLowerCase()} items: {error}
+        </p>
         <Button
           variant="outline"
           className="mt-4"
@@ -87,7 +92,9 @@ export function MiscItemView({ type }: MiscItemViewProps) {
     <>
       <div className="size-full space-y-3 px-20 py-10">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold">{getTypeDisplayName(type)} Items</h2>
+          <h2 className="text-2xl font-bold">
+            {getTypeDisplayName(type)} Items
+          </h2>
         </div>
 
         {typeItems.map((item) => (
@@ -150,10 +157,11 @@ export function MiscItemView({ type }: MiscItemViewProps) {
         >
           <Plus className="size-8 opacity-50" />
           <span className="text-lg font-medium">
-            {isUploading ? "Uploading..." : `Add ${getTypeDisplayName(type)} Items`}
+            {isUploading
+              ? "Uploading..."
+              : `Add ${getTypeDisplayName(type)} Items`}
           </span>
         </Button>
-
       </div>
     </>
   );

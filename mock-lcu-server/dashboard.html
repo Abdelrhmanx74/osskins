@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mock LCU Dashboard</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; background: #181a20; color: #eee; }
+    h1, h2 { color: #ffb300; }
+    .phases, .party, .lockins { margin-bottom: 2rem; }
+    button { margin: 0.25rem 0.5rem 0.25rem 0; padding: 0.5rem 1rem; border: none; border-radius: 4px; background: #23272f; color: #ffb300; font-weight: bold; cursor: pointer; }
+    button.active { background: #ffb300; color: #23272f; }
+    .status { margin: 1rem 0; font-size: 1.2em; }
+    .event-log { background: #23272f; padding: 1rem; border-radius: 6px; max-height: 200px; overflow-y: auto; font-size: 0.95em; }
+  </style>
+</head>
+<body>
+  <h1>Mock LCU Dashboard</h1>
+  <div class="phases">
+    <h2>LCU Phase Controls</h2>
+    <div id="phase-buttons"></div>
+    <div class="status">Current Phase: <span id="current-phase">None</span></div>
+  </div>
+  <div class="party">
+    <h2>Party Mode: Friend Requests</h2>
+    <button onclick="sendPairing('rogolax')">Send friend request from rogolax</button>
+    <button onclick="sendPairing('sisi')">Send friend request from sisi</button>
+    <button onclick="sendPairing('Mr settrigh')">Send friend request from Mr settrigh</button>
+  </div>
+  <div class="lockins">
+    <h2>Party Mode: Lock In (Skin Share)</h2>
+    <button onclick="lockIn('rogolax')">Lock in rogolax</button>
+    <button onclick="lockIn('sisi')">Lock in sisi</button>
+    <button onclick="lockIn('Mr settrigh')">Lock in Mr settrigh</button>
+  </div>
+  <div>
+    <h2>Event Log</h2>
+    <div class="event-log" id="event-log"></div>
+  </div>
+  <script>
+    const PHASES = [
+      'None', 'Lobby', 'Matchmaking', 'ReadyCheck', 'ChampSelect', 'GameStart',
+      'InProgress', 'WaitingForStats', 'PreEndOfGame', 'EndOfGame', 'Reconnect'
+    ];
+    const FRIENDS = [
+      { name: 'rogolax', id: '148331403', pid: '5db00f0b-8d04-5fe9-8fdb-5f768cbced5b@eu1.pvp.net' },
+      { name: 'sisi', id: '3458743863674208', pid: 'd56d6f6e-5540-5a46-9724-116f99cf98f0@eu1.pvp.net' },
+      { name: 'Mr settrigh', id: '3675329843111424', pid: '217d796b-7f7c-57a8-8529-a157f1cbbe6b@eu1.pvp.net' }
+    ];
+    const socket = io('http://localhost:5175');
+    let currentPhase = 'None';
+    function logEvent(msg) {
+      const el = document.getElementById('event-log');
+      el.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}<br>` + el.innerHTML;
+    }
+    function setPhase(phase) {
+      fetch('http://localhost:5175/mock-lcu/set-phase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phase })
+      });
+    }
+    function sendPairing(fromName) {
+      const from = FRIENDS.find(f => f.name === fromName);
+      const to = FRIENDS.find(f => f.name !== fromName);
+      fetch('http://localhost:5175/party-mode/pairing-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: from.id, to: to.id })
+      });
+      logEvent(`Pairing request sent from ${fromName} to ${to.name}`);
+    }
+    function lockIn(name) {
+      const from = FRIENDS.find(f => f.name === name);
+      // Use a fake skin share for demo
+      const skinShare = {
+        from: from.id,
+        to: FRIENDS.find(f => f.name !== name).id,
+        champion_id: name === 'rogolax' ? 81 : 24,
+        skin_id: name === 'rogolax' ? 81021 : 24022,
+        chroma_id: name === 'rogolax' ? 81032 : null,
+        fantome_path: name === 'rogolax' ? 'ezreal/battle_academia_ezreal_chroma_81032.zip' : 'jax/empyrean_jax.zip',
+      };
+      fetch('http://localhost:5175/party-mode/skin-share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(skinShare)
+      });
+      logEvent(`Skin share sent from ${name}`);
+    }
+    function renderPhaseButtons() {
+      const container = document.getElementById('phase-buttons');
+      container.innerHTML = '';
+      PHASES.forEach(phase => {
+        const btn = document.createElement('button');
+        btn.textContent = phase;
+        btn.className = phase === currentPhase ? 'active' : '';
+        btn.onclick = () => setPhase(phase);
+        container.appendChild(btn);
+      });
+    }
+    socket.on('lcu-phase-changed', phase => {
+      currentPhase = phase;
+      document.getElementById('current-phase').textContent = phase;
+      renderPhaseButtons();
+      logEvent(`Phase changed to ${phase}`);
+    });
+    socket.on('party-mode-pairing-request', ({ from, to }) => {
+      const fromName = FRIENDS.find(f => f.id === from)?.name || from;
+      const toName = FRIENDS.find(f => f.id === to)?.name || to;
+      logEvent(`Pairing request: ${fromName} -> ${toName}`);
+    });
+    socket.on('party-mode-pairing-response', ({ from, to, accepted }) => {
+      const fromName = FRIENDS.find(f => f.id === from)?.name || from;
+      const toName = FRIENDS.find(f => f.id === to)?.name || to;
+      logEvent(`Pairing response: ${fromName} -> ${toName} (${accepted ? 'accepted' : 'declined'})`);
+    });
+    socket.on('party-mode-skin-share', share => {
+      const fromName = FRIENDS.find(f => f.id === share.from)?.name || share.from;
+      logEvent(`Skin share from ${fromName} (champion ${share.champion_id}, skin ${share.skin_id})`);
+    });
+    // Initial render
+    renderPhaseButtons();
+  </script>
+</body>
+</html> 

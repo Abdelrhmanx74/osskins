@@ -3,6 +3,7 @@ import "./globals.css";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "next-themes";
 import { ThemeInitializer } from "@/components/providers/ThemeInitializer";
+import { PartyModeProvider } from "@/components/providers/PartyModeProvider";
 
 const poppins = Poppins({
   weight: ["400", "500", "600", "700"],
@@ -22,7 +23,7 @@ export default function RootLayout({
       >
         <ThemeProvider attribute="class" enableSystem>
           <ThemeInitializer />
-          {children}
+          <PartyModeProvider>{children}</PartyModeProvider>
           <Toaster richColors position="bottom-center" />
         </ThemeProvider>
       </body>

@@ -1,6 +1,5 @@
 use tauri::{AppHandle, Manager};
 use std::fs;
-use std::path::Path;
 use crate::commands::types::{DataUpdateResult};
 
 // Champion data management commands
@@ -11,7 +10,7 @@ pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResul
         .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
     
     let champions_dir = app_data_dir.join("champions");
-    if (!champions_dir.exists()) {
+    if !champions_dir.exists() {
         return Ok(DataUpdateResult {
             success: true,
             error: None,
@@ -97,12 +96,12 @@ pub async fn get_champion_data(
         .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
     
     let champions_dir = app_data_dir.join("champions");
-    if (!champions_dir.exists()) {
+    if !champions_dir.exists() {
         return Ok("[]".to_string()); // Return empty array if no champions directory exists
     }
 
     // If champion_id is 0, return all champions
-    if (champion_id == 0) {
+    if champion_id == 0 {
         let mut all_champions = Vec::new();
         for entry in fs::read_dir(champions_dir)
             .map_err(|e| format!("Failed to read champions directory: {}", e))? {
@@ -152,7 +151,7 @@ pub async fn check_champions_data(app: tauri::AppHandle) -> Result<bool, String>
         .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
     
     let champions_dir = app_data_dir.join("champions");
-    if (!champions_dir.exists()) {
+    if !champions_dir.exists() {
         return Ok(false);
     }
 
@@ -213,7 +212,7 @@ pub async fn get_champion_name(app: &tauri::AppHandle, champion_id: u32) -> Resu
                             if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
                                 if let Some(id) = data.get("id").and_then(|v| v.as_u64()) {
                                     if id as u32 == champion_id {
-                                        if let Some(name) = data.get("name").and_then(|v| v.as_str()) {
+                                        if let Some(_name) = data.get("name").and_then(|v| v.as_str()) {
                                             // Use champion directory name instead of display name for consistency
                                             return Ok(entry.file_name().to_string_lossy().to_string());
                                         }
@@ -232,6 +231,7 @@ pub async fn get_champion_name(app: &tauri::AppHandle, champion_id: u32) -> Resu
 }
 
 // Helper function to get champion ID from name
+#[allow(dead_code)]
 pub fn get_champion_id_by_name(app: &AppHandle, champion_name: &str) -> Option<u32> {
     let app_data_dir = match app.path().app_data_dir() {
         Ok(dir) => dir,

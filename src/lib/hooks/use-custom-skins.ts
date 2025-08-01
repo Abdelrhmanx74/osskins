@@ -55,20 +55,26 @@ export function useCustomSkins() {
   // Function to upload multiple custom skins
   const uploadMultipleCustomSkins = async (championId: number) => {
     try {
-      const newSkins = await invoke<CustomSkin[]>("upload_multiple_custom_skins", {
-        championId,
-      });
+      const newSkins = await invoke<CustomSkin[]>(
+        "upload_multiple_custom_skins",
+        {
+          championId,
+        }
+      );
 
       // Add each new skin to the store
-      newSkins.forEach(skin => {
+      newSkins.forEach((skin) => {
         addCustomSkin(skin);
       });
-      
+
       toast.success(`Successfully uploaded ${newSkins.length} custom skin(s)`);
       return newSkins;
     } catch (err) {
       console.error("Failed to upload multiple custom skins:", err);
-      const errorMessage = err instanceof Error ? err.message : "Failed to upload multiple custom skins";
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : "Failed to upload multiple custom skins";
       toast.error(errorMessage);
       return null;
     }

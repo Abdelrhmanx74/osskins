@@ -8,6 +8,7 @@ import { useGameStore, MiscItemType } from "@/lib/store";
 import { Loader2 } from "lucide-react";
 import { useInitialization } from "@/lib/hooks/use-initialization";
 import { useChampionPersistence } from "@/lib/hooks/use-champion-persistence";
+import { useConfigLoader } from "@/lib/hooks/use-config-loader";
 import { filterAndSortChampions } from "@/lib/utils/champion-utils";
 import { ChampionGrid } from "@/components/ChampionGrid";
 import { SkinGrid } from "@/components/SkinGrid";
@@ -34,12 +35,17 @@ export default function Home() {
   // Initialize app (load league path, etc)
   useInitialization();
 
+  // Load initial config from backend
+  useConfigLoader();
+
   // Save/load selected champions and favorites
   useChampionPersistence();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedChampion, setSelectedChampion] = useState<number | null>(null);
-  const [selectedMiscItem, setSelectedMiscItem] = useState<MiscItemType | null>(null);
+  const [selectedMiscItem, setSelectedMiscItem] = useState<MiscItemType | null>(
+    null
+  );
 
   // Handle misc item selection
   const handleMiscItemClick = useCallback((type: MiscItemType) => {

@@ -1,5 +1,4 @@
-use tauri::{AppHandle, Manager};
-use std::fs;
+use tauri::{Manager};
 
 // File operations for fantome and ZIP files
 

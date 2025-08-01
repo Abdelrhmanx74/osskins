@@ -1,10 +1,9 @@
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use walkdir::WalkDir;
+use std::path::{Path};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+use walkdir::WalkDir;
 use crate::injection::error::{InjectionError, ModState};
 use crate::injection::fantome::copy_default_overlay;
 
@@ -53,7 +52,7 @@ impl crate::injection::core::SkinInjector {
         // Check if mod-tools.exe exists
         let mod_tools_path = match &self.mod_tools_path {
             Some(path) => {
-                if (!path.exists()) {
+                if !path.exists() {
                     return Err(InjectionError::ProcessError(format!(
                         "mod-tools.exe was found during initialization but is no longer at path: {}. Please reinstall the application or obtain mod-tools.exe from CSLOL Manager.",
                         path.display()
@@ -69,7 +68,7 @@ impl crate::injection::core::SkinInjector {
         self.log(&format!("Using mod-tools.exe from: {}", mod_tools_path.display()));
 
         // First, ensure no mod-tools processes are running before we start
-        self.cleanup_mod_tools_processes();
+        let _ = self.cleanup_mod_tools_processes();
         
         // First create the overlay
         let game_mods_dir = self.game_path.join("mods");
@@ -142,7 +141,7 @@ impl crate::injection::core::SkinInjector {
             false
         };
         
-        if (!used_prebuilt_empty) {
+        if !used_prebuilt_empty {
             // Join mod names with / as CSLOL expects
             let mods_arg = mod_names.join("/");
 
@@ -160,7 +159,7 @@ impl crate::injection::core::SkinInjector {
                     std::thread::sleep(std::time::Duration::from_millis(1000));
                     
                     // Make sure any lingering processes are killed
-                    self.cleanup_mod_tools_processes();
+                    let _ = self.cleanup_mod_tools_processes();
                     
                     // For additional retries, recreate the overlay directory to ensure it's clean
                     if overlay_dir.exists() {
@@ -290,7 +289,7 @@ impl crate::injection::core::SkinInjector {
                 std::thread::sleep(std::time::Duration::from_millis(1000));
                 
                 // Make sure any lingering processes are killed
-                self.cleanup_mod_tools_processes();
+                let _ = self.cleanup_mod_tools_processes();
             }
             
             // Run the overlay process - EXACT format from CSLOL

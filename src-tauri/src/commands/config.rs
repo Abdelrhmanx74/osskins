@@ -1,10 +1,28 @@
 use tauri::{AppHandle, Manager};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 use serde_json;
 use crate::commands::types::{SavedConfig, SkinData, ThemePreferences, PartyModeConfig};
 
 // Configuration management commands
+
+// Debug command to check what's in config
+#[tauri::command]
+pub async fn debug_config(app: tauri::AppHandle) -> Result<String, String> {
+    let config_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?
+        .join("config");
+    let file = config_dir.join("config.json");
+    
+    if !file.exists() {
+        return Ok("Config file does not exist".to_string());
+    }
+    
+    let content = fs::read_to_string(&file)
+        .map_err(|e| format!("Failed to read config: {}", e))?;
+    
+    Ok(content)
+}
 
 // Add functions to save and load game path
 #[tauri::command]
@@ -34,7 +52,7 @@ pub async fn load_league_path(app: tauri::AppHandle) -> Result<String, String> {
     
     let config_file = app_data_dir.join("config").join("league_path.txt");
     
-    if (!config_file.exists()) {
+    if !config_file.exists() {
         return Ok(String::new()); // Return empty string if no saved path
     }
     
@@ -60,10 +78,11 @@ pub async fn load_league_path(app: tauri::AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub async fn save_selected_skins(
     app: tauri::AppHandle, 
-    leaguePath: String, 
+    league_path: String, 
     skins: Vec<SkinData>, 
     favorites: Vec<u32>,
-    theme: Option<ThemePreferences>
+    theme: Option<ThemePreferences>,
+    selected_misc_items: Option<std::collections::HashMap<String, Vec<String>>>
 ) -> Result<(), String> {
     let config_dir = app.path().app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?
@@ -71,14 +90,26 @@ pub async fn save_selected_skins(
     std::fs::create_dir_all(&config_dir)
         .map_err(|e| format!("Failed to create config dir: {}", e))?;
     let file = config_dir.join("config.json");
-    // build combined JSON
-    let config_json = serde_json::json!({
-        "league_path": leaguePath,
-        "skins": skins,
-        "favorites": favorites,
-        "theme": theme
-    });
-    let data = serde_json::to_string_pretty(&config_json)
+
+    // Read existing config if it exists
+    let mut config: serde_json::Value = if file.exists() {
+        let content = std::fs::read_to_string(&file)
+            .map_err(|e| format!("Failed to read config.json: {}", e))?;
+        serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse config.json: {}", e))?
+    } else {
+        serde_json::json!({})
+    };
+
+    // Update only the relevant fields
+    config["league_path"] = serde_json::to_value(league_path).unwrap();
+    config["skins"] = serde_json::to_value(skins).unwrap();
+    config["favorites"] = serde_json::to_value(favorites).unwrap();
+    config["theme"] = serde_json::to_value(theme).unwrap();
+    config["selected_misc_items"] = serde_json::to_value(selected_misc_items.unwrap_or_default()).unwrap();
+
+    // Write back the merged config
+    let data = serde_json::to_string_pretty(&config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
     std::fs::write(&file, data)
         .map_err(|e| format!("Failed to write config.json: {}", e))?;
@@ -100,6 +131,7 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
             favorites: Vec::new(), 
             theme: None,
             party_mode: PartyModeConfig::default(),
+            selected_misc_items: std::collections::HashMap::new(),
         });
     }
     let content = std::fs::read_to_string(&file)
@@ -110,6 +142,7 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
 }
 
 // Helper function to get league path from config
+#[allow(dead_code)]
 pub fn get_league_path_from_config(app_handle: &AppHandle) -> Option<String> {
     if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
         let config_file = app_data_dir.join("config").join("config.json");

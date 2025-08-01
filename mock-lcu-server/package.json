@@ -1,0 +1,14 @@
+{
+  "name": "mock-lcu-server",
+  "version": "1.0.0",
+  "description": "Mock LCU server for testing League Client integrations and dashboards.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.5",
+    "cors": "^2.8.5"
+  }
+} 

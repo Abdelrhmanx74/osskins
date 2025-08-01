@@ -21,12 +21,14 @@ import {
   getStatusColor,
   getStatusText,
 } from "@/lib/api/party-mode";
+import { usePartyModeStore } from "@/lib/store/party-mode";
 import type {
   FriendInfo,
   PairedFriend,
   ConnectionRequest as PartyConnectionRequest,
   PairingResponse,
   SkinShare,
+  SentPairingRequest,
 } from "@/lib/types/party-mode";
 
 // Types
@@ -79,9 +81,14 @@ export default function PartyModeDialog() {
 
   // Real data from backend
   const [friends, setFriends] = useState<FriendInfo[]>([]);
-  const [pairedFriends, setPairedFriends] = useState<PairedFriend[]>([]);
   const [incomingRequest, setIncomingRequest] =
     useState<PartyConnectionRequest | null>(null);
+  const [sentRequests, setSentRequests] = useState<
+    Record<string, SentPairingRequest>
+  >({});
+
+  // Use Zustand store for paired friends
+  const pairedFriends = usePartyModeStore((s) => s.pairedFriends);
 
   // Set up global event listeners that work even when dialog is closed
   useEffect(() => {
@@ -89,18 +96,11 @@ export default function PartyModeDialog() {
 
     const setupGlobalEventListeners = async () => {
       try {
-        // Start chat monitor once on component mount
-        await partyModeApi.startChatMonitor();
-
         // Set up global event listeners that persist even when dialog is closed
         const unsubscribeConnection = await partyModeApi.onConnectionRequest(
           (request) => {
             setIncomingRequest(request);
             setShowConnectionRequest(true);
-            setIsOpen(true); // Auto-open the dialog when receiving a connection request
-            toast.info(
-              `${request.from_summoner_name} wants to connect for skin sharing`
-            );
           }
         );
 
@@ -109,8 +109,9 @@ export default function PartyModeDialog() {
             toast.success(
               `${response.from_summoner_name} accepted your pairing request!`
             );
-            // Reload paired friends regardless of dialog state
-            void loadPairedFriends();
+            // Reload paired friends and sent requests regardless of dialog state
+            // pairedFriends will update via Zustand store
+            void loadSentRequests();
           }
         );
 
@@ -119,16 +120,19 @@ export default function PartyModeDialog() {
             toast.error(
               `${response.from_summoner_name} declined your pairing request`
             );
+            // Reload sent requests to clear the declined request
+            void loadSentRequests();
           }
         );
 
         const unsubscribeSkinReceived = await partyModeApi.onSkinReceived(
           (skinShare) => {
-            if (notificationsEnabled) {
-              toast.info(
-                `${skinShare.from_summoner_name} shared ${skinShare.skin_name}`
-              );
-            }
+            // The provider now handles skin received notifications
+            // This is just for any dialog-specific logic if needed
+            console.log(
+              "[PartyModeDialog] Skin received from provider:",
+              skinShare
+            );
           }
         );
 
@@ -138,6 +142,7 @@ export default function PartyModeDialog() {
           unsubscribePairingAccepted,
           unsubscribePairingDeclined,
           unsubscribeSkinReceived,
+          ...unsubscribeFunctions,
         ];
       } catch (error) {
         console.error("Failed to initialize party mode:", error);
@@ -148,8 +153,31 @@ export default function PartyModeDialog() {
     // Set up global listeners on component mount, not just when dialog opens
     void setupGlobalEventListeners();
 
+    // Listen for custom event to open dialog
+    const handleOpenDialog = () => {
+      setIsOpen(true);
+    };
+    document.addEventListener("open-party-mode-dialog", handleOpenDialog);
+
+    // Listen for custom event to open acceptance modal
+    const handleOpenAcceptance = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      setIncomingRequest(customEvent.detail as PartyConnectionRequest);
+      setShowConnectionRequest(true);
+      setIsOpen(false);
+    };
+    document.addEventListener(
+      "open-party-mode-acceptance",
+      handleOpenAcceptance
+    );
+
     // Return synchronous cleanup function
     return () => {
+      document.removeEventListener("open-party-mode-dialog", handleOpenDialog);
+      document.removeEventListener(
+        "open-party-mode-acceptance",
+        handleOpenAcceptance
+      );
       unsubscribeFunctions.forEach((unsub) => {
         try {
           unsub();
@@ -160,11 +188,12 @@ export default function PartyModeDialog() {
     };
   }, [notificationsEnabled]);
 
-  // Load data when dialog opens
+  // Load data when dialog opens (no longer reloadPairedFriends)
   useEffect(() => {
     if (isOpen) {
       void loadFriends();
-      void loadPairedFriends();
+      void loadSentRequests();
+      void loadSettings();
     }
   }, [isOpen]);
 
@@ -178,13 +207,25 @@ export default function PartyModeDialog() {
     }
   };
 
-  const loadPairedFriends = async () => {
+  const loadSentRequests = async () => {
     try {
-      const pairedList = await partyModeApi.getPairedFriends();
-      setPairedFriends(pairedList);
+      const sentRequestsData = await partyModeApi.getSentRequests();
+      setSentRequests(sentRequestsData);
+      console.log("[PartyModeDialog] Loaded sentRequests:", sentRequestsData);
     } catch (error) {
-      console.error("Failed to load paired friends:", error);
-      toast.error("Failed to load paired friends");
+      console.error("Failed to load sent requests:", error);
+      // Don't show toast for this as it's not critical
+    }
+  };
+
+  const loadSettings = async () => {
+    try {
+      const settings = await partyModeApi.getSettings();
+      setAutoShareEnabled(settings.autoShare);
+      setNotificationsEnabled(settings.notifications);
+    } catch (error) {
+      console.error("Failed to load settings:", error);
+      // Don't show toast for this as it's not critical
     }
   };
 
@@ -226,9 +267,19 @@ export default function PartyModeDialog() {
       await partyModeApi.sendPairingRequest(friendSummonerId);
       console.log("[DEBUG] Successfully sent pairing request");
       toast.success("Pairing request sent!");
+      // Reload sent requests to show the new pending request
+      void loadSentRequests();
     } catch (error) {
       console.error("Failed to send pairing request:", error);
-      toast.error("Failed to send pairing request");
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to send pairing request";
+      if (errorMessage.includes("Request already sent")) {
+        toast.error("Request already sent to this user");
+      } else {
+        toast.error("Failed to send pairing request");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -247,7 +298,7 @@ export default function PartyModeDialog() {
       toast.success("Connection request accepted!");
       setShowConnectionRequest(false);
       setIncomingRequest(null);
-      await loadPairedFriends();
+      // await reloadPairedFriends();
     } catch (error) {
       console.error("Failed to accept connection request:", error);
       toast.error("Failed to accept connection request");
@@ -260,7 +311,7 @@ export default function PartyModeDialog() {
     try {
       await partyModeApi.removePairedFriend(friendSummonerId);
       toast.success("Friend removed successfully");
-      await loadPairedFriends();
+      // await reloadPairedFriends();
     } catch (error) {
       console.error("Failed to remove friend:", error);
       toast.error("Failed to remove friend");
@@ -374,8 +425,11 @@ export default function PartyModeDialog() {
                   ) : (
                     filteredFriends.map((friend) => {
                       const isConnected = pairedFriends.some(
-                        (cf) => cf.summoner_id === friend.summoner_id
+                        (cf) =>
+                          String(cf.summoner_id) === String(friend.summoner_id)
                       );
+                      const hasSentRequest =
+                        String(friend.summoner_id) in sentRequests;
                       return (
                         <div
                           key={friend.summoner_id}
@@ -393,6 +447,11 @@ export default function PartyModeDialog() {
                               </p>
                               <p className="text-sm text-muted-foreground">
                                 {getStatusTextForFriend(friend)}
+                                {hasSentRequest && (
+                                  <span className="text-orange-500 ml-2">
+                                    • Request sent
+                                  </span>
+                                )}
                               </p>
                             </div>
                           </div>
@@ -400,14 +459,27 @@ export default function PartyModeDialog() {
                             onClick={() => {
                               void handleConnectWithFriend(friend.summoner_id);
                             }}
-                            disabled={isConnected || isLoading}
+                            disabled={
+                              isConnected || hasSentRequest || isLoading
+                            }
                             size="sm"
-                            variant={isConnected ? "secondary" : "default"}
+                            variant={
+                              isConnected
+                                ? "secondary"
+                                : hasSentRequest
+                                ? "outline"
+                                : "default"
+                            }
                           >
                             {isConnected ? (
                               <>
                                 <UserMinus className="h-4 w-4 mr-2" />
                                 Connected
+                              </>
+                            ) : hasSentRequest ? (
+                              <>
+                                <UserPlus className="h-4 w-4 mr-2" />
+                                Sent
                               </>
                             ) : (
                               <>

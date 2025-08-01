@@ -9,7 +9,7 @@ impl crate::injection::core::SkinInjector {
         let game_cfg_path = self.game_path.join("Game.cfg");
         
         // If file doesn't exist, create it with EnableMods=1
-        if (!game_cfg_path.exists()) {
+        if !game_cfg_path.exists() {
             fs::write(game_cfg_path, "[General]\nEnableMods=1\n")?;
             self.log("Created Game.cfg with EnableMods=1");
             return Ok(());

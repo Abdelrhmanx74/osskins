@@ -1,7 +1,6 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
 use zip::ZipArchive;
 use walkdir::WalkDir;
 use memmap2::MmapOptions;
@@ -125,16 +124,40 @@ impl crate::injection::core::SkinInjector {
         // Only use direct path from JSON - no fallback searching
         if let Some(fantome_path) = &skin.fantome_path {
             self.log(&format!("Using fantome path from JSON: {}", fantome_path));
-            // Try direct path
-            let direct_path = fantome_files_dir.join(fantome_path);
-            self.log(&format!("[DEBUG] Checking existence of: {}", direct_path.display()));
-            if direct_path.exists() {
-                self.log(&format!("Found exact file at path: {}", direct_path.display()));
-                return Ok(Some(direct_path));
+            
+            // Check if this is an absolute path (friend's skin) vs relative path (our skin)
+            let path = std::path::Path::new(fantome_path);
+            if path.is_absolute() {
+                // This is likely a friend's skin with absolute path - check if file exists as-is
+                self.log(&format!("[DEBUG] Checking absolute path (friend skin): {}", path.display()));
+                if path.exists() {
+                    self.log(&format!("✅ Found friend's fantome file at absolute path: {}", path.display()));
+                    return Ok(Some(path.to_path_buf()));
+                } else {
+                    self.log(&format!("❌ Friend's fantome file not found at absolute path: {}", path.display()));
+                    // For friend skins, try to find a similar file in our local directory
+                    if let Some(filename) = path.file_name() {
+                        let local_path = fantome_files_dir.join(filename);
+                        self.log(&format!("[DEBUG] Trying to find similar file locally: {}", local_path.display()));
+                        if local_path.exists() {
+                            self.log(&format!("✅ Found similar local fantome file: {}", local_path.display()));
+                            return Ok(Some(local_path));
+                        }
+                    }
+                }
+            } else {
+                // This is a relative path (our own skin) - check in fantome_files_dir
+                let direct_path = fantome_files_dir.join(fantome_path);
+                self.log(&format!("[DEBUG] Checking relative path (our skin): {}", direct_path.display()));
+                if direct_path.exists() {
+                    self.log(&format!("✅ Found our fantome file at relative path: {}", direct_path.display()));
+                    return Ok(Some(direct_path));
+                }
             }
-            self.log(&format!("Fantome file not found at expected path: {}", direct_path.display()));
+            
+            self.log(&format!("❌ Fantome file not found for skin (champion: {}, skin: {})", skin.champion_id, skin.skin_id));
         } else {
-            self.log("No fantome path provided in skin data");
+            self.log("❌ No fantome path provided in skin data");
         }
         Ok(None)
     }
