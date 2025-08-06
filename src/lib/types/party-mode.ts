@@ -2,9 +2,7 @@
 
 export interface PartyModeConfig {
   paired_friends: PairedFriend[];
-  auto_share: boolean;
   notifications: boolean;
-  sent_requests: Record<string, SentPairingRequest>;
 }
 
 export interface PairedFriend {
@@ -12,6 +10,7 @@ export interface PairedFriend {
   summoner_name: string;
   display_name: string;
   paired_at: number;
+  share_enabled: boolean;
 }
 
 export interface FriendInfo {
@@ -24,30 +23,9 @@ export interface FriendInfo {
   pid: string;
 }
 
-export interface ConnectionRequest {
-  from_summoner_id: string;
-  from_summoner_name: string;
-  timestamp: number;
-}
-
 export interface PartyModeMessage {
   message_type: string;
   data: any;
-}
-
-export interface PairingRequest {
-  request_id: string;
-  from_summoner_id: string;
-  from_summoner_name: string;
-  timestamp: number;
-}
-
-export interface PairingResponse {
-  request_id: string;
-  accepted: boolean;
-  from_summoner_id: string;
-  from_summoner_name: string;
-  timestamp: number;
 }
 
 export interface SkinShare {
@@ -59,13 +37,6 @@ export interface SkinShare {
   chroma_id?: number;
   fantome_path?: string;
   timestamp: number;
-}
-
-export interface SentPairingRequest {
-  request_id: string;
-  to_summoner_id: string;
-  to_summoner_name: string;
-  sent_at: number;
 }
 
 // Frontend-specific types

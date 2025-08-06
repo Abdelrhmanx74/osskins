@@ -81,6 +81,7 @@ fn main() {
             select_league_directory,
             inject_skins,
             inject_skins_with_misc,
+            inject_all_selected_skins,
             ensure_mod_tools,
             inject_game_skins,
             save_league_path,
@@ -92,7 +93,13 @@ fn main() {
             delete_champions_cache,
             auto_detect_league,
             
-            // custom skin commands
+            // unified skin commands
+            select_skin_for_champion,
+            remove_skin_for_champion,
+            save_custom_skin,
+            get_all_custom_skins,
+            
+            // legacy custom skin commands (may be deprecated)
             upload_custom_skin,
             upload_multiple_custom_skins,
             get_custom_skins,
@@ -106,14 +113,11 @@ fn main() {
             
             // party mode commands
             get_lcu_friends,
-            send_pairing_request,
-            respond_to_pairing_request,
+            add_party_friend,
             remove_paired_friend,
             get_paired_friends,
-            get_sent_requests,
             get_party_mode_settings,
             update_party_mode_settings,
-            clear_ignored_summoner,
             start_party_mode_chat_monitor,
         ])
         .plugin(tauri_plugin_fs::init())

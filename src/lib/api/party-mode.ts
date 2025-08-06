@@ -3,10 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import type {
   FriendInfo,
   PairedFriend,
-  ConnectionRequest,
-  PairingResponse,
   SkinShare,
-  SentPairingRequest,
 } from "@/lib/types/party-mode";
 
 // API functions for party mode
@@ -22,38 +19,20 @@ export const partyModeApi = {
     }
   },
 
-  // Send pairing request to a friend
-  async sendPairingRequest(friendSummonerId: string): Promise<string> {
+  // Add a friend to party mode (simplified approach)
+  async addPartyFriend(friendSummonerId: string): Promise<string> {
     console.log(
-      "[DEBUG] partyModeApi.sendPairingRequest called with:",
+      "[DEBUG] partyModeApi.addPartyFriend called with:",
       friendSummonerId
     );
     try {
-      const result = await invoke("send_pairing_request", {
+      const result = await invoke("add_party_friend", {
         friendSummonerId,
       });
       console.log("[DEBUG] invoke result:", result);
       return result as string;
     } catch (error) {
-      console.error("Failed to send pairing request:", error);
-      throw error;
-    }
-  },
-
-  // Respond to a pairing request
-  async respondToPairingRequest(
-    requestId: string,
-    friendSummonerId: string,
-    accepted: boolean
-  ): Promise<void> {
-    try {
-      await invoke("respond_to_pairing_request", {
-        requestId,
-        friendSummonerId,
-        accepted,
-      });
-    } catch (error) {
-      console.error("Failed to respond to pairing request:", error);
+      console.error("Failed to add party friend:", error);
       throw error;
     }
   },
@@ -78,24 +57,10 @@ export const partyModeApi = {
     }
   },
 
-  // Get list of sent requests
-  async getSentRequests(): Promise<Record<string, SentPairingRequest>> {
-    try {
-      return await invoke("get_sent_requests");
-    } catch (error) {
-      console.error("Failed to get sent requests:", error);
-      throw error;
-    }
-  },
-
-  // Update party mode settings
-  async updateSettings(
-    autoShare: boolean,
-    notifications: boolean
-  ): Promise<void> {
+  // Update party mode settings (only notifications now)
+  async updateSettings(notifications: boolean): Promise<void> {
     try {
       await invoke("update_party_mode_settings", {
-        autoShare,
         notifications,
       });
     } catch (error) {
@@ -104,12 +69,12 @@ export const partyModeApi = {
     }
   },
 
-  // Get party mode settings
-  async getSettings(): Promise<{ autoShare: boolean; notifications: boolean }> {
+  // Get party mode settings (only notifications now)
+  async getSettings(): Promise<{ notifications: boolean }> {
     try {
       const result = await invoke("get_party_mode_settings");
-      const [autoShare, notifications] = result as [boolean, boolean];
-      return { autoShare, notifications };
+      const notifications = result as boolean;
+      return { notifications };
     } catch (error) {
       console.error("Failed to get party mode settings:", error);
       throw error;
@@ -127,24 +92,6 @@ export const partyModeApi = {
   },
 
   // Event listeners
-  onConnectionRequest(callback: (request: ConnectionRequest) => void) {
-    return listen("party-mode-connection-request", (event) => {
-      callback(event.payload as ConnectionRequest);
-    });
-  },
-
-  onPairingAccepted(callback: (response: PairingResponse) => void) {
-    return listen("party-mode-pairing-accepted", (event) => {
-      callback(event.payload as PairingResponse);
-    });
-  },
-
-  onPairingDeclined(callback: (response: PairingResponse) => void) {
-    return listen("party-mode-pairing-declined", (event) => {
-      callback(event.payload as PairingResponse);
-    });
-  },
-
   onSkinReceived(callback: (skinShare: SkinShare) => void) {
     return listen("party-mode-skin-received", (event) => {
       callback(event.payload as SkinShare);

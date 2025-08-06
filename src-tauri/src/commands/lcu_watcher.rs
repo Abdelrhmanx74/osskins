@@ -38,6 +38,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
         let mut last_skin_check_time = std::time::Instant::now();
         let mut last_champion_id: Option<u32> = None;
         let mut last_party_mode_check = std::time::Instant::now();
+        let mut last_party_injection_check = std::time::Instant::now();
         let mut processed_message_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
         
         loop {
@@ -269,6 +270,49 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                             }
                         }
                         
+                        // Check if party mode injection should be triggered (every 2 seconds)
+                        // This runs independently of champion changes to handle the timing properly
+                        if phase == "ChampSelect" && last_party_injection_check.elapsed().as_secs() >= 2 {
+                            last_party_injection_check = std::time::Instant::now();
+                            
+                            // Get current champion selection first
+                            let session_url = format!("https://127.0.0.1:{}/lol-champ-select/v1/session", port);
+                            let auth = general_purpose::STANDARD.encode(format!("riot:{}", token));
+                            
+                            let current_champion_id = if let Ok(resp) = client.get(&session_url)
+                                .header("Authorization", format!("Basic {}", auth))
+                                .send() 
+                            {
+                                if resp.status().is_success() {
+                                    if let Ok(json) = resp.json::<serde_json::Value>() {
+                                        get_selected_champion_id(&json).map(|id| id as u32).unwrap_or(0)
+                                    } else { 0 }
+                                } else { 0 }
+                            } else { 0 };
+                            
+                            // Check if all friends have shared and local player has locked in
+                            let should_inject = {
+                                let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+                                rt.block_on(async {
+                                    crate::commands::party_mode::should_inject_now(&app_handle, current_champion_id).await.unwrap_or(false)
+                                })
+                            };
+                            
+                            if should_inject {
+                                println!("[Party Mode] All conditions met - triggering party mode injection");
+                                let app_handle_clone = app_handle.clone();
+                                // Use std::thread::spawn instead of tokio::spawn to avoid reactor issues
+                                std::thread::spawn(move || {
+                                    let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+                                    rt.block_on(async move {
+                                        if let Err(e) = trigger_party_mode_injection(&app_handle_clone).await {
+                                            eprintln!("[Party Mode] Failed to trigger injection: {}", e);
+                                        }
+                                    });
+                                });
+                            }
+                        }
+                        
                         if phase == "ChampSelect" {
                             let now = std::time::Instant::now();
                             if now.duration_since(last_skin_check_time).as_secs() >= 1 {
@@ -286,9 +330,18 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                             if let Some(selected_champ_id) = get_selected_champion_id(&json) {
                                                 let current_champion_id = selected_champ_id as u32;
                                                 
-                                                let champion_changed = last_champion_id != Some(current_champion_id) && current_champion_id > 0;
+                                                // Only trigger skin sharing when changing from one locked champion to another
+                                                // Not when locking in for the first time (last_champion_id is None)
+                                                let champion_changed = if let Some(last_champ) = last_champion_id {
+                                                    last_champ != current_champion_id
+                                                } else {
+                                                    false // Don't share on first lock-in
+                                                };
+                                                
+                                                // Always update last_champion_id when a champion is locked
+                                                last_champion_id = Some(current_champion_id);
+                                                
                                                 if champion_changed {
-                                                    last_champion_id = Some(current_champion_id);
                                                     
                                                     let config_dir = app_handle.path().app_data_dir()
                                                         .unwrap_or_else(|_| PathBuf::from("."))
@@ -308,8 +361,8 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                                                     fantome_path: skin.fantome.clone(),
                                                                 });
                                                                 
-                                                                // Send skin share to paired friends if auto-share is enabled
-                                                                if config.party_mode.auto_share && !config.party_mode.paired_friends.is_empty() {
+                                                                // Send skin share to paired friends (sharing is now controlled per-friend)
+                                                                if !config.party_mode.paired_friends.is_empty() {
                                                                     let app_handle_clone = app_handle.clone();
                                                                     let skin_clone = skin.clone();
                                                                     // Use a Tokio runtime if not already inside one
@@ -346,148 +399,16 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                                                 
                                                                 last_selected_skins.insert(current_champion_id, skin.clone());
                                                             }
-                                                            
-                                                            // Add received skins from friends for this champion
-                                                            let mut friend_skins_info = Vec::new();
-                                                            for (_key, received_skin) in RECEIVED_SKINS.lock().unwrap().iter() {
-                                                                if received_skin.champion_id == current_champion_id {
-                                                                    // Get skin name using the helper function
-                                                                    let skin_name = crate::commands::party_mode::get_skin_name_from_config(&app_handle, received_skin.champion_id, received_skin.skin_id)
-                                                                        .unwrap_or_else(|| format!("Skin {}", received_skin.skin_id));
-                                                                    
-                                                                    // Check if fantome file exists before adding to injection list
-                                                                    if let Some(fantome_path_str) = &received_skin.fantome_path {
-                                                                        let fantome_path = std::path::Path::new(fantome_path_str);
-                                                                        if !fantome_path.exists() {
-                                                                            println!("[Party Mode] ⚠️  WARNING: Friend skin fantome file not found: {}", fantome_path_str);
-                                                                            println!("[Party Mode] This friend skin from {} will not be injected!", received_skin.from_summoner_name);
-                                                                            continue; // Skip this skin if fantome file doesn't exist
-                                                                        }
-                                                                        
-                                                                        println!("[Party Mode] ✅ Friend skin fantome file verified: {}", fantome_path_str);
-                                                                    } else {
-                                                                        println!("[Party Mode] ⚠️  WARNING: Friend skin has no fantome path from {}", received_skin.from_summoner_name);
-                                                                        continue; // Skip this skin if no fantome path
-                                                                    }
-                                                                    
-                                                                    skins_to_inject.push(Skin {
-                                                                        champion_id: received_skin.champion_id,
-                                                                        skin_id: received_skin.skin_id,
-                                                                        chroma_id: received_skin.chroma_id,
-                                                                        fantome_path: received_skin.fantome_path.clone(),
-                                                                    });
-                                                                    
-                                                                    friend_skins_info.push(format!("{} - {}", 
-                                                                                                  received_skin.from_summoner_name, 
-                                                                                                  skin_name));
-                                                                    
-                                                                    println!("[Party Mode] Adding received skin from {} for champion {} - {}", 
-                                                                             received_skin.from_summoner_name, 
-                                                                             current_champion_id,
-                                                                             skin_name);
-                                                                }
-                                                            }
-                                                            
-                                                            // Check if we should inject now (wait for friends to share their skins)
-                                                            let should_inject = {
-                                                                // Create a runtime to handle the async call
-                                                                let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
-                                                                rt.block_on(async {
-                                                                    match crate::commands::party_mode::should_inject_now(&app_handle, current_champion_id).await {
-                                                                        Ok(should) => should,
-                                                                        Err(e) => {
-                                                                            println!("[Party Mode] Error checking injection timing: {}", e);
-                                                                            true // Default to inject if there's an error
-                                                                        }
-                                                                    }
-                                                                })
-                                                            };
-                                                            
-                                                            if !should_inject {
-                                                                println!("[Party Mode] Delaying injection for champion {}, waiting for more friends to share", current_champion_id);
-                                                                continue;
-                                                            }
-                                                            
-                                                            // Inject all skins (local + received) and misc items
-                                                            if !skins_to_inject.is_empty() {
-                                                                let champions_dir = app_handle.path().app_data_dir()
-                                                                    .unwrap_or_else(|_| PathBuf::from("."))
-                                                                    .join("champions");
-                                                                
-                                                                // Get selected misc items
-                                                                let misc_items = get_selected_misc_items(&app_handle).unwrap_or_else(|err| {
-                                                                    println!("Failed to get selected misc items: {}", err);
-                                                                    Vec::new()
-                                                                });
-                                                                
-                                                                match inject_skins_and_misc(
-                                                                    &app_handle,
-                                                                    &league_path_clone,
-                                                                    &skins_to_inject,
-                                                                    &misc_items,
-                                                                    &champions_dir
-                                                                ) {
-                                                                    Ok(_) => {
-                                                                        let _ = app_handle.emit("injection-status", "success");
-                                                                        println!("[Injection] ✅ Successfully injected {} skins and {} misc items for champion {}", 
-                                                                                 skins_to_inject.len(), misc_items.len(), current_champion_id);
-                                                                        
-                                                                        // Log details of each injected skin with better descriptions
-                                                                        let mut your_skin_count = 0;
-                                                                        let mut friend_skin_count = 0;
-                                                                        
-                                                                        for (i, skin) in skins_to_inject.iter().enumerate() {
-                                                                            let skin_name = crate::commands::party_mode::get_skin_name_from_config(&app_handle, skin.champion_id, skin.skin_id)
-                                                                                .unwrap_or_else(|| format!("Skin {}", skin.skin_id));
-                                                                                
-                                                                            if i == 0 && !config.skins.iter().any(|s| s.champion_id == current_champion_id) {
-                                                                                // First skin but no local skin configured - must be friend skin
-                                                                                if i < friend_skins_info.len() {
-                                                                                    println!("[Injection] 🎨 FRIEND skin: {} ({})", friend_skins_info[i], skin_name);
-                                                                                    friend_skin_count += 1;
-                                                                                } else {
-                                                                                    println!("[Injection] ❓ UNKNOWN skin: Champion {}, {} (Skin ID: {})", 
-                                                                                             skin.champion_id, skin_name, skin.skin_id);
-                                                                                }
-                                                                            } else if i == 0 {
-                                                                                // First skin and we have local skin configured - this is your skin
-                                                                                println!("[Injection] 👤 YOUR skin: Champion {}, {} (Skin ID: {})", 
-                                                                                         skin.champion_id, skin_name, skin.skin_id);
-                                                                                your_skin_count += 1;
-                                                                            } else {
-                                                                                // Subsequent skins are friend skins
-                                                                                let friend_index = if your_skin_count > 0 { i - 1 } else { i };
-                                                                                if friend_index < friend_skins_info.len() {
-                                                                                    println!("[Injection] 🎨 FRIEND skin: {} ({})", friend_skins_info[friend_index], skin_name);
-                                                                                    friend_skin_count += 1;
-                                                                                } else {
-                                                                                    println!("[Injection] ❓ UNKNOWN skin: Champion {}, {} (Skin ID: {})", 
-                                                                                             skin.champion_id, skin_name, skin.skin_id);
-                                                                                }
-                                                                            }
-                                                                        }
-                                                                        
-                                                                        // Show final summary
-                                                                        println!("[Injection] 📊 Injection Summary: {} your skins, {} friend skins, {} misc items", 
-                                                                                 your_skin_count, friend_skin_count, misc_items.len());
-                                                                        
-                                                                        if !friend_skins_info.is_empty() {
-                                                                            println!("[Injection] 👥 Friends who shared: {}", friend_skins_info.join(", "));
-                                                                        }
-                                                                    },
-                                                                    Err(e) => {
-                                                                        let _ = app_handle.emit("skin-injection-error", format!(
-                                                                            "Failed to inject skins and misc items for champion {}: {}", current_champion_id, e
-                                                                        ));
-                                                                        let _ = app_handle.emit("injection-status", "error");
-                                                                    }
-                                                                }
-                                                            }
                                                         }
                                                     }
                                                 }
                                             } else {
-                                                last_champion_id = None;
+                                                // Champion not locked or changed, but still update last_champion_id if locked
+                                                if let Some(selected_champ_id) = get_selected_champion_id(&json) {
+                                                    last_champion_id = Some(selected_champ_id as u32);
+                                                } else {
+                                                    last_champion_id = None;
+                                                }
                                             }
                                         }
                                     }
@@ -538,6 +459,26 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                                         .join("champions");
                                                     
                                                     if phase != "ChampSelect" {
+                                                        continue;
+                                                    }
+                                                    
+                                                    // Check if we should inject now (wait for friends to share their skins)
+                                                    let should_inject = {
+                                                        // Create a runtime to handle the async call
+                                                        let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+                                                        rt.block_on(async {
+                                                            match crate::commands::party_mode::should_inject_now(&app_handle, champ_id).await {
+                                                                Ok(should) => should,
+                                                                Err(e) => {
+                                                                    println!("[Party Mode] Error checking injection timing: {}", e);
+                                                                    true // Default to inject if there's an error
+                                                                }
+                                                            }
+                                                        })
+                                                    };
+                                                    
+                                                    if !should_inject {
+                                                        println!("[Party Mode] Delaying injection for champion {}, waiting for more friends to share", champ_id);
                                                         continue;
                                                     }
                                                     
@@ -1000,18 +941,29 @@ fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_ids: 
     // Check if we have config with skin selections
     if let Ok(data) = std::fs::read_to_string(&cfg_file) {
         if let Ok(config) = serde_json::from_str::<SavedConfig>(&data) {
-            // Get all skins for the selected champions
+            // Get all skins for the selected champions (both official and custom)
             let mut skins_to_inject = Vec::new();
             
             for champ_id in champion_ids {
                 let champ_id_u32 = *champ_id as u32;
+                
+                // Check for official skin first
                 if let Some(skin) = config.skins.iter().find(|s| s.champion_id == champ_id_u32) {
-                    
                     skins_to_inject.push(Skin {
                         champion_id: skin.champion_id,
                         skin_id: skin.skin_id,
                         chroma_id: skin.chroma_id,
                         fantome_path: skin.fantome.clone(),
+                    });
+                } 
+                // If no official skin, check for custom skin
+                else if let Some(custom_skin) = config.custom_skins.iter().find(|s| s.champion_id == champ_id_u32) {
+                    // For custom skins, use skin_id = 0 and the custom file path as fantome_path
+                    skins_to_inject.push(Skin {
+                        champion_id: custom_skin.champion_id,
+                        skin_id: 0, // Custom skins use skin_id 0
+                        chroma_id: None, // Custom skins don't have chromas
+                        fantome_path: Some(custom_skin.file_path.clone()),
                     });
                 }
             }
@@ -1204,4 +1156,87 @@ fn check_conversation_for_party_messages(
     }
     
     Ok(())
+}
+
+// Function to trigger immediate injection of all friend skins (called from party mode)
+pub async fn trigger_party_mode_injection(app: &AppHandle) -> Result<(), String> {
+    // Only proceed if in champ select
+    if !is_in_champ_select() {
+        return Err("Not in champion select phase".to_string());
+    }
+    
+    println!("[Party Mode] Triggering immediate injection of all friend skins...");
+    
+    // Get config and misc items (same as the main injection logic)
+    let config_dir = app.path().app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("config");
+    let config_file = config_dir.join("config.json");
+    
+    if !config_file.exists() {
+        return Err("Config file not found".to_string());
+    }
+    
+    let config_data = std::fs::read_to_string(&config_file)
+        .map_err(|e| format!("Failed to read config: {}", e))?;
+    
+    let config: SavedConfig = serde_json::from_str(&config_data)
+        .map_err(|e| format!("Failed to parse config: {}", e))?;
+    
+    let misc_items = get_selected_misc_items(app)?;
+    let league_path = config.league_path.as_ref()
+        .ok_or("League path not configured".to_string())?;
+    let fantome_files_dir = PathBuf::from(league_path).join("ASSETS/Skins");
+    
+    // Collect friend skins from received skins
+    let mut skins_to_inject = Vec::new();
+    let received_skins_map = RECEIVED_SKINS.lock().unwrap();
+    
+    for received_skin in received_skins_map.values() {
+        if let Some(fantome_path) = &received_skin.fantome_path {
+            skins_to_inject.push(Skin {
+                champion_id: received_skin.champion_id,
+                skin_id: received_skin.skin_id,
+                chroma_id: received_skin.chroma_id,
+                fantome_path: Some(fantome_path.clone()),
+            });
+            println!("[Party Mode] Adding friend skin from {} for injection: Champion {}, Skin {}", 
+                     received_skin.from_summoner_name, received_skin.champion_id, received_skin.skin_id);
+        }
+    }
+    
+    // Release the lock
+    drop(received_skins_map);
+    
+    if skins_to_inject.is_empty() {
+        println!("[Party Mode] No friend skins to inject");
+        return Ok(());
+    }
+    
+    // Inject friend skins using the same logic as the main injection
+    match inject_skins_and_misc(
+        app,
+        league_path,
+        &skins_to_inject,
+        &misc_items,
+        &fantome_files_dir,
+    ) {
+        Ok(_) => {
+            println!("[Party Mode] ✅ Successfully injected {} friend skins", skins_to_inject.len());
+            
+            // Log details of each injected skin
+            for skin in skins_to_inject.iter() {
+                println!("[Party Mode] 🎨 Injected friend skin: Champion {}, Skin {}", 
+                         skin.champion_id, skin.skin_id);
+            }
+            
+            let _ = app.emit("injection-status", format!("Successfully injected {} friend skins", skins_to_inject.len()));
+            Ok(())
+        }
+        Err(e) => {
+            println!("[Party Mode] ❌ Failed to inject friend skins: {}", e);
+            let _ = app.emit("injection-status", format!("Failed to inject friend skins: {}", e));
+            Err(format!("Failed to inject friend skins: {}", e))
+        }
+    }
 }

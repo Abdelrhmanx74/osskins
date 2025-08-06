@@ -3,8 +3,7 @@ use serde_json;
 use base64::{Engine, engine::general_purpose};
 use std::path::PathBuf;
 use crate::commands::types::{
-    SavedConfig, PartyModeConfig, PairedFriend, FriendInfo, ConnectionRequest, 
-    PartyModeMessage, PairingRequest, PairingResponse, SkinShare, SentPairingRequest
+    PartyModeMessage, SkinShare, FriendInfo, PairedFriend, SavedConfig, PartyModeConfig
 };
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
@@ -130,97 +129,20 @@ async fn get_friends_with_connection(port: &str, token: &str) -> Result<Vec<Frie
     Ok(friends)
 }
 
-// Tauri command to send pairing request
+// Tauri command to add a friend directly to party mode
 #[tauri::command]
-pub async fn send_pairing_request(app: AppHandle, friend_summoner_id: String) -> Result<String, String> {
-    println!("[DEBUG] Starting send_pairing_request for friend_summoner_id: {}", friend_summoner_id);
+pub async fn add_party_friend(app: AppHandle, friend_summoner_id: String) -> Result<String, String> {
+    println!("[DEBUG] Adding friend to party mode: {}", friend_summoner_id);
     
-    // Check if there's already a pending request to this user
-    if is_request_already_sent(&app, &friend_summoner_id).await? {
-        return Err("Request already sent to this user".to_string());
-    }
+    // Get friend display name from LCU
+    let friend_display_name = get_friend_display_name(&app, &friend_summoner_id).await
+        .unwrap_or_else(|_| format!("User {}", friend_summoner_id));
     
-    let lcu_connection = get_lcu_connection(&app).await?;
-    println!("[DEBUG] Got LCU connection - port: {}", lcu_connection.port);
+    // Add to paired friends with sharing enabled by default - NO CHAT MESSAGE SENT
+    add_paired_friend(&app, &friend_summoner_id, &friend_display_name, true).await?;
     
-    let current_summoner = get_current_summoner(&app).await?;
-    println!("[DEBUG] Got current summoner - id: {}, name: '{}'", current_summoner.summoner_id, current_summoner.display_name);
-    
-    // Ensure we have a valid display name
-    let display_name = if current_summoner.display_name.is_empty() || current_summoner.display_name == "Unknown" {
-        println!("[DEBUG] Display name is empty or unknown, trying to get it from friends list...");
-        // Try to get our own name from the friends list or use a fallback
-        format!("User{}", current_summoner.summoner_id)
-    } else {
-        current_summoner.display_name.clone()
-    };
-    
-    println!("[DEBUG] Using display name: '{}'", display_name);
-    
-    let request_id = uuid::Uuid::new_v4().to_string();
-    let pairing_request = PairingRequest {
-        request_id: request_id.clone(),
-        from_summoner_id: current_summoner.summoner_id,
-        from_summoner_name: display_name,
-        timestamp: chrono::Utc::now().timestamp_millis() as u64,
-    };
-
-    let message = PartyModeMessage {
-        message_type: "pairing_request".to_string(),
-        data: serde_json::to_value(pairing_request)
-            .map_err(|e| format!("Failed to serialize pairing request: {}", e))?,
-    };
-    
-    println!("[DEBUG] About to send chat message with data: {:?}", serde_json::to_string(&message).unwrap_or_else(|_| "Failed to serialize".to_string()));
-    
-    // Store the sent request before sending
-    store_sent_request(&app, &request_id, &friend_summoner_id).await?;
-    
-    send_chat_message(&app, &lcu_connection, &friend_summoner_id, &message).await?;
-    println!("[DEBUG] Successfully sent pairing request!");
-    Ok(request_id)
-}// Tauri command to respond to pairing request
-#[tauri::command]
-pub async fn respond_to_pairing_request(
-    app: AppHandle,
-    request_id: String,
-    friend_summoner_id: String,
-    accepted: bool,
-) -> Result<(), String> {
-    let lcu_connection = get_lcu_connection(&app).await?;
-    let current_summoner = get_current_summoner(&app).await?;
-
-    let pairing_response = PairingResponse {
-        request_id: request_id.clone(),
-        accepted,
-        from_summoner_id: current_summoner.summoner_id,
-        from_summoner_name: current_summoner.display_name,
-        timestamp: chrono::Utc::now().timestamp_millis() as u64,
-    };
-
-    let message = PartyModeMessage {
-        message_type: "pairing_response".to_string(),
-        data: serde_json::to_value(pairing_response)
-            .map_err(|e| format!("Failed to serialize pairing response: {}", e))?,
-    };
-
-    send_chat_message(&app, &lcu_connection, &friend_summoner_id, &message).await?;
-
-    // If declined, add the request ID and summoner to ignored lists
-    if !accepted {
-        add_ignored_request(&app, &request_id, &friend_summoner_id).await?;
-    }
-
-    // If accepted, add to paired friends
-    if accepted {
-        // Try to get the friend's proper display name instead of using "Unknown"
-        let friend_display_name = get_friend_display_name(&app, &friend_summoner_id).await
-            .unwrap_or_else(|_| format!("User {}", friend_summoner_id));
-        
-        add_paired_friend(&app, &friend_summoner_id, &friend_display_name).await?;
-    }
-
-    Ok(())
+    println!("[DEBUG] Successfully added friend to party mode silently!");
+    Ok(friend_summoner_id)
 }
 
 // Tauri command to remove paired friend
@@ -242,11 +164,6 @@ pub async fn remove_paired_friend(app: AppHandle, friend_summoner_id: String) ->
         .map_err(|e| format!("Failed to parse config: {}", e))?;
 
     config.party_mode.paired_friends.retain(|f| f.summoner_id != friend_summoner_id);
-
-    // Also add this summoner to ignored list to prevent future automatic pairing
-    if !config.party_mode.ignored_summoners.contains(&friend_summoner_id) {
-        config.party_mode.ignored_summoners.push(friend_summoner_id);
-    }
 
     let updated_config = serde_json::to_string_pretty(&config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
@@ -283,22 +200,22 @@ pub async fn get_paired_friends(app: AppHandle) -> Result<Vec<PairedFriend>, Str
 
     println!("[Party Mode] Loaded {} paired friends from config", config.party_mode.paired_friends.len());
     for friend in &config.party_mode.paired_friends {
-        println!("[Party Mode] - Friend: {} ({})", friend.display_name, friend.summoner_id);
+        println!("[Party Mode] - Friend: {} ({}) - Sharing: {}", 
+                 friend.display_name, friend.summoner_id, friend.share_enabled);
     }
 
     Ok(config.party_mode.paired_friends)
 }
 
-// Tauri command to get sent pairing requests
 #[tauri::command]
-pub async fn get_sent_requests(app: AppHandle) -> Result<std::collections::HashMap<String, SentPairingRequest>, String> {
+pub async fn get_party_mode_settings(app: AppHandle) -> Result<bool, String> {
     let config_dir = app.path().app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join("config");
     let config_file = config_dir.join("config.json");
 
     if !config_file.exists() {
-        return Ok(std::collections::HashMap::new());
+        return Ok(true); // Default notifications enabled
     }
 
     let config_data = std::fs::read_to_string(&config_file)
@@ -307,33 +224,12 @@ pub async fn get_sent_requests(app: AppHandle) -> Result<std::collections::HashM
     let config: SavedConfig = serde_json::from_str(&config_data)
         .map_err(|e| format!("Failed to parse config: {}", e))?;
 
-    Ok(config.party_mode.sent_requests)
-}
-
-#[tauri::command]
-pub async fn get_party_mode_settings(app: AppHandle) -> Result<(bool, bool), String> {
-    let config_dir = app.path().app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("config");
-    let config_file = config_dir.join("config.json");
-
-    if !config_file.exists() {
-        return Ok((true, true)); // Default values
-    }
-
-    let config_data = std::fs::read_to_string(&config_file)
-        .map_err(|e| format!("Failed to read config: {}", e))?;
-    
-    let config: SavedConfig = serde_json::from_str(&config_data)
-        .map_err(|e| format!("Failed to parse config: {}", e))?;
-
-    Ok((config.party_mode.auto_share, config.party_mode.notifications))
+    Ok(config.party_mode.notifications)
 }
 
 #[tauri::command]
 pub async fn update_party_mode_settings(
     app: AppHandle,
-    auto_share: bool,
     notifications: bool,
 ) -> Result<(), String> {
     let config_dir = app.path().app_data_dir()
@@ -347,12 +243,13 @@ pub async fn update_party_mode_settings(
     let mut config = if config_file.exists() {
         let config_data = std::fs::read_to_string(&config_file)
             .map_err(|e| format!("Failed to read config: {}", e))?;
-        serde_json::from_str(&config_data)
+        serde_json::from_str::<SavedConfig>(&config_data)
             .map_err(|e| format!("Failed to parse config: {}", e))?
     } else {
         SavedConfig {
             league_path: None,
             skins: Vec::new(),
+            custom_skins: Vec::new(),
             favorites: Vec::new(),
             theme: None,
             party_mode: PartyModeConfig::default(),
@@ -360,38 +257,7 @@ pub async fn update_party_mode_settings(
         }
     };
 
-    config.party_mode.auto_share = auto_share;
     config.party_mode.notifications = notifications;
-
-    let updated_config = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("Failed to serialize config: {}", e))?;
-
-    std::fs::write(&config_file, updated_config)
-        .map_err(|e| format!("Failed to save config: {}", e))?;
-
-    Ok(())
-}
-
-// Tauri command to clear ignored summoners (allow re-pairing)
-#[tauri::command]
-pub async fn clear_ignored_summoner(app: AppHandle, summoner_id: String) -> Result<(), String> {
-    let config_dir = app.path().app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("config");
-    let config_file = config_dir.join("config.json");
-
-    if !config_file.exists() {
-        return Ok(());
-    }
-
-    let config_data = std::fs::read_to_string(&config_file)
-        .map_err(|e| format!("Failed to read config: {}", e))?;
-    
-    let mut config: SavedConfig = serde_json::from_str(&config_data)
-        .map_err(|e| format!("Failed to parse config: {}", e))?;
-
-    // Remove summoner from ignored list
-    config.party_mode.ignored_summoners.retain(|s| s != &summoner_id);
 
     let updated_config = serde_json::to_string_pretty(&config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
@@ -688,212 +554,12 @@ async fn get_conversation_id(
     Err(format!("Failed to get conversation ID from created conversation"))
 }
 
-// Internal function to add ignored request
-async fn add_ignored_request(
-    app: &AppHandle,
-    request_id: &str,
-    friend_summoner_id: &str,
-) -> Result<(), String> {
-    let config_dir = app.path().app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("config");
-    let config_file = config_dir.join("config.json");
-
-    std::fs::create_dir_all(&config_dir)
-        .map_err(|e| format!("Failed to create config directory: {}", e))?;
-
-    let mut config = if config_file.exists() {
-        let config_data = std::fs::read_to_string(&config_file)
-            .map_err(|e| format!("Failed to read config: {}", e))?;
-        serde_json::from_str(&config_data)
-            .map_err(|e| format!("Failed to parse config: {}", e))?
-    } else {
-        SavedConfig {
-            league_path: None,
-            skins: Vec::new(),
-            favorites: Vec::new(),
-            theme: None,
-            party_mode: PartyModeConfig::default(),
-            selected_misc_items: std::collections::HashMap::new(),
-        }
-    };
-
-    // Add request ID to ignored list
-    if !config.party_mode.ignored_request_ids.contains(&request_id.to_string()) {
-        config.party_mode.ignored_request_ids.push(request_id.to_string());
-    }
-
-    // Also add summoner to ignored list temporarily (can be removed manually later)
-    if !config.party_mode.ignored_summoners.contains(&friend_summoner_id.to_string()) {
-        config.party_mode.ignored_summoners.push(friend_summoner_id.to_string());
-    }
-
-    // Keep only the last 100 ignored request IDs to prevent config file from growing too large
-    if config.party_mode.ignored_request_ids.len() > 100 {
-        let current_len = config.party_mode.ignored_request_ids.len();
-        config.party_mode.ignored_request_ids = config.party_mode.ignored_request_ids
-            .into_iter()
-            .skip(current_len - 50)
-            .collect();
-    }
-
-    let updated_config = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("Failed to serialize config: {}", e))?;
-
-    std::fs::write(&config_file, updated_config)
-        .map_err(|e| format!("Failed to save config: {}", e))?;
-
-    Ok(())
-}
-
-// Internal function to check if a request is already sent to a user
-async fn is_request_already_sent(
-    app: &AppHandle,
-    friend_summoner_id: &str,
-) -> Result<bool, String> {
-    let config_dir = app.path().app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("config");
-    let config_file = config_dir.join("config.json");
-
-    if !config_file.exists() {
-        return Ok(false);
-    }
-
-    let config_data = std::fs::read_to_string(&config_file)
-        .map_err(|e| format!("Failed to read config: {}", e))?;
-    
-    let config: SavedConfig = serde_json::from_str(&config_data)
-        .map_err(|e| format!("Failed to parse config: {}", e))?;
-
-    // Check if there's a pending request to this summoner
-    Ok(config.party_mode.sent_requests.contains_key(friend_summoner_id))
-}
-
-// Internal function to store a sent pairing request
-async fn store_sent_request(
-    app: &AppHandle,
-    request_id: &str,
-    friend_summoner_id: &str,
-) -> Result<(), String> {
-    let config_dir = app.path().app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("config");
-    let config_file = config_dir.join("config.json");
-
-    std::fs::create_dir_all(&config_dir)
-        .map_err(|e| format!("Failed to create config directory: {}", e))?;
-
-    let mut config = if config_file.exists() {
-        let config_data = std::fs::read_to_string(&config_file)
-            .map_err(|e| format!("Failed to read config: {}", e))?;
-        serde_json::from_str(&config_data)
-            .map_err(|e| format!("Failed to parse config: {}", e))?
-    } else {
-        SavedConfig {
-            league_path: None,
-            skins: Vec::new(),
-            favorites: Vec::new(),
-            theme: None,
-            party_mode: PartyModeConfig::default(),
-            selected_misc_items: std::collections::HashMap::new(),
-        }
-    };
-
-    // Get friend display name for storage
-    let friend_display_name = get_friend_display_name(app, friend_summoner_id).await
-        .unwrap_or_else(|_| format!("User {}", friend_summoner_id));
-
-    // Store the sent request
-    let sent_request = SentPairingRequest {
-        request_id: request_id.to_string(),
-        to_summoner_id: friend_summoner_id.to_string(),
-        to_summoner_name: friend_display_name,
-        sent_at: chrono::Utc::now().timestamp_millis() as u64,
-    };
-
-    config.party_mode.sent_requests.insert(friend_summoner_id.to_string(), sent_request);
-
-    let updated_config = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("Failed to serialize config: {}", e))?;
-
-    std::fs::write(&config_file, updated_config)
-        .map_err(|e| format!("Failed to save config: {}", e))?;
-
-    Ok(())
-}
-
-// Internal function to remove sent request (on response or cleanup)
-async fn remove_sent_request(
-    app: &AppHandle,
-    friend_summoner_id: &str,
-) -> Result<(), String> {
-    let config_dir = app.path().app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("config");
-    let config_file = config_dir.join("config.json");
-
-    if !config_file.exists() {
-        return Ok(());
-    }
-
-    let config_data = std::fs::read_to_string(&config_file)
-        .map_err(|e| format!("Failed to read config: {}", e))?;
-    
-    let mut config: SavedConfig = serde_json::from_str(&config_data)
-        .map_err(|e| format!("Failed to parse config: {}", e))?;
-
-    // Remove the sent request
-    config.party_mode.sent_requests.remove(friend_summoner_id);
-
-    let updated_config = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("Failed to serialize config: {}", e))?;
-
-    std::fs::write(&config_file, updated_config)
-        .map_err(|e| format!("Failed to save config: {}", e))?;
-
-    Ok(())
-}
-
-// Internal function to check if a request should be ignored
-async fn is_request_ignored(
-    app: &AppHandle,
-    request_id: &str,
-    summoner_id: &str,
-) -> Result<bool, String> {
-    let config_dir = app.path().app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("config");
-    let config_file = config_dir.join("config.json");
-
-    if !config_file.exists() {
-        return Ok(false);
-    }
-
-    let config_data = std::fs::read_to_string(&config_file)
-        .map_err(|e| format!("Failed to read config: {}", e))?;
-    
-    let config: SavedConfig = serde_json::from_str(&config_data)
-        .map_err(|e| format!("Failed to parse config: {}", e))?;
-
-    // Check if request ID is in ignored list
-    if config.party_mode.ignored_request_ids.contains(&request_id.to_string()) {
-        return Ok(true);
-    }
-
-    // Check if summoner is in ignored list
-    if config.party_mode.ignored_summoners.contains(&summoner_id.to_string()) {
-        return Ok(true);
-    }
-
-    Ok(false)
-}
-
 // Internal function to add paired friend
 async fn add_paired_friend(
     app: &AppHandle,
     friend_summoner_id: &str,
     friend_name: &str,
+    share_enabled: bool,
 ) -> Result<(), String> {
     let config_dir = app.path().app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
@@ -906,12 +572,13 @@ async fn add_paired_friend(
     let mut config = if config_file.exists() {
         let config_data = std::fs::read_to_string(&config_file)
             .map_err(|e| format!("Failed to read config: {}", e))?;
-        serde_json::from_str(&config_data)
+        serde_json::from_str::<SavedConfig>(&config_data)
             .map_err(|e| format!("Failed to parse config: {}", e))?
     } else {
         SavedConfig {
             league_path: None,
             skins: Vec::new(),
+            custom_skins: Vec::new(),
             favorites: Vec::new(),
             theme: None,
             party_mode: PartyModeConfig::default(),
@@ -926,6 +593,7 @@ async fn add_paired_friend(
             summoner_name: friend_name.to_string(),
             display_name: friend_name.to_string(),
             paired_at: chrono::Utc::now().timestamp_millis() as u64,
+            share_enabled,
         });
 
         let updated_config = serde_json::to_string_pretty(&config)
@@ -1117,86 +785,29 @@ pub async fn handle_party_mode_message(
     };
 
     match message.message_type.as_str() {
-        "pairing_request" => {
-            let request: PairingRequest = serde_json::from_value(message.data)
-                .map_err(|e| format!("Failed to parse pairing request: {}", e))?;
-            
-            // Don't show requests that the current user sent
-            if request.from_summoner_id == current_summoner.summoner_id {
-                println!("[Party Mode] Ignoring pairing request from self ({})", current_summoner.summoner_id);
-                return Ok(());
-            }
-            
-            // Check if this request or summoner is in the ignored list
-            if is_request_ignored(app, &request.request_id, &request.from_summoner_id).await? {
-                println!("[Party Mode] Ignoring previously declined request {} from summoner {}", request.request_id, request.from_summoner_id);
-                return Ok(());
-            }
-            
-            // Get the friend's display name from the friends list if the message doesn't have it
-            let friend_display_name = if request.from_summoner_name.is_empty() {
-                get_friend_display_name(app, &request.from_summoner_id).await
-                    .unwrap_or_else(|_| format!("User {}", request.from_summoner_id))
-            } else {
-                request.from_summoner_name.clone()
-            };
-            
-            let connection_request = ConnectionRequest {
-                from_summoner_id: request.from_summoner_id.clone(),
-                from_summoner_name: friend_display_name.clone(),
-                timestamp: request.timestamp,
-            };
-
-            println!("[Party Mode] Emitting connection request event for: {}", friend_display_name);
-            match app.emit("party-mode-connection-request", &connection_request) {
-                Ok(_) => println!("[Party Mode] Successfully emitted connection request event"),
-                Err(e) => eprintln!("[Party Mode] Failed to emit connection request event: {}", e),
-            }
-        }
-        "pairing_response" => {
-            let response: PairingResponse = serde_json::from_value(message.data)
-                .map_err(|e| format!("Failed to parse pairing response: {}", e))?;
-            
-            // Don't process responses from the current user (self-sent)
-            if response.from_summoner_id == current_summoner.summoner_id {
-                println!("[Party Mode] Ignoring pairing response from self ({})", current_summoner.summoner_id);
-                return Ok(());
-            }
-            
-            // Remove the sent request since we got a response
-            if let Err(e) = remove_sent_request(app, &response.from_summoner_id).await {
-                println!("[Party Mode] Warning: Failed to remove sent request: {}", e);
-            }
-            
-            if response.accepted {
-                // Get the friend's proper display name for storing
-                let friend_display_name = if response.from_summoner_name.is_empty() {
-                    get_friend_display_name(app, &response.from_summoner_id).await
-                        .unwrap_or_else(|_| format!("User {}", response.from_summoner_id))
-                } else {
-                    response.from_summoner_name.clone()
-                };
-                
-                add_paired_friend(app, &response.from_summoner_id, &friend_display_name).await?;
-                let _ = app.emit("party-mode-pairing-accepted", response);
-            } else {
-                let _ = app.emit("party-mode-pairing-declined", response);
-            }
-        }
         "skin_share" => {
             let skin_share: SkinShare = serde_json::from_value(message.data)
                 .map_err(|e| format!("Failed to parse skin share: {}", e))?;
+            
+            // Filter out messages from the current user (don't process your own skin shares)
+            if skin_share.from_summoner_id == current_summoner.summoner_id {
+                println!("[Party Mode] Ignoring skin_share from self ({})", current_summoner.display_name);
+                return Ok(());
+            }
+            
             // Only process skin_share if in ChampSelect phase
             if !crate::commands::lcu_watcher::is_in_champ_select() {
                 println!("[Party Mode] Ignoring skin_share from {} for champion {} because not in ChampSelect phase", 
                     skin_share.from_summoner_name, skin_share.champion_id);
                 return Ok(());
             }
+            
             println!("[Party Mode] Processing skin share from {}: Champion {}, Skin {}, Skin Name: {}",
                 skin_share.from_summoner_name,
                 skin_share.champion_id,
                 skin_share.skin_id,
                 skin_share.skin_name);
+            
             // Store received skin data in memory only
             let key = received_skin_key(&skin_share.from_summoner_id, skin_share.champion_id);
             let mut map = RECEIVED_SKINS.lock().unwrap();
@@ -1209,19 +820,30 @@ pub async fn handle_party_mode_message(
                 fantome_path: skin_share.fantome_path.clone(),
                 received_at: skin_share.timestamp,
             });
+            
             println!("[Party Mode] Received skin from {} for champion {} (stored in memory for this session only)", 
                      skin_share.from_summoner_name, skin_share.champion_id);
-            let _ = app.emit("party-mode-skin-received", skin_share);
+            
+            // Drop the lock before emitting the event
+            drop(map);
+            
+            // Emit the skin received event
+            let _ = app.emit("party-mode-skin-received", skin_share.clone());
+            
+            // Note: Injection timing is handled by the main LCU watcher logic
+            // which will collect all friend skins and inject them at the appropriate time
+            println!("[Party Mode] Skin share received and stored. Injection will be handled by LCU watcher timing logic.");
         }
         _ => {
             // Unknown message type, ignore
+            println!("[Party Mode] Ignoring unknown message type: {}", message.message_type);
         }
     }
 
     Ok(())
 }
 
-// Function to send skin share to paired friends (called from LCU watcher on champion lock)
+// Function to send skin share to paired friends with sharing enabled (called from LCU watcher on champion lock)
 pub async fn send_skin_share_to_paired_friends(
     app: &AppHandle,
     champion_id: u32,
@@ -1244,7 +866,14 @@ pub async fn send_skin_share_to_paired_friends(
     let config: SavedConfig = serde_json::from_str(&config_data)
         .map_err(|e| format!("Failed to parse config: {}", e))?;
 
-    if !config.party_mode.auto_share || config.party_mode.paired_friends.is_empty() {
+    // Filter friends to only those with sharing enabled
+    let sharing_friends: Vec<&PairedFriend> = config.party_mode.paired_friends
+        .iter()
+        .filter(|friend| friend.share_enabled)
+        .collect();
+
+    if sharing_friends.is_empty() {
+        println!("[Party Mode] No friends with sharing enabled");
         return Ok(());
     }
 
@@ -1271,7 +900,7 @@ pub async fn send_skin_share_to_paired_friends(
             .map_err(|e| format!("Failed to serialize skin share: {}", e))?,
     };
 
-    for friend in &config.party_mode.paired_friends {
+    for friend in &sharing_friends {
         if let Err(e) = send_chat_message(app, &lcu_connection, &friend.summoner_id, &message).await {
             eprintln!("Failed to send skin share to {}: {}", friend.summoner_name, e);
         } else {
@@ -1321,7 +950,7 @@ pub fn get_skin_name_from_config(app: &AppHandle, champion_id: u32, skin_id: u32
     None
 }
 
-// Helper function to check if all paired friends have shared their skins for a specific champion
+// Helper function to check if all paired friends with sharing enabled have shared their skins for a specific champion
 pub async fn should_inject_now(app: &AppHandle, champion_id: u32) -> Result<bool, String> {
     let config_dir = app.path().app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
@@ -1338,36 +967,39 @@ pub async fn should_inject_now(app: &AppHandle, champion_id: u32) -> Result<bool
     let config: SavedConfig = serde_json::from_str(&config_data)
         .map_err(|e| format!("Failed to parse config: {}", e))?;
 
-    // If no paired friends, inject immediately
-    if config.party_mode.paired_friends.is_empty() {
-        println!("[Party Mode] No paired friends - injecting immediately for champion {}", champion_id);
+    // Get friends with sharing enabled
+    let friends_with_sharing: Vec<&PairedFriend> = config.party_mode.paired_friends
+        .iter()
+        .filter(|friend| friend.share_enabled)
+        .collect();
+
+    // If no friends have sharing enabled, inject immediately
+    if friends_with_sharing.is_empty() {
+        println!("[Party Mode] No friends with sharing enabled - injecting immediately for champion {}", champion_id);
         return Ok(true);
     }
 
-    // Check if we have received skins from all paired friends for this champion
-    let friends_who_shared: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Check if we have received skins from all friends with sharing enabled (for ANY champion)
+    let mut friends_who_shared = std::collections::HashSet::new();
     
-    // This section is no longer needed as skins are stored in memory
-    // for (_key, received_skin) in &config.party_mode.received_skins {
-    //     if received_skin.champion_id == champion_id {
-    //         friends_who_shared.insert(&received_skin.from_summoner_id);
-            
-    //         // Track the earliest received time for this champion (approximates champion select start)
-    //         if champion_select_start_time.is_none() || received_skin.received_at < champion_select_start_time.unwrap() {
-    //             champion_select_start_time = Some(received_skin.received_at);
-    //         }
-    //     }
-    // }
+    let received_skins = RECEIVED_SKINS.lock().unwrap();
+    for (_key, received_skin) in received_skins.iter() {
+        // Count friends who shared ANY skin, not just for the current champion
+        friends_who_shared.insert(received_skin.from_summoner_id.clone());
+    }
 
-    // Count how many paired friends we have vs how many shared
-    let total_friends = config.party_mode.paired_friends.len();
-    let friends_shared = friends_who_shared.len();
+    // Count how many friends with sharing enabled we have vs how many shared
+    let total_sharing_friends = friends_with_sharing.len();
+    let sharing_friends_who_shared: usize = friends_with_sharing
+        .iter()
+        .filter(|friend| friends_who_shared.contains(&friend.summoner_id))
+        .count();
 
-    println!("[Party Mode] Injection timing check for champion {}: {}/{} friends have shared skins", 
-             champion_id, friends_shared, total_friends);
+    println!("[Party Mode] Injection timing check: {}/{} friends with sharing enabled have shared skins (any champion)", 
+             sharing_friends_who_shared, total_sharing_friends);
 
     // List which friends have shared and which haven't
-    for friend in &config.party_mode.paired_friends {
+    for friend in &friends_with_sharing {
         let has_shared = friends_who_shared.contains(&friend.summoner_id);
         println!("[Party Mode] Friend {} ({}): {}", 
                  friend.display_name, 
@@ -1375,14 +1007,20 @@ pub async fn should_inject_now(app: &AppHandle, champion_id: u32) -> Result<bool
                  if has_shared { "✅ shared skin" } else { "⏳ waiting for skin" });
     }
 
-    // Wait for ALL friends to share their skins before injecting
-    let should_inject = friends_shared == total_friends;
+    // Check if local player has locked in a champion (prerequisite for injection)
+    if champion_id == 0 {
+        println!("[Party Mode] ⏳ Local player has not locked in a champion yet - waiting");
+        return Ok(false);
+    }
+
+    // Wait for ALL friends with sharing enabled to share their skins before injecting
+    let should_inject = sharing_friends_who_shared == total_sharing_friends;
     
     if should_inject {
-        println!("[Party Mode] ✅ All friends have shared - proceeding with injection for champion {}", champion_id);
+        println!("[Party Mode] ✅ All friends with sharing enabled have shared AND local player has locked in champion {} - proceeding with injection", champion_id);
     } else {
-        println!("[Party Mode] ⏳ Waiting for {} more friends to share their skins for champion {}", 
-                 total_friends - friends_shared, champion_id);
+        println!("[Party Mode] ⏳ Local player locked in champion {}, but waiting for {} more friends with sharing enabled to share their skins", 
+                 champion_id, total_sharing_friends - sharing_friends_who_shared);
     }
 
     Ok(should_inject)

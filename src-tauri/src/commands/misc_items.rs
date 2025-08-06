@@ -271,9 +271,7 @@ pub fn get_selected_misc_items(app: &AppHandle) -> Result<Vec<MiscItem>, String>
     
     let config_content = fs::read_to_string(&config_file)
         .map_err(|e| format!("Failed to read config file: {}", e))?;
-    
-    println!("DEBUG: Config file content: {}", config_content);
-    
+        
     let config: SavedConfig = serde_json::from_str(&config_content)
         .map_err(|e| format!("Failed to parse config: {}", e))?;
     

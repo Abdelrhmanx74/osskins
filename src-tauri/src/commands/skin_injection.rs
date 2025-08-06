@@ -2,8 +2,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use std::path::Path;
 use std::fs;
 use crate::injection::{Skin, MiscItem, inject_skins as inject_skins_impl, inject_skins_and_misc};
-use crate::commands::types::{SkinInjectionRequest, SkinData};
-use crate::commands::config::{save_league_path};
+use crate::commands::types::{SkinInjectionRequest, SkinData, SavedConfig};
+use crate::commands::config::save_league_path;
 use crate::commands::lcu_watcher::start_lcu_watcher;
 
 // Skin injection related commands
@@ -208,6 +208,83 @@ pub async fn start_auto_inject(app: AppHandle, league_path: String) -> Result<()
     start_lcu_watcher(app, league_path)?;
     
     Ok(())
+}
+
+// Helper function to convert SavedConfig to injection-ready skins
+pub fn get_all_skins_for_injection(config: &SavedConfig) -> Vec<Skin> {
+    let mut all_skins = Vec::new();
+    
+    // Add official skins
+    for skin_data in &config.skins {
+        all_skins.push(Skin {
+            champion_id: skin_data.champion_id,
+            skin_id: skin_data.skin_id,
+            chroma_id: skin_data.chroma_id,
+            fantome_path: skin_data.fantome.clone(),
+        });
+    }
+    
+    // Add custom skins (with skin_id = 0 and file path as fantome_path)
+    for custom_skin in &config.custom_skins {
+        all_skins.push(Skin {
+            champion_id: custom_skin.champion_id,
+            skin_id: 0, // Custom skins use skin_id 0
+            chroma_id: None, // Custom skins don't have chromas
+            fantome_path: Some(custom_skin.file_path.clone()),
+        });
+    }
+    
+    all_skins
+}
+
+// Command to inject all selected skins from config
+#[tauri::command]
+pub async fn inject_all_selected_skins(app: AppHandle) -> Result<(), String> {
+    // Load config
+    let config = crate::commands::config::load_config(app.clone()).await?;
+    
+    // Get league path
+    let league_path = config.league_path.clone().ok_or("No League path configured")?;
+    
+    // Convert config to injection-ready skins
+    let skins = get_all_skins_for_injection(&config);
+    
+    if skins.is_empty() {
+        return Err("No skins selected for injection".to_string());
+    }
+    
+    // Get the app data directory for fantome files
+    let app_data_dir = app.path().app_data_dir()
+        .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
+    let fantome_files_dir = app_data_dir.join("champions");
+    
+    // Get misc items
+    let misc_items = crate::commands::misc_items::get_selected_misc_items(&app)
+        .unwrap_or_else(|_| Vec::new());
+    
+    // Emit injection started event
+    let _ = app.emit("injection-status", "injecting");
+    
+    // Perform injection
+    let result = inject_skins_and_misc(
+        &app,
+        &league_path,
+        &skins,
+        &misc_items,
+        &fantome_files_dir,
+    );
+    
+    match result {
+        Ok(_) => {
+            let _ = app.emit("injection-status", "success");
+            println!("Successfully injected {} skins and {} misc items", skins.len(), misc_items.len());
+            Ok(())
+        }
+        Err(e) => {
+            let _ = app.emit("injection-status", "error");
+            Err(e.to_string())
+        }
+    }
 }
 
 // Preload resources function to improve first-time injection speed

@@ -56,6 +56,8 @@ pub struct ThemePreferences {
 pub struct SavedConfig {
     pub league_path: Option<String>,
     pub skins: Vec<SkinData>,
+    #[serde(default)]
+    pub custom_skins: Vec<CustomSkinData>,
     pub favorites: Vec<u32>,
     #[serde(default)]
     pub theme: Option<ThemePreferences>,
@@ -71,26 +73,14 @@ pub struct PartyModeConfig {
     #[serde(default)]
     pub paired_friends: Vec<PairedFriend>,
     #[serde(default)]
-    pub auto_share: bool,
-    #[serde(default)]
     pub notifications: bool,
-    #[serde(default)]
-    pub ignored_request_ids: Vec<String>,
-    #[serde(default)]
-    pub ignored_summoners: Vec<String>,
-    #[serde(default)]
-    pub sent_requests: std::collections::HashMap<String, SentPairingRequest>,
 }
 
 impl Default for PartyModeConfig {
     fn default() -> Self {
         Self {
             paired_friends: Vec::new(),
-            auto_share: true,
             notifications: true,
-            ignored_request_ids: Vec::new(),
-            ignored_summoners: Vec::new(),
-            sent_requests: std::collections::HashMap::new(),
         }
     }
 }
@@ -101,6 +91,12 @@ pub struct PairedFriend {
     pub summoner_name: String,
     pub display_name: String,
     pub paired_at: u64,
+    #[serde(default = "default_share_enabled")]
+    pub share_enabled: bool,
+}
+
+fn default_share_enabled() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,35 +110,11 @@ pub struct FriendInfo {
     pub pid: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConnectionRequest {
-    pub from_summoner_id: String,
-    pub from_summoner_name: String,
-    pub timestamp: u64,
-}
-
 // Party Mode message types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartyModeMessage {
     pub message_type: String,
     pub data: serde_json::Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PairingRequest {
-    pub request_id: String,
-    pub from_summoner_id: String,
-    pub from_summoner_name: String,
-    pub timestamp: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PairingResponse {
-    pub request_id: String,
-    pub accepted: bool,
-    pub from_summoner_id: String,
-    pub from_summoner_name: String,
-    pub timestamp: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,14 +127,6 @@ pub struct SkinShare {
     pub chroma_id: Option<u32>,
     pub fantome_path: Option<String>,
     pub timestamp: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SentPairingRequest {
-    pub request_id: String,
-    pub to_summoner_id: String,
-    pub to_summoner_name: String,
-    pub sent_at: u64,
 }
 
 // Copy paste your type definitions here - no additional imports needed as they're already included above

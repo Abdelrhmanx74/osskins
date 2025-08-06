@@ -2,7 +2,7 @@ use tauri::{AppHandle, Manager};
 use std::fs;
 use std::path::{Path};
 use serde_json;
-use crate::commands::types::{SavedConfig, SkinData, ThemePreferences, PartyModeConfig};
+use crate::commands::types::{SavedConfig, SkinData, CustomSkinData, ThemePreferences, PartyModeConfig};
 
 // Configuration management commands
 
@@ -127,7 +127,8 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
     if !file.exists() {
         return Ok(SavedConfig { 
             league_path: None, 
-            skins: Vec::new(), 
+            skins: Vec::new(),
+            custom_skins: Vec::new(),
             favorites: Vec::new(), 
             theme: None,
             party_mode: PartyModeConfig::default(),
@@ -139,6 +140,152 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
     let cfg: SavedConfig = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse config.json: {}", e))?;
     Ok(cfg)
+}
+
+// Unified skin selection command - handles both official and custom skins with mutual exclusion
+#[tauri::command]
+pub async fn select_skin_for_champion(
+    app: tauri::AppHandle,
+    champion_id: u32,
+    skin_data: Option<SkinData>,
+    custom_skin_data: Option<CustomSkinData>
+) -> Result<(), String> {
+    let config_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?
+        .join("config");
+    std::fs::create_dir_all(&config_dir)
+        .map_err(|e| format!("Failed to create config dir: {}", e))?;
+    let file = config_dir.join("config.json");
+
+    // Load existing config
+    let mut config = if file.exists() {
+        let content = std::fs::read_to_string(&file)
+            .map_err(|e| format!("Failed to read config.json: {}", e))?;
+        serde_json::from_str::<SavedConfig>(&content)
+            .map_err(|e| format!("Failed to parse config.json: {}", e))?
+    } else {
+        SavedConfig {
+            league_path: None,
+            skins: Vec::new(),
+            custom_skins: Vec::new(),
+            favorites: Vec::new(),
+            theme: None,
+            party_mode: PartyModeConfig::default(),
+            selected_misc_items: std::collections::HashMap::new(),
+        }
+    };
+
+    // Remove any existing selections for this champion (both official and custom)
+    config.skins.retain(|s| s.champion_id != champion_id);
+    config.custom_skins.retain(|s| s.champion_id != champion_id);
+
+    // Add the new selection
+    if let Some(skin) = skin_data {
+        if skin.champion_id == champion_id {
+            config.skins.push(skin);
+        }
+    }
+    
+    if let Some(custom_skin) = custom_skin_data {
+        if custom_skin.champion_id == champion_id {
+            config.custom_skins.push(custom_skin);
+        }
+    }
+
+    // Save the updated config
+    let data = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    std::fs::write(&file, data)
+        .map_err(|e| format!("Failed to write config.json: {}", e))?;
+
+    Ok(())
+}
+
+// Command to remove skin selection for a champion
+#[tauri::command]
+pub async fn remove_skin_for_champion(
+    app: tauri::AppHandle,
+    champion_id: u32
+) -> Result<(), String> {
+    let config_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?
+        .join("config");
+    let file = config_dir.join("config.json");
+
+    if !file.exists() {
+        return Ok(()); // Nothing to remove
+    }
+
+    // Load existing config
+    let content = std::fs::read_to_string(&file)
+        .map_err(|e| format!("Failed to read config.json: {}", e))?;
+    let mut config: SavedConfig = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse config.json: {}", e))?;
+
+    // Remove selections for this champion
+    config.skins.retain(|s| s.champion_id != champion_id);
+    config.custom_skins.retain(|s| s.champion_id != champion_id);
+
+    // Save the updated config
+    let data = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    std::fs::write(&file, data)
+        .map_err(|e| format!("Failed to write config.json: {}", e))?;
+
+    Ok(())
+}
+
+// Command to add/update a custom skin
+#[tauri::command]
+pub async fn save_custom_skin(
+    app: tauri::AppHandle,
+    custom_skin: CustomSkinData
+) -> Result<(), String> {
+    let config_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?
+        .join("config");
+    std::fs::create_dir_all(&config_dir)
+        .map_err(|e| format!("Failed to create config dir: {}", e))?;
+    let file = config_dir.join("config.json");
+
+    // Load existing config
+    let mut config = if file.exists() {
+        let content = std::fs::read_to_string(&file)
+            .map_err(|e| format!("Failed to read config.json: {}", e))?;
+        serde_json::from_str::<SavedConfig>(&content)
+            .map_err(|e| format!("Failed to parse config.json: {}", e))?
+    } else {
+        SavedConfig {
+            league_path: None,
+            skins: Vec::new(),
+            custom_skins: Vec::new(),
+            favorites: Vec::new(),
+            theme: None,
+            party_mode: PartyModeConfig::default(),
+            selected_misc_items: std::collections::HashMap::new(),
+        }
+    };
+
+    // Remove existing custom skin with same ID if it exists
+    config.custom_skins.retain(|s| s.id != custom_skin.id);
+    
+    // Add the new/updated custom skin
+    config.custom_skins.push(custom_skin);
+
+    // Save the updated config
+    let data = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    std::fs::write(&file, data)
+        .map_err(|e| format!("Failed to write config.json: {}", e))?;
+
+    Ok(())
+}
+
+// Command to get all custom skins
+#[tauri::command]
+pub async fn get_all_custom_skins(app: tauri::AppHandle) -> Result<Vec<CustomSkinData>, String> {
+    let config = load_config(app).await?;
+    Ok(config.custom_skins)
 }
 
 // Helper function to get league path from config

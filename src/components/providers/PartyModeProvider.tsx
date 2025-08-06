@@ -29,29 +29,6 @@ export function PartyModeProvider({ children }: PartyModeProviderProps) {
         await loadPairedFriends();
 
         // Set up global event listeners
-        const unsubscribeConnection = await partyModeApi.onConnectionRequest(
-          (request) => {
-            // Instead of showing a toast with a button, directly open the acceptance modal
-            document.dispatchEvent(
-              new CustomEvent("open-party-mode-acceptance", { detail: request })
-            );
-          }
-        );
-        const unsubscribePairingAccepted = await partyModeApi.onPairingAccepted(
-          (response) => {
-            toast.success(
-              `${response.from_summoner_name} accepted your connection request!`
-            );
-            void loadPairedFriends();
-          }
-        );
-        const unsubscribePairingDeclined = await partyModeApi.onPairingDeclined(
-          (response) => {
-            toast.error(
-              `${response.from_summoner_name} declined your connection request`
-            );
-          }
-        );
         const unsubscribeSkinReceived = await partyModeApi.onSkinReceived(
           (skinShare) => {
             toast.info(
@@ -62,6 +39,7 @@ export function PartyModeProvider({ children }: PartyModeProviderProps) {
             );
           }
         );
+        
         const unsubscribeSkinSent = await listen<SkinSentEvent>(
           "party-mode-skin-sent",
           (event) => {
@@ -71,12 +49,19 @@ export function PartyModeProvider({ children }: PartyModeProviderProps) {
             });
           }
         );
+        
+        const unsubscribePairedFriendsUpdated = await listen(
+          "party-mode-paired-friends-updated",
+          () => {
+            // Reload paired friends when they're updated
+            void loadPairedFriends();
+          }
+        );
+        
         unsubscribeFunctions = [
-          unsubscribeConnection,
-          unsubscribePairingAccepted,
-          unsubscribePairingDeclined,
           unsubscribeSkinReceived,
           unsubscribeSkinSent,
+          unsubscribePairedFriendsUpdated,
         ];
         console.log("[PartyModeProvider] Party mode initialized successfully");
       } catch (error) {
