@@ -15,7 +15,6 @@ import { SkinGrid } from "@/components/SkinGrid";
 import { CustomSkinList } from "@/components/CustomSkinList";
 import { MiscItemView } from "@/components/MiscItemView";
 import { TopBar } from "@/components/layout/TopBar";
-import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { DataUpdateModal } from "@/components/DataUpdateModal";
 
@@ -73,7 +72,7 @@ export default function Home() {
 
   const handleUpdateData = async () => {
     try {
-      await invoke("delete_champions_cache");
+      // Incremental update without clearing cache
       await updateData();
     } catch (error) {
       console.error("Failed to update data:", error);
@@ -160,6 +159,8 @@ export default function Home() {
           onUpdateData={() => {
             void updateData();
           }}
+          // Disable button while updating handled inside TopBar via props below
+          isUpdating={isUpdating}
         />
 
         {/* Main content */}

@@ -1,6 +1,6 @@
 use tauri::{AppHandle, Manager};
 use std::fs;
-use crate::commands::types::{DataUpdateResult};
+use crate::commands::types::{DataUpdateResult, SavedConfig};
 
 // Champion data management commands
 
@@ -11,6 +11,7 @@ pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResul
     
     let champions_dir = app_data_dir.join("champions");
     if !champions_dir.exists() {
+        println!("[DataUpdate] No champions directory found -> initial download needed");
         return Ok(DataUpdateResult {
             success: true,
             error: None,
@@ -18,13 +19,156 @@ pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResul
         });
     }
 
-    // TODO: Implement actual update checking logic
-    // For now, we'll just return that no updates are needed
+    // Try to load last saved commit from config
+    let config = super::config::load_config(app.clone()).await.unwrap_or(SavedConfig { 
+        league_path: None, skins: vec![], custom_skins: vec![], favorites: vec![], theme: None, party_mode: super::types::PartyModeConfig::default(), selected_misc_items: std::collections::HashMap::new(), auto_update_data: true, last_data_commit: None
+    });
+
+    let last_saved = config.last_data_commit.clone();
+
+    // Fetch latest commit sha from GitHub for darkseal-org/lol-skins main branch
+    let latest_sha = match fetch_latest_commit_sha().await {
+        Ok(sha) => Some(sha),
+        Err(e) => {
+            println!("[DataUpdate] Failed to fetch latest commit: {}", e);
+            None
+        }
+    };
+
+    if let Some(latest) = latest_sha {
+        println!(
+            "[DataUpdate] Last saved commit: {:?} | Latest upstream commit: {}",
+            last_saved, latest
+        );
+        if config.last_data_commit.as_deref() == Some(&latest) {
+            println!("[DataUpdate] Data up-to-date. No update required.");
+            return Ok(DataUpdateResult { success: true, error: None, updated_champions: Vec::new() });
+        } else {
+            println!("[DataUpdate] Update required (commit changed). Proceeding.");
+            return Ok(DataUpdateResult { success: true, error: None, updated_champions: vec!["repo".into()] });
+        }
+    }
+
+    // Fallback to no updates when API fails
+    println!("[DataUpdate] GitHub API unavailable. Skipping update check.");
     Ok(DataUpdateResult {
         success: true,
         error: None,
         updated_champions: Vec::new(),
     })
+}
+
+async fn fetch_latest_commit_sha() -> Result<String, String> {
+    let url = "https://api.github.com/repos/darkseal-org/lol-skins/commits?per_page=1";
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(url)
+        .header("User-Agent", "osskins-tauri")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch commits: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("GitHub API returned status {}", resp.status()));
+    }
+
+    let json: serde_json::Value = resp.json().await.map_err(|e| format!("Invalid JSON: {}", e))?;
+    if let Some(first) = json.as_array().and_then(|arr| arr.first()) {
+        if let Some(sha) = first.get("sha").and_then(|v| v.as_str()) {
+            println!("[DataUpdate] Fetched latest commit SHA: {}", sha);
+            return Ok(sha.to_string());
+        }
+    }
+    Err("No commit found".into())
+}
+
+#[tauri::command]
+pub async fn set_last_data_commit(app: tauri::AppHandle, sha: String) -> Result<(), String> {
+    // Load and update config.json
+    let config_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?
+        .join("config");
+    std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+    let file = config_dir.join("config.json");
+
+    let mut cfg: serde_json::Value = if file.exists() {
+        let content = std::fs::read_to_string(&file).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).map_err(|e| e.to_string())?
+    } else {
+        serde_json::json!({"auto_update_data": true})
+    };
+
+    cfg["last_data_commit"] = serde_json::json!(sha.clone());
+
+    let data = serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?;
+    std::fs::write(&file, data).map_err(|e| e.to_string())?;
+    println!("[DataUpdate] Saved last_data_commit to config: {}", sha);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_latest_data_commit() -> Result<String, String> {
+    fetch_latest_commit_sha().await
+}
+
+#[tauri::command]
+pub async fn get_changed_champions_since(last_sha: String) -> Result<Vec<String>, String> {
+    let url = format!(
+        "https://api.github.com/repos/darkseal-org/lol-skins/compare/{}...main",
+        last_sha
+    );
+    println!("[DataUpdate] Comparing commits via: {}", url);
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("User-Agent", "osskins-tauri")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to compare commits: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("GitHub compare API returned status {}", resp.status()));
+    }
+
+    let json: serde_json::Value = resp.json().await.map_err(|e| format!("Invalid JSON: {}", e))?;
+    let mut champs: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    if let Some(files) = json.get("files").and_then(|v| v.as_array()) {
+        println!("[DataUpdate] Compare returned {} changed files", files.len());
+        for f in files {
+            if let Some(filename) = f.get("filename").and_then(|v| v.as_str()) {
+                // We care about paths like skins/<Champion>/...
+                if let Some(rest) = filename.strip_prefix("skins/") {
+                    if let Some((champ, _)) = rest.split_once('/') {
+                        // Decode percent-encodings just in case
+                        let decoded = percent_encoding::percent_decode_str(champ).decode_utf8_lossy().to_string();
+                        champs.insert(decoded);
+                    }
+                }
+            }
+        }
+    }
+
+    let mut list: Vec<String> = champs.into_iter().collect();
+    list.sort();
+    let preview = list.iter().take(20).cloned().collect::<Vec<_>>().join(", ");
+    println!("[DataUpdate] Changed champions ({}): {}{}",
+        list.len(),
+        preview,
+        if list.len() > 20 { " ..." } else { "" }
+    );
+
+    Ok(list)
+}
+
+#[tauri::command]
+pub async fn get_changed_champions_from_config(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+    let cfg = super::config::load_config(app.clone()).await?;
+    if let Some(last) = cfg.last_data_commit {
+        get_changed_champions_since(last).await
+    } else {
+        Ok(Vec::new())
+    }
 }
 
 #[tauri::command]

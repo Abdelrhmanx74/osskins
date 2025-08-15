@@ -25,7 +25,7 @@ import { SettingsDialog } from "@/components/SettingsDialog";
 import PartyModeDialog from "@/components/PartyModeDialog";
 import { useGameStore, SkinTab } from "@/lib/store";
 import { usePartyModeStore } from "@/lib/store/party-mode";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Champion } from "@/lib/types";
 import { Badge } from "../ui/badge";
@@ -36,7 +36,8 @@ interface TopBarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onChampionSelect: (id: number) => void;
-  onUpdateData: () => void;
+  onUpdateData: () => void | Promise<void>;
+  isUpdating?: boolean;
 }
 
 export function TopBar({
@@ -46,10 +47,39 @@ export function TopBar({
   onSearchChange,
   onChampionSelect,
   onUpdateData,
+  isUpdating = false,
 }: TopBarProps) {
   // Get tab state from the store
   const { activeTab, setActiveTab } = useGameStore();
   const pairedFriendsCount = usePartyModeStore((s) => s.pairedFriends.length);
+
+  // Track update availability
+  const [isChecking, setIsChecking] = useState(false);
+  const [isUpToDate, setIsUpToDate] = useState<boolean | null>(null);
+
+  const refreshUpdateAvailability = useMemo(
+    () => async () => {
+      try {
+        setIsChecking(true);
+        const info = await invoke<{
+          success: boolean;
+          updatedChampions?: string[];
+        }>("check_data_updates");
+        const hasNew = (info.updatedChampions?.length ?? 0) > 0;
+        setIsUpToDate(!hasNew);
+      } catch (e) {
+        // On failure, do not disable the button
+        setIsUpToDate(null);
+      } finally {
+        setIsChecking(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    void refreshUpdateAvailability();
+  }, [refreshUpdateAvailability]);
 
   // Load saved tab preference from localStorage
   useEffect(() => {
@@ -66,26 +96,20 @@ export function TopBar({
     // Party mode is now handled by the provider, no need for manual loading
   }, []);
 
-  // Force update by deleting cache and updating
-  async function handleForceUpdateData() {
+  // Manual update without clearing cache
+  async function handleManualUpdate() {
     try {
-      toast.promise(
-        async () => {
-          // Delete champion cache first
-          await invoke("delete_champions_cache");
-          // Then run update
-          onUpdateData();
-        },
-        {
-          loading: "Clearing cached data...",
-          success: "Cache cleared successfully, updating champion data",
-          error: "Failed to clear champion cache",
-        }
-      );
+      await onUpdateData();
+      // After update, refresh availability to reflect up-to-date state
+      await refreshUpdateAvailability();
     } catch (error) {
-      console.error("Error during force update:", error);
+      console.error("Error during manual update:", error);
+      toast.error("Failed to update data");
     }
   }
+
+  const updateDisabled =
+    activeTab === "custom" || isUpdating || isChecking || isUpToDate === true;
 
   return (
     <div
@@ -166,18 +190,24 @@ export function TopBar({
             </DropdownMenuTrigger>
             <DropdownMenuContent className="min-w-50" align="end">
               <PartyModeDialog />
-              {/* Update Data button always visible but disabled in custom tab */}
+              {/* Manual Update Data (incremental) */}
               <DropdownMenuItem
                 onClick={() => {
-                  void handleForceUpdateData();
+                  void handleManualUpdate();
                 }}
                 onSelect={(e) => {
                   e.preventDefault();
                 }}
-                disabled={activeTab === "custom"}
+                disabled={updateDisabled}
               >
                 <RefreshCw className="h-4 w-4" />
-                Update Data
+                {isUpToDate === true
+                  ? "Up to date"
+                  : isChecking
+                  ? "Checking..."
+                  : isUpdating
+                  ? "Updating..."
+                  : "Update Data"}
               </DropdownMenuItem>
               <TerminalLogsDialog />
               <SettingsDialog />

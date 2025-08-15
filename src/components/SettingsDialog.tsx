@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -19,11 +19,41 @@ import { DropdownMenuItem } from "./ui/dropdown-menu";
 import { Label } from "./ui/label";
 import { ThemeToneSelector } from "./ThemeToneSelector";
 import { Separator } from "./ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { useDataUpdate } from "@/lib/hooks/use-data-update";
 
 export function SettingsDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [autoUpdate, setAutoUpdate] = useState(true);
   const { leaguePath, setLeaguePath } = useGameStore();
+  const { updateData } = useDataUpdate();
+
+  useEffect(() => {
+    // Load current setting
+    const load = async () => {
+      try {
+        const cfg = await invoke("load_config");
+        if (cfg && typeof cfg === "object" && "auto_update_data" in cfg) {
+          const v = (cfg as Record<string, unknown>)["auto_update_data"];
+          setAutoUpdate(v !== false);
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    void load();
+  }, []);
+
+  const persistAutoUpdate = async (value: boolean) => {
+    try {
+      await invoke("set_auto_update_data", { value });
+      toast.success("Settings saved");
+    } catch (e) {
+      console.error("Failed to save auto update setting", e);
+      toast.error("Failed to save settings");
+    }
+  };
 
   const handleSelectDirectory = async () => {
     try {
@@ -111,6 +141,48 @@ export function SettingsDialog() {
                 Browse
               </Button>
             </div>
+          </div>
+
+          {/* Auto update toggle */}
+          <div className="flex items-center justify-between mt-2">
+            <div className="flex flex-col">
+              <Label>Auto update data</Label>
+              <span className="text-xs text-muted-foreground">
+                Automatically download new champion data
+              </span>
+            </div>
+            <Switch
+              checked={autoUpdate}
+              onCheckedChange={(v) => {
+                const next = !!v;
+                setAutoUpdate(next);
+                void persistAutoUpdate(next);
+                // If turning OFF auto-update, immediately check and prompt
+                if (!next) {
+                  void (async () => {
+                    try {
+                      const info = await invoke<{
+                        success: boolean;
+                        updatedChampions?: string[];
+                      }>("check_data_updates");
+                      const hasNew = (info.updatedChampions?.length ?? 0) > 0;
+                      if (hasNew) {
+                        toast("New data is available", {
+                          action: {
+                            label: "Update data",
+                            onClick: () => {
+                              void updateData();
+                            },
+                          },
+                        });
+                      }
+                    } catch (e) {
+                      console.warn("Failed to check updates after toggle", e);
+                    }
+                  })();
+                }
+              }}
+            />
           </div>
         </div>
 

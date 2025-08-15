@@ -254,6 +254,8 @@ pub async fn update_party_mode_settings(
             theme: None,
             party_mode: PartyModeConfig::default(),
             selected_misc_items: std::collections::HashMap::new(),
+            auto_update_data: true,
+            last_data_commit: None,
         }
     };
 
@@ -583,6 +585,8 @@ async fn add_paired_friend(
             theme: None,
             party_mode: PartyModeConfig::default(),
             selected_misc_items: std::collections::HashMap::new(),
+            auto_update_data: true,
+            last_data_commit: None,
         }
     };
 

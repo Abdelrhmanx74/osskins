@@ -13,6 +13,7 @@ pub struct DataUpdateProgress {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DataUpdateResult {
     pub success: bool,
     pub error: Option<String>,
@@ -65,7 +66,14 @@ pub struct SavedConfig {
     pub party_mode: PartyModeConfig,
     #[serde(default)]
     pub selected_misc_items: std::collections::HashMap<String, Vec<String>>,
+    // New settings
+    #[serde(default = "default_auto_update_data")]
+    pub auto_update_data: bool,
+    #[serde(default)]
+    pub last_data_commit: Option<String>,
 }
+
+fn default_auto_update_data() -> bool { true }
 
 // Party Mode related types
 #[derive(Debug, Clone, Serialize, Deserialize)]

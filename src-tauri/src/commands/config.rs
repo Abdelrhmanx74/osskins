@@ -107,6 +107,10 @@ pub async fn save_selected_skins(
     config["favorites"] = serde_json::to_value(favorites).unwrap();
     config["theme"] = serde_json::to_value(theme).unwrap();
     config["selected_misc_items"] = serde_json::to_value(selected_misc_items.unwrap_or_default()).unwrap();
+    // Preserve auto update and last commit fields if present
+    if config.get("auto_update_data").is_none() {
+        config["auto_update_data"] = serde_json::json!(true);
+    }
 
     // Write back the merged config
     let data = serde_json::to_string_pretty(&config)
@@ -133,12 +137,19 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
             theme: None,
             party_mode: PartyModeConfig::default(),
             selected_misc_items: std::collections::HashMap::new(),
+            auto_update_data: true,
+            last_data_commit: None,
         });
     }
     let content = std::fs::read_to_string(&file)
         .map_err(|e| format!("Failed to read config.json: {}", e))?;
-    let cfg: SavedConfig = serde_json::from_str(&content)
+    let mut cfg: SavedConfig = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse config.json: {}", e))?;
+
+    // Backfill defaults
+    if cfg.last_data_commit.is_none() {
+        cfg.last_data_commit = None;
+    }
     Ok(cfg)
 }
 
@@ -172,6 +183,8 @@ pub async fn select_skin_for_champion(
             theme: None,
             party_mode: PartyModeConfig::default(),
             selected_misc_items: std::collections::HashMap::new(),
+            auto_update_data: true,
+            last_data_commit: None,
         }
     };
 
@@ -263,6 +276,8 @@ pub async fn save_custom_skin(
             theme: None,
             party_mode: PartyModeConfig::default(),
             selected_misc_items: std::collections::HashMap::new(),
+            auto_update_data: true,
+            last_data_commit: None,
         }
     };
 
@@ -312,4 +327,33 @@ pub fn get_league_path_from_config(app_handle: &AppHandle) -> Option<String> {
         }
     }
     None
+}
+
+// Command to set auto_update_data in config.json
+#[tauri::command]
+pub async fn set_auto_update_data(app: tauri::AppHandle, value: bool) -> Result<(), String> {
+    let config_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?
+        .join("config");
+    std::fs::create_dir_all(&config_dir)
+        .map_err(|e| format!("Failed to create config dir: {}", e))?;
+    let file = config_dir.join("config.json");
+
+    let mut cfg: serde_json::Value = if file.exists() {
+        let content = std::fs::read_to_string(&file)
+            .map_err(|e| format!("Failed to read config.json: {}", e))?;
+        serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse config.json: {}", e))?
+    } else {
+        serde_json::json!({})
+    };
+
+    cfg["auto_update_data"] = serde_json::json!(value);
+
+    let data = serde_json::to_string_pretty(&cfg)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    std::fs::write(&file, data)
+        .map_err(|e| format!("Failed to write config.json: {}", e))?;
+
+    Ok(())
 }

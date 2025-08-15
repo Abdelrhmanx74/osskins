@@ -96,41 +96,58 @@ export const skinManagementApi = {
 export const skinHelpers = {
   // Check if a champion has any skin selected (official or custom)
   hasAnySkinSelected(championId: number, config: SavedConfig): boolean {
-    const hasOfficialSkin = config.skins.some(s => s.champion_id === championId);
-    const hasCustomSkin = config.custom_skins.some(s => s.champion_id === championId);
+    const hasOfficialSkin = config.skins.some(
+      (s) => s.champion_id === championId
+    );
+    const hasCustomSkin = config.custom_skins.some(
+      (s) => s.champion_id === championId
+    );
     return hasOfficialSkin || hasCustomSkin;
   },
 
   // Get the selected skin for a champion (official or custom)
-  getSelectedSkin(championId: number, config: SavedConfig): { type: 'official' | 'custom', data: SkinData | CustomSkinData } | null {
-    const officialSkin = config.skins.find(s => s.champion_id === championId);
+  getSelectedSkin(
+    championId: number,
+    config: SavedConfig
+  ): { type: "official" | "custom"; data: SkinData | CustomSkinData } | null {
+    const officialSkin = config.skins.find((s) => s.champion_id === championId);
     if (officialSkin) {
-      return { type: 'official', data: officialSkin };
+      return { type: "official", data: officialSkin };
     }
 
-    const customSkin = config.custom_skins.find(s => s.champion_id === championId);
+    const customSkin = config.custom_skins.find(
+      (s) => s.champion_id === championId
+    );
     if (customSkin) {
-      return { type: 'custom', data: customSkin };
+      return { type: "custom", data: customSkin };
     }
 
     return null;
   },
 
   // Get all custom skins for a specific champion
-  getCustomSkinsForChampion(championId: number, customSkins: CustomSkinData[]): CustomSkinData[] {
-    return customSkins.filter(s => s.champion_id === championId);
+  getCustomSkinsForChampion(
+    championId: number,
+    customSkins: CustomSkinData[]
+  ): CustomSkinData[] {
+    return customSkins.filter((s) => s.champion_id === championId);
   },
 
   // Check if selecting a skin would conflict with existing selections
-  wouldConflict(championId: number, config: SavedConfig): 'official' | 'custom' | null {
-    const officialSkin = config.skins.find(s => s.champion_id === championId);
-    if (officialSkin) return 'official';
+  wouldConflict(
+    championId: number,
+    config: SavedConfig
+  ): "official" | "custom" | null {
+    const officialSkin = config.skins.find((s) => s.champion_id === championId);
+    if (officialSkin) return "official";
 
-    const customSkin = config.custom_skins.find(s => s.champion_id === championId);
-    if (customSkin) return 'custom';
+    const customSkin = config.custom_skins.find(
+      (s) => s.champion_id === championId
+    );
+    if (customSkin) return "custom";
 
     return null;
-  }
+  },
 };
 
 // Example usage in React components:

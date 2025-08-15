@@ -2896,6 +2896,7 @@ dependencies = [
  "md5",
  "memmap2",
  "once_cell",
+ "percent-encoding",
  "rayon",
  "reqwest",
  "rfd",

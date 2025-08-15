@@ -26,6 +26,7 @@ export function useDataUpdate() {
     const loadingToastId = toast("Updating data...");
 
     try {
+      console.log("[Update] Starting data update flow");
       setIsUpdating(true);
       setProgress({
         currentChampion: "",
@@ -38,6 +39,12 @@ export function useDataUpdate() {
       // Check for updates
       const updateResult = await invoke<DataUpdateResult>("check_data_updates");
       const dataExists = await invoke<boolean>("check_champions_data");
+      console.log(
+        "[Update] check_data_updates:",
+        updateResult,
+        "| dataExists:",
+        dataExists
+      );
 
       // If updates are needed or no data exists, proceed with update
       if (
@@ -48,7 +55,44 @@ export function useDataUpdate() {
         // Fetch champion summaries
         const summaries = await fetchChampionSummaries();
         const validSummaries = summaries.filter((summary) => summary.id > 0);
-        const totalChampions = validSummaries.length;
+        console.log(
+          `[Update] Loaded ${validSummaries.length} champions from CommunityDragon`
+        );
+
+        // If we have last commit, get changed champions to narrow updates
+        let targetSummaries = validSummaries;
+        try {
+          const changed = await invoke<string[]>(
+            "get_changed_champions_from_config"
+          );
+          console.log("[Update] Changed champions from config:", changed);
+          if (changed.length > 0) {
+            const changedSet = new Set(
+              changed.map((n) => n.toLowerCase().replace(/%20/g, " "))
+            );
+            targetSummaries = validSummaries.filter((s) =>
+              changedSet.has(s.name.toLowerCase())
+            );
+            if (targetSummaries.length === 0) {
+              console.warn(
+                "[Update] Mapping changed champions to summaries yielded 0; falling back to full update"
+              );
+              targetSummaries = validSummaries;
+            }
+          }
+        } catch (e) {
+          console.warn(
+            "[Update] Failed to get changed champions from config; defaulting to full update",
+            e
+          );
+        }
+
+        console.log(
+          `[Update] Targeting ${targetSummaries.length}/${validSummaries.length} champions`,
+          targetSummaries.slice(0, 15).map((s) => s.name)
+        );
+
+        const totalChampions = targetSummaries.length;
 
         setProgress((prev) => ({
           ...prev!,
@@ -65,8 +109,13 @@ export function useDataUpdate() {
         const DELAY_BETWEEN_BATCHES = 500;
 
         let processedCount = 0;
-        for (let i = 0; i < validSummaries.length; i += BATCH_SIZE) {
-          const batch = validSummaries.slice(i, i + BATCH_SIZE);
+        for (let i = 0; i < targetSummaries.length; i += BATCH_SIZE) {
+          const batch = targetSummaries.slice(i, i + BATCH_SIZE);
+          console.log(
+            `[Update] Processing batch ${i / BATCH_SIZE + 1} (${
+              batch.length
+            } champions)`
+          );
 
           // Process each champion in the batch
           const batchPromises = batch.map(async (summary) => {
@@ -89,7 +138,6 @@ export function useDataUpdate() {
                   try {
                     // Prepare local vs repo names
                     const localChampionKey = sanitizeForFileName(summary.name);
-                    // Strip colons and slashes from name to match repo (e.g. K/DA -> KDA)
                     const downloadName = skin.name
                       .replace(/:/g, "")
                       .replace(/\//g, "");
@@ -116,17 +164,10 @@ export function useDataUpdate() {
                     if (skin.chromas && skin.chromas.length > 0) {
                       await Promise.all(
                         skin.chromas.map(async (chroma) => {
-                          // Repository uses this structure: champion/chromas/skinName/skinName chromaId.zip
-                          // For example: Kennen/chromas/Kennen M.D./Kennen M.D. 85009.zip
                           const chromaId = chroma.id;
-
-                          // The full chroma filename in the repo includes both skin name and chroma ID
                           const chromaFileName = `${repoSkinName} ${chromaId}`;
-
-                          // The path to the chroma directory
                           const chromaPath = ["chromas", repoSkinName];
 
-                          // Fetch the chroma ZIP using the special chroma path structure
                           const chromaContent = await fetchSkinZip(
                             repoChampionName,
                             chromaPath,
@@ -134,11 +175,7 @@ export function useDataUpdate() {
                           );
 
                           if (chromaContent.byteLength > 0) {
-                            // The local filename format must match what's used in transformChampionData
-                            // In transformChampionData we use: `${baseDir}/${sanitizeForFileName(skin.name)}_chroma_${chroma.id}.zip`
                             const chromaFileName = `${localSkinKey}_chroma_${chroma.id}.zip`;
-
-                            // Save the chroma ZIP locally
                             await invoke("save_zip_file", {
                               championName: localChampionKey,
                               fileName: chromaFileName,
@@ -215,7 +252,20 @@ export function useDataUpdate() {
 
         toast.dismiss(downloadToastId);
         toast.success("Data updated successfully");
+
+        // Save latest commit SHA so next checks are incremental
+        try {
+          const latestSha = await invoke<string>("get_latest_data_commit");
+          console.log("[Update] Latest upstream commit:", latestSha);
+          if (latestSha) {
+            await invoke("set_last_data_commit", { sha: latestSha });
+            console.log("[Update] Saved last_data_commit:", latestSha);
+          }
+        } catch (e) {
+          console.warn("Failed to record latest data commit", e);
+        }
       } else {
+        console.log("[Update] No updates required");
         toast.dismiss(loadingToastId);
         toast.success("Champion data is already up to date");
       }

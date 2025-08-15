@@ -92,6 +92,7 @@ fn main() {
             debug_config,
             delete_champions_cache,
             auto_detect_league,
+            set_auto_update_data,
             
             // unified skin commands
             select_skin_for_champion,
@@ -119,6 +120,12 @@ fn main() {
             get_party_mode_settings,
             update_party_mode_settings,
             start_party_mode_chat_monitor,
+
+            // data commit tracking
+            set_last_data_commit,
+            get_latest_data_commit,
+            get_changed_champions_since,
+            get_changed_champions_from_config,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
