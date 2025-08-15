@@ -1,273 +1,446 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Mock LCU Dashboard - Party Mode</title>
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-  <style>
-    body { font-family: sans-serif; margin: 2rem; background: #181a20; color: #eee; }
-    h1, h2 { color: #ffb300; }
-    .section { margin-bottom: 2rem; padding: 1rem; background: #23272f; border-radius: 8px; }
-    .phases { margin-bottom: 2rem; }
-    button { margin: 0.25rem 0.5rem 0.25rem 0; padding: 0.5rem 1rem; border: none; border-radius: 4px; background: #2a2f3a; color: #ffb300; font-weight: bold; cursor: pointer; transition: all 0.2s; }
-    button:hover { background: #3a3f4a; }
-    button.active { background: #ffb300; color: #23272f; }
-    button.enabled { background: #4caf50; color: white; }
-    button.locked-in { background: #ff9800; color: white; }
-    button:disabled { background: #555; color: #999; cursor: not-allowed; }
-    .status { margin: 1rem 0; font-size: 1.2em; }
-    .event-log { background: #1a1d23; padding: 1rem; border-radius: 6px; max-height: 300px; overflow-y: auto; font-size: 0.95em; border: 1px solid #333; }
-    .friend-row { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem; margin: 0.5rem 0; background: #2a2f3a; border-radius: 6px; border: 1px solid #333; }
-    .friend-info { display: flex; align-items: center; gap: 1rem; }
-    .friend-status { width: 12px; height: 12px; border-radius: 50%; background: #666; }
-    .friend-status.sharing { background: #4caf50; }
-    .friend-status.locked { background: #ff9800; }
-    .friend-controls { display: flex; gap: 0.5rem; align-items: center; }
-    .skin-selector { display: flex; gap: 0.25rem; flex-wrap: wrap; }
-    .skin-btn { padding: 0.25rem 0.5rem; font-size: 0.8em; }
-    .stats { display: flex; gap: 2rem; margin: 1rem 0; }
-    .stat { text-align: center; }
-    .stat-number { font-size: 1.5em; font-weight: bold; color: #ffb300; }
-    .stat-label { font-size: 0.9em; color: #ccc; }
-  </style>
-</head>
-<body>
-  <h1>Mock LCU Dashboard - Party Mode</h1>
-  
-  <div class="section phases">
-    <h2>LCU Phase Controls</h2>
-    <div id="phase-buttons"></div>
-    <div class="status">Current Phase: <span id="current-phase">Lobby</span></div>
-  </div>
-  
-  <div class="section">
-    <h2>Party Mode Simulation - Friends vs You</h2>
-    <div class="stats">
-      <div class="stat">
-        <div class="stat-number" id="sharing-count">0</div>
-        <div class="stat-label">Friends Sharing</div>
-      </div>
-      <div class="stat">
-        <div class="stat-number" id="locked-count">0</div>
-        <div class="stat-label">Friends Locked In</div>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Mock LCU Dashboard - Party Mode</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 2rem;
+        background: #181a20;
+        color: #eee;
+      }
+      h1,
+      h2 {
+        color: #ffb300;
+      }
+      .section {
+        margin-bottom: 2rem;
+        padding: 1rem;
+        background: #23272f;
+        border-radius: 8px;
+      }
+      .phases {
+        margin-bottom: 2rem;
+      }
+      button {
+        margin: 0.25rem 0.5rem 0.25rem 0;
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 4px;
+        background: #2a2f3a;
+        color: #ffb300;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      button:hover {
+        background: #3a3f4a;
+      }
+      button.active {
+        background: #ffb300;
+        color: #23272f;
+      }
+      button.enabled {
+        background: #4caf50;
+        color: white;
+      }
+      button.locked-in {
+        background: #ff9800;
+        color: white;
+      }
+      button:disabled {
+        background: #555;
+        color: #999;
+        cursor: not-allowed;
+      }
+      .status {
+        margin: 1rem 0;
+        font-size: 1.2em;
+      }
+      .event-log {
+        background: #1a1d23;
+        padding: 1rem;
+        border-radius: 6px;
+        max-height: 300px;
+        overflow-y: auto;
+        font-size: 0.95em;
+        border: 1px solid #333;
+      }
+      .friend-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem;
+        margin: 0.5rem 0;
+        background: #2a2f3a;
+        border-radius: 6px;
+        border: 1px solid #333;
+      }
+      .friend-info {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+      .friend-status {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #666;
+      }
+      .friend-status.sharing {
+        background: #4caf50;
+      }
+      .friend-status.locked {
+        background: #ff9800;
+      }
+      .friend-controls {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+      }
+      .skin-selector {
+        display: flex;
+        gap: 0.25rem;
+        flex-wrap: wrap;
+      }
+      .skin-btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8em;
+      }
+      .stats {
+        display: flex;
+        gap: 2rem;
+        margin: 1rem 0;
+      }
+      .stat {
+        text-align: center;
+      }
+      .stat-number {
+        font-size: 1.5em;
+        font-weight: bold;
+        color: #ffb300;
+      }
+      .stat-label {
+        font-size: 0.9em;
+        color: #ccc;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Mock LCU Dashboard - Party Mode</h1>
+
+    <div class="section phases">
+      <h2>LCU Phase Controls</h2>
+      <div id="phase-buttons"></div>
+      <div class="status">
+        Current Phase: <span id="current-phase">Lobby</span>
       </div>
     </div>
-    
-    <h3 style="color: #4caf50;">👥 Your Friends (Simulated)</h3>
-    <div id="friends-list"></div>
-    
-    <div style="margin-top: 1.5rem; padding: 1rem; background: #2a2f3a; border-radius: 6px; border: 2px solid #ffb300;">
-      <h3 style="margin: 0 0 1rem 0; color: #ffb300;">🎮 You (Local Player) - Your Skin Selection</h3>
-      <p style="margin: 0 0 1rem 0; color: #ccc; font-size: 0.9em;">Select and lock in your skin to send to friends</p>
-      <div class="skin-selector" id="local-skin-selector"></div>
+
+    <div class="section">
+      <h2>Party Mode Simulation - Friends vs You</h2>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-number" id="sharing-count">0</div>
+          <div class="stat-label">Friends Sharing</div>
+        </div>
+        <div class="stat">
+          <div class="stat-number" id="locked-count">0</div>
+          <div class="stat-label">Friends Locked In</div>
+        </div>
+      </div>
+
+      <h3 style="color: #4caf50">👥 Your Friends (Simulated)</h3>
+      <div id="friends-list"></div>
+
+      <div
+        style="
+          margin-top: 1.5rem;
+          padding: 1rem;
+          background: #2a2f3a;
+          border-radius: 6px;
+          border: 2px solid #ffb300;
+        "
+      >
+        <h3 style="margin: 0 0 1rem 0; color: #ffb300">
+          🎮 You (Local Player) - Your Skin Selection
+        </h3>
+        <p style="margin: 0 0 1rem 0; color: #ccc; font-size: 0.9em">
+          Select and lock in your skin to send to friends
+        </p>
+        <div class="skin-selector" id="local-skin-selector"></div>
+      </div>
     </div>
-  </div>
-  
-  <div class="section">
-    <h2>Event Log</h2>
-    <div class="event-log" id="event-log"></div>
-  </div>
-  
-  <script>
-    const PHASES = [
-      'None', 'Lobby', 'Matchmaking', 'ReadyCheck', 'ChampSelect', 'GameStart',
-      'InProgress', 'WaitingForStats', 'PreEndOfGame', 'EndOfGame', 'Reconnect'
-    ];
-    
-    const socket = io();
-    let currentPhase = 'Lobby';
-    let partyState = { friends: [], availableSkins: [] };
-    
-    function logEvent(msg) {
-      const el = document.getElementById('event-log');
-      el.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}<br>` + el.innerHTML;
-    }
-    
-    function setPhase(phase) {
-      fetch('/lcu/v1/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state: phase })
-      });
-      currentPhase = phase;
-      document.getElementById('current-phase').textContent = phase;
-      renderPhaseButtons();
-      logEvent(`Phase changed to ${phase}`);
-    }
-    
-    function toggleFriendSharing(friendIndex) {
-      fetch('/test/toggle-friend-sharing', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ friendIndex })
-      })
-      .then(res => res.json())
-      .then(data => {
-        logEvent(data.message);
-        loadPartyState();
-      })
-      .catch(err => {
-        logEvent(`Error toggling friend sharing: ${err.message}`);
-      });
-    }
-    
-    function lockFriendSkin(friendIndex, skinIndex) {
-      fetch('/test/friend-lock-skin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ friendIndex, skinIndex })
-      })
-      .then(res => res.json())
-      .then(data => {
-        logEvent(data.message);
-        loadPartyState();
-      })
-      .catch(err => {
-        logEvent(`Error locking skin: ${err.message}`);
-      });
-    }
-    
-    function lockLocalPlayerSkin(skinIndex) {
-      const championId = partyState.availableSkins[skinIndex].championId;
-      fetch('/test/lock-in-champion', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ championId })
-      })
-      .then(res => res.json())
-      .then(data => {
-        logEvent(`🔒 ${data.message}`);
-        loadPartyState();
-      })
-      .catch(err => {
-        logEvent(`Error locking in champion: ${err.message}`);
-      });
-    }
-    
-    function updateStats() {
-      const sharingCount = partyState.friends.filter(f => f.isSharing).length;
-      const lockedCount = partyState.friends.filter(f => f.isLockedIn).length;
-      
-      document.getElementById('sharing-count').textContent = sharingCount;
-      document.getElementById('locked-count').textContent = lockedCount;
-    }
-    
-    function loadPartyState() {
-      fetch('/test/party-state')
-        .then(res => res.json())
-        .then(data => {
-          partyState = data;
-          renderFriends();
-          updateStats();
-        })
-        .catch(err => {
-          logEvent(`Error loading party state: ${err.message}`);
+
+    <div class="section">
+      <h2>Event Log</h2>
+      <div class="event-log" id="event-log"></div>
+    </div>
+
+    <div class="section">
+      <h2>Chat Log (raw OSS messages)</h2>
+      <div class="event-log" id="chat-log"></div>
+    </div>
+
+    <script>
+      const PHASES = [
+        "None",
+        "Lobby",
+        "Matchmaking",
+        "ReadyCheck",
+        "ChampSelect",
+        "GameStart",
+        "InProgress",
+        "WaitingForStats",
+        "PreEndOfGame",
+        "EndOfGame",
+        "Reconnect",
+      ];
+
+      const socket = io();
+      let currentPhase = "Lobby";
+      let partyState = { friends: [], availableSkins: [] };
+
+      function logEvent(msg) {
+        const el = document.getElementById("event-log");
+        el.innerHTML =
+          `[${new Date().toLocaleTimeString()}] ${msg}<br>` + el.innerHTML;
+      }
+      function logChat(entry) {
+        const el = document.getElementById("chat-log");
+        const dir = entry.direction === "sent" ? "➡️ Sent" : "⬅️ Recv";
+        const peer =
+          entry.direction === "sent" ? `to ${entry.to}` : `from ${entry.from}`;
+        el.innerHTML =
+          `[${new Date(
+            entry.timestamp
+          ).toLocaleTimeString()}] ${dir} ${peer}: ${entry.body}<br>` +
+          el.innerHTML;
+      }
+
+      function setPhase(phase) {
+        fetch("/lcu/v1/state", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ state: phase }),
         });
-    }
-    
-    function renderPhaseButtons() {
-      const container = document.getElementById('phase-buttons');
-      container.innerHTML = '';
-      PHASES.forEach(phase => {
-        const btn = document.createElement('button');
-        btn.textContent = phase;
-        btn.className = phase === currentPhase ? 'active' : '';
-        btn.onclick = () => setPhase(phase);
-        container.appendChild(btn);
-      });
-    }
-    
-    function renderFriends() {
-      const container = document.getElementById('friends-list');
-      container.innerHTML = '';
-      
-      partyState.friends.forEach((friend, friendIndex) => {
-        const friendRow = document.createElement('div');
-        friendRow.className = 'friend-row';
-        
-        const statusClass = friend.isLockedIn ? 'locked' : (friend.isSharing ? 'sharing' : '');
-        
-        friendRow.innerHTML = `
+        currentPhase = phase;
+        document.getElementById("current-phase").textContent = phase;
+        renderPhaseButtons();
+        logEvent(`Phase changed to ${phase}`);
+      }
+
+      function toggleFriendSharing(friendIndex) {
+        fetch("/test/toggle-friend-sharing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ friendIndex }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            logEvent(data.message);
+            loadPartyState();
+          })
+          .catch((err) => {
+            logEvent(`Error toggling friend sharing: ${err.message}`);
+          });
+      }
+
+      function lockFriendSkin(friendIndex, skinIndex) {
+        fetch("/test/friend-lock-skin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ friendIndex, skinIndex }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            logEvent(data.message);
+            loadPartyState();
+          })
+          .catch((err) => {
+            logEvent(`Error locking skin: ${err.message}`);
+          });
+      }
+
+      function lockLocalPlayerSkin(skinIndex) {
+        const championId = partyState.availableSkins[skinIndex].championId;
+        fetch("/test/lock-in-champion", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ championId }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            logEvent(`🔒 ${data.message}`);
+            loadPartyState();
+          })
+          .catch((err) => {
+            logEvent(`Error locking in champion: ${err.message}`);
+          });
+      }
+
+      function updateStats() {
+        const sharingCount = partyState.friends.filter(
+          (f) => f.isSharing
+        ).length;
+        const lockedCount = partyState.friends.filter(
+          (f) => f.isLockedIn
+        ).length;
+
+        document.getElementById("sharing-count").textContent = sharingCount;
+        document.getElementById("locked-count").textContent = lockedCount;
+      }
+
+      function loadPartyState() {
+        fetch("/test/party-state")
+          .then((res) => res.json())
+          .then((data) => {
+            partyState = data;
+            renderFriends();
+            updateStats();
+          })
+          .catch((err) => {
+            logEvent(`Error loading party state: ${err.message}`);
+          });
+      }
+
+      function renderPhaseButtons() {
+        const container = document.getElementById("phase-buttons");
+        container.innerHTML = "";
+        PHASES.forEach((phase) => {
+          const btn = document.createElement("button");
+          btn.textContent = phase;
+          btn.className = phase === currentPhase ? "active" : "";
+          btn.onclick = () => setPhase(phase);
+          container.appendChild(btn);
+        });
+      }
+
+      function renderFriends() {
+        const container = document.getElementById("friends-list");
+        container.innerHTML = "";
+
+        partyState.friends.forEach((friend, friendIndex) => {
+          const friendRow = document.createElement("div");
+          friendRow.className = "friend-row";
+
+          const statusClass = friend.isLockedIn
+            ? "locked"
+            : friend.isSharing
+            ? "sharing"
+            : "";
+
+          friendRow.innerHTML = `
           <div class="friend-info">
             <div class="friend-status ${statusClass}"></div>
             <div>
               <strong>${friend.displayName}</strong>
               <div style="font-size: 0.8em; color: #ccc;">
-                ${friend.isLockedIn ? `Locked: ${friend.selectedSkin.skinName}` : 
-                  friend.isSharing ? 'Sharing enabled' : 'Not sharing'}
+                ${
+                  friend.isLockedIn
+                    ? `Locked: ${friend.selectedSkin.skinName}`
+                    : friend.isSharing
+                    ? "Sharing enabled"
+                    : "Not sharing"
+                }
               </div>
             </div>
           </div>
           <div class="friend-controls">
-            <button class="${friend.isSharing ? 'enabled' : ''}" 
+            <button class="${friend.isSharing ? "enabled" : ""}" 
                     onclick="toggleFriendSharing(${friendIndex})">
-              ${friend.isSharing ? 'Sharing ON' : 'Sharing OFF'}
+              ${friend.isSharing ? "Sharing ON" : "Sharing OFF"}
             </button>
-            ${friend.isSharing && !friend.isLockedIn ? renderSkinSelector(friendIndex) : ''}
+            ${
+              friend.isSharing && !friend.isLockedIn
+                ? renderSkinSelector(friendIndex)
+                : ""
+            }
           </div>
         `;
-        
-        container.appendChild(friendRow);
-      });
-      
-      // Render local player skin selector
-      renderLocalSkinSelector();
-    }
-    
-    function renderLocalSkinSelector() {
-      const container = document.getElementById('local-skin-selector');
-      const skins = partyState.availableSkins;
-      container.innerHTML = skins.map((skin, skinIndex) => 
-        `<button class="skin-btn" onclick="lockLocalPlayerSkin(${skinIndex})" style="background: #ffb300; color: #23272f; font-weight: bold;">
+
+          container.appendChild(friendRow);
+        });
+
+        // Render local player skin selector
+        renderLocalSkinSelector();
+      }
+
+      function renderLocalSkinSelector() {
+        const container = document.getElementById("local-skin-selector");
+        const skins = partyState.availableSkins;
+        container.innerHTML = skins
+          .map(
+            (skin, skinIndex) =>
+              `<button class="skin-btn" onclick="lockLocalPlayerSkin(${skinIndex})" style="background: #ffb300; color: #23272f; font-weight: bold;">
           🔒 Lock ${skin.skinName}
         </button>`
-      ).join('');
-    }
-    
-    function renderSkinSelector(friendIndex) {
-      const skins = partyState.availableSkins;
-      return `
+          )
+          .join("");
+      }
+
+      function renderSkinSelector(friendIndex) {
+        const skins = partyState.availableSkins;
+        return `
         <div class="skin-selector">
-          ${skins.map((skin, skinIndex) => 
-            `<button class="skin-btn" onclick="lockFriendSkin(${friendIndex}, ${skinIndex})">
+          ${skins
+            .map(
+              (skin, skinIndex) =>
+                `<button class="skin-btn" onclick="lockFriendSkin(${friendIndex}, ${skinIndex})">
               Lock ${skin.skinName}
             </button>`
-          ).join('')}
+            )
+            .join("")}
         </div>
       `;
-    }
-    
-    // Socket listeners for real-time updates
-    socket.on('friend-sharing-updated', (data) => {
-      logEvent(`${data.friend.displayName} sharing ${data.friend.isSharing ? 'enabled' : 'disabled'}`);
-      loadPartyState();
-    });
-    
-    socket.on('friend-locked-in', (data) => {
-      logEvent(`${data.friend.displayName} locked in ${data.skin.skinName} and sent skin share`);
-      loadPartyState();
-    });
-    
-    socket.on('local-player-locked-in', (data) => {
-      logEvent(`🔒 You locked in ${data.skin.skinName} and sent to ${data.sentToFriends} friends`);
-      loadPartyState();
-    });
-    
-    socket.on('party-mode-skin-received', (data) => {
-      logEvent(`🎨 Skin received: ${data.skin_name} from ${data.from_summoner_name}`);
-    });
-    
-    socket.on('lcu_state', (data) => {
-      currentPhase = data.state;
-      document.getElementById('current-phase').textContent = currentPhase;
+      }
+
+      // Socket listeners for real-time updates
+      socket.on("friend-sharing-updated", (data) => {
+        logEvent(
+          `${data.friend.displayName} sharing ${
+            data.friend.isSharing ? "enabled" : "disabled"
+          }`
+        );
+        loadPartyState();
+      });
+
+      socket.on("friend-locked-in", (data) => {
+        logEvent(
+          `${data.friend.displayName} locked in ${data.skin.skinName} and sent skin share`
+        );
+        loadPartyState();
+      });
+
+      socket.on("local-player-locked-in", (data) => {
+        logEvent(
+          `🔒 You locked in ${data.skin.skinName} and sent to ${data.sentToFriends} friends`
+        );
+        loadPartyState();
+      });
+
+      socket.on("party-mode-skin-received", (data) => {
+        logEvent(
+          `🎨 Skin received: ${data.skin_name} from ${data.from_summoner_name}`
+        );
+      });
+      socket.on("chat-message", (data) => {
+        logChat(data);
+      });
+
+      socket.on("lcu_state", (data) => {
+        currentPhase = data.state;
+        document.getElementById("current-phase").textContent = currentPhase;
+        renderPhaseButtons();
+        logEvent(`LCU state changed to ${currentPhase}`);
+      });
+
+      // Initial setup
       renderPhaseButtons();
-      logEvent(`LCU state changed to ${currentPhase}`);
-    });
-    
-    // Initial setup
-    renderPhaseButtons();
-    loadPartyState();
-    logEvent('Mock LCU Dashboard loaded - Party Mode Ready');
-  </script>
-</body>
-</html> 
+      loadPartyState();
+      logEvent("Mock LCU Dashboard loaded - Party Mode Ready");
+    </script>
+  </body>
+</html>

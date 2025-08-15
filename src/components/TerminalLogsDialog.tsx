@@ -13,9 +13,11 @@ import { listen } from "@tauri-apps/api/event";
 import { Terminal, Trash2, X, Copy, ArrowDownToLine } from "lucide-react";
 import { DropdownMenuItem } from "./ui/dropdown-menu";
 import { toast } from "sonner";
+import { useI18n } from "@/lib/i18n";
 import clsx from "clsx";
 
 export function TerminalLogsDialog() {
+  const { t } = useI18n();
   const [logs, setLogs] = useState<string[]>([]);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
@@ -79,15 +81,15 @@ export function TerminalLogsDialog() {
           }}
         >
           <Terminal className="h-4 w-4" />
-          Terminal Logs
+          {t("terminal.logs_title")}
         </DropdownMenuItem>
       </DialogTrigger>
       <DialogContent className="sm:max-w-5xl">
         <DialogHeader className="flex flex-row items-center justify-between">
-          <DialogTitle>Terminal Logs</DialogTitle>
+          <DialogTitle>{t("terminal.logs_title")}</DialogTitle>
           <div className="flex flex-row items-center gap-2">
             <Button
-              title="Copy"
+              title={t("terminal.copy_title")}
               variant="outline"
               size="icon"
               onClick={() => {
@@ -98,7 +100,7 @@ export function TerminalLogsDialog() {
               <Copy className="h-4 w-4" />
             </Button>
             <Button
-              title="Clear"
+              title={t("terminal.clear_title")}
               variant="outline"
               size="icon"
               onClick={clearLogs}
@@ -137,7 +139,7 @@ export function TerminalLogsDialog() {
                 "absolute right-4 bottom-6 z-10 shadow-lg animate-in fade-in",
                 "bg-background/80 backdrop-blur"
               )}
-              title="Scroll to bottom"
+              title={t("terminal.scroll_bottom")}
             >
               <ArrowDownToLine className="h-5 w-5" />
             </Button>

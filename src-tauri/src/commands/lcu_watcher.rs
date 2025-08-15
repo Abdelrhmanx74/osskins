@@ -11,11 +11,26 @@ use crate::commands::misc_items::get_selected_misc_items;
 use crate::commands::party_mode::{RECEIVED_SKINS, clear_received_skins};
 use std::sync::atomic::{AtomicU8, Ordering};
 use once_cell::sync::Lazy;
+use std::sync::Mutex;
 
 // LCU (League Client) watcher and communication
 
 // 0 = Unknown, 1 = ChampSelect, 2 = Other
 pub static PHASE_STATE: Lazy<AtomicU8> = Lazy::new(|| AtomicU8::new(0));
+
+// Prevent repeated injections in the same ChampSelect phase
+static LAST_PARTY_INJECTION_SIGNATURE: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+
+fn compute_party_injection_signature() -> String {
+    // Build a stable signature from the currently received friend skins
+    let map = RECEIVED_SKINS.lock().unwrap();
+    let mut parts: Vec<String> = map
+        .values()
+        .map(|s| format!("{}:{}:{}:{}", s.from_summoner_id, s.champion_id, s.skin_id, s.chroma_id.unwrap_or(0)))
+        .collect();
+    parts.sort();
+    parts.join("|")
+}
 
 pub fn is_in_champ_select() -> bool {
     PHASE_STATE.load(Ordering::Relaxed) == 1
@@ -39,7 +54,8 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
         let mut last_champion_id: Option<u32> = None;
         let mut last_party_mode_check = std::time::Instant::now();
         let mut last_party_injection_check = std::time::Instant::now();
-        let mut processed_message_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut processed_message_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut last_party_injection_time: std::time::Instant = std::time::Instant::now() - std::time::Duration::from_secs(60);
         
         loop {
             let mut sleep_duration = Duration::from_secs(5);
@@ -298,18 +314,30 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                 })
                             };
                             
-                            if should_inject {
-                                println!("[Party Mode] All conditions met - triggering party mode injection");
-                                let app_handle_clone = app_handle.clone();
-                                // Use std::thread::spawn instead of tokio::spawn to avoid reactor issues
-                                std::thread::spawn(move || {
-                                    let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
-                                    rt.block_on(async move {
-                                        if let Err(e) = trigger_party_mode_injection(&app_handle_clone).await {
-                                            eprintln!("[Party Mode] Failed to trigger injection: {}", e);
-                                        }
+                            if should_inject && last_party_injection_time.elapsed().as_secs() >= 5 {
+                                // Only inject if the set of received skins changed since last injection
+                                let current_sig = compute_party_injection_signature();
+                                let mut guard = LAST_PARTY_INJECTION_SIGNATURE.lock().unwrap();
+                                if guard.as_ref() != Some(&current_sig) {
+                                    println!("[Party Mode][DEBUG] Previous signature: {:?}", *guard);
+                                    println!("[Party Mode][DEBUG] Current signature: {}", current_sig);
+                                    println!("[Party Mode] All conditions met - triggering party mode injection");
+                                    let app_handle_clone = app_handle.clone();
+                                    // Use std::thread::spawn instead of tokio::spawn to avoid reactor issues
+                                    std::thread::spawn(move || {
+                                        let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+                                        rt.block_on(async move {
+                                            if let Err(e) = trigger_party_mode_injection(&app_handle_clone).await {
+                                                eprintln!("[Party Mode] Failed to trigger injection: {}", e);
+                                            }
+                                        });
                                     });
-                                });
+                                    *guard = Some(current_sig);
+                                    last_party_injection_time = std::time::Instant::now();
+                                } else {
+                                    // Debounce: nothing new since last injection
+                                    println!("[Party Mode][DEBUG] Skipping injection; signature unchanged");
+                                }
                             }
                         }
                         
@@ -330,12 +358,11 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                             if let Some(selected_champ_id) = get_selected_champion_id(&json) {
                                                 let current_champion_id = selected_champ_id as u32;
                                                 
-                                                // Only trigger skin sharing when changing from one locked champion to another
-                                                // Not when locking in for the first time (last_champion_id is None)
+                                                // Trigger skin sharing when locking in for the first time OR when changing to a different locked champion
                                                 let champion_changed = if let Some(last_champ) = last_champion_id {
                                                     last_champ != current_champion_id
                                                 } else {
-                                                    false // Don't share on first lock-in
+                                                    true // Share on first lock-in
                                                 };
                                                 
                                                 // Always update last_champion_id when a champion is locked
@@ -482,6 +509,40 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                                         continue;
                                                     }
                                                     
+                                                    // Filter out skins whose fantome files can't be found locally
+                                                    let assets_skins_dir = PathBuf::from(&league_path_clone).join("ASSETS/Skins");
+                                                    let original_len = skins_to_inject.len();
+                                                    let filtered_skins: Vec<Skin> = skins_to_inject
+                                                        .into_iter()
+                                                        .filter(|s| {
+                                                            if let Some(ref fp_str) = s.fantome_path {
+                                                                let fp = PathBuf::from(fp_str);
+                                                                let absolute_exists = fp.is_absolute() && fp.exists();
+                                                                let exists_in_champions_rel = if fp.is_absolute() { false } else { champions_dir.join(&fp).exists() };
+                                                                let exists_in_champions_name = fp.file_name()
+                                                                    .map(|n| champions_dir.join(n).exists())
+                                                                    .unwrap_or(false);
+                                                                let exists_in_assets_rel = if fp.is_absolute() { false } else { assets_skins_dir.join(&fp).exists() };
+                                                                let exists_in_assets_name = fp.file_name()
+                                                                    .map(|n| assets_skins_dir.join(n).exists())
+                                                                    .unwrap_or(false);
+                                                                if absolute_exists || exists_in_champions_rel || exists_in_champions_name || exists_in_assets_rel || exists_in_assets_name {
+                                                                    true
+                                                                } else {
+                                                                    println!("[Party Mode] Skipping skin (missing fantome): champ={} skin={} path={}", s.champion_id, s.skin_id, fp_str);
+                                                                    false
+                                                                }
+                                                            } else {
+                                                                // If no path at all, skip to avoid aborting the whole injection
+                                                                println!("[Party Mode] Skipping skin (no fantome path): champ={} skin={} ", s.champion_id, s.skin_id);
+                                                                false
+                                                            }
+                                                        })
+                                                        .collect();
+                                                    if filtered_skins.len() < original_len {
+                                                        println!("[Party Mode] Filtered out {} skins without available fantome files", original_len - filtered_skins.len());
+                                                    }
+                                                    
                                                     // Get selected misc items
                                                     let misc_items = get_selected_misc_items(&app_handle).unwrap_or_else(|err| {
                                                         println!("Failed to get selected misc items: {}", err);
@@ -491,14 +552,14 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                                     match inject_skins_and_misc(
                                                         &app_handle,
                                                         &league_path_clone,
-                                                        &skins_to_inject,
+                                                        &filtered_skins,
                                                         &misc_items,
                                                         &champions_dir
                                                     ) {
                                                         Ok(_) => {
                                                             let _ = app_handle.emit("injection-status", "success");
                                                             println!("[Enhanced] Successfully injected {} skins and {} misc items for champion {}", 
-                                                                     skins_to_inject.len(), misc_items.len(), champ_id);
+                                                                     filtered_skins.len(), misc_items.len(), champ_id);
                                                         },
                                                         Err(e) => {
                                                             let _ = app_handle.emit("skin-injection-error", format!(
@@ -529,6 +590,8 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                 emit_terminal_log(&app_handle, log_msg);
                                 clear_received_skins();
                                 println!("[Party Mode] Cleared in-memory received skins after leaving ChampSelect");
+                                // Reset dedup signature so the next phase can inject again
+                                if let Ok(mut g) = LAST_PARTY_INJECTION_SIGNATURE.lock() { *g = None; }
                             }
                             
                             sleep_duration = Duration::from_secs(1);
@@ -740,6 +803,7 @@ fn get_selected_champion_id(session_json: &serde_json::Value) -> Option<i64> {
             
             // If we have a pick in progress, don't return any champion ID
             if has_pick_in_progress {
+                println!("[LCU Watcher][DEBUG] Local pick is in progress; deferring champion ID resolution");
                 return None;
             }
             
@@ -758,6 +822,7 @@ fn get_selected_champion_id(session_json: &serde_json::Value) -> Option<i64> {
                                 // 2. Action is completed
                                 // 3. Valid champion ID
                                 if action_type == "pick" && is_completed && champion_id > 0 {
+                                    println!("[LCU Watcher][DEBUG] Found completed pick for local player: champion_id={}", champion_id);
                                     return Some(champion_id);
                                 }
                             }
@@ -805,6 +870,7 @@ fn get_selected_champion_id(session_json: &serde_json::Value) -> Option<i64> {
             }
         }
     }
+    println!("[LCU Watcher][DEBUG] No completed pick found for local player yet");
     None
 }
 
@@ -1046,6 +1112,7 @@ fn check_for_party_mode_messages_with_connection(
     let url = format!("https://127.0.0.1:{}/lol-chat/v1/conversations", port);
     let auth = general_purpose::STANDARD.encode(format!("riot:{}", token));
     
+    println!("[Party Mode][DEBUG] Fetching conversations for OSS scan: {}", url);
     let response = client
         .get(&url)
         .header("Authorization", format!("Basic {}", auth))
@@ -1061,8 +1128,11 @@ fn check_for_party_mode_messages_with_connection(
         .map_err(|e| format!("Failed to parse conversations: {}", e))?;
     
     if let Some(conversations_array) = conversations.as_array() {
+        println!("[Party Mode][DEBUG] Conversations found: {}", conversations_array.len());
         for conversation in conversations_array {
             if let Some(conversation_id) = conversation.get("id").and_then(|id| id.as_str()) {
+                let pid = conversation.get("pid").and_then(|v| v.as_str()).unwrap_or("");
+                println!("[Party Mode][DEBUG] Scanning conversation id={} pid={}", conversation_id, pid);
                 if let Err(e) = check_conversation_for_party_messages(app, &client, port, token, conversation_id, processed_message_ids) {
                     eprintln!("Error checking conversation {}: {}", conversation_id, e);
                 }
@@ -1085,6 +1155,7 @@ fn check_conversation_for_party_messages(
     let url = format!("https://127.0.0.1:{}/lol-chat/v1/conversations/{}/messages", port, conversation_id);
     let auth = general_purpose::STANDARD.encode(format!("riot:{}", token));
     
+    println!("[Party Mode][DEBUG] Fetching messages for conversation: {}", url);
     let response = client
         .get(&url)
         .header("Authorization", format!("Basic {}", auth))
@@ -1100,13 +1171,18 @@ fn check_conversation_for_party_messages(
         .map_err(|e| format!("Failed to parse messages: {}", e))?;
     
     if let Some(messages_array) = messages.as_array() {
+        println!("[Party Mode][DEBUG] Messages count in conversation: {}", messages_array.len());
         // Check all messages, not just recent ones, but skip already processed messages
         for message in messages_array.iter() {
-            // Get message ID to track processed messages
-            let message_id = message.get("id").and_then(|id| id.as_str()).unwrap_or("unknown");
+            // Get message ID to track processed messages (support string or numeric IDs)
+            let message_id = message
+                .get("id")
+                .and_then(|id| id.as_str().map(|s| s.to_string()).or_else(|| id.as_u64().map(|n| n.to_string())))
+                .unwrap_or_else(|| "unknown".to_string());
             
             // Skip if we've already processed this message
-            if processed_message_ids.contains(message_id) {
+            if processed_message_ids.contains(&message_id) {
+                // skip silently, but we can log verbose when debugging
                 continue;
             }
             
@@ -1120,9 +1196,10 @@ fn check_conversation_for_party_messages(
                 // Only print debug info for OSS messages to reduce noise
                 if body.starts_with("OSS:") {
                     println!("[Party Mode] Found OSS message from {}: {}", from_summoner_id, body);
+                    println!("[Party Mode][DEBUG] Marking message id={} as processed", message_id);
                     
                     // Mark this message as processed before handling it
-                    processed_message_ids.insert(message_id.to_string());
+                    processed_message_ids.insert(message_id);
                     
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     if let Err(e) = rt.block_on(
@@ -1150,6 +1227,7 @@ fn check_conversation_for_party_messages(
             for id in ids_vec.into_iter().rev().take(keep_count) {
                 processed_message_ids.insert(id);
             }
+            println!("[Party Mode][DEBUG] Processed IDs trimmed to {}", processed_message_ids.len());
         }
     } else {
         println!("[Party Mode] No messages array found in response for conversation {}", conversation_id);
@@ -1186,22 +1264,190 @@ pub async fn trigger_party_mode_injection(app: &AppHandle) -> Result<(), String>
     let misc_items = get_selected_misc_items(app)?;
     let league_path = config.league_path.as_ref()
         .ok_or("League path not configured".to_string())?;
-    let fantome_files_dir = PathBuf::from(league_path).join("ASSETS/Skins");
+
+    // Prefer the app data champions directory as the canonical source of fantome files
+    let champions_dir = app.path().app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("champions");
+    if !champions_dir.exists() {
+        if let Err(e) = std::fs::create_dir_all(&champions_dir) {
+            println!("[Party Mode] Failed to create champions directory: {}", e);
+        }
+    }
+    // Keep League's ASSETS/Skins as a last-resort fallback only
+    let assets_skins_dir = PathBuf::from(league_path).join("ASSETS/Skins");
     
     // Collect friend skins from received skins
     let mut skins_to_inject = Vec::new();
     let received_skins_map = RECEIVED_SKINS.lock().unwrap();
-    
+
     for received_skin in received_skins_map.values() {
         if let Some(fantome_path) = &received_skin.fantome_path {
-            skins_to_inject.push(Skin {
-                champion_id: received_skin.champion_id,
-                skin_id: received_skin.skin_id,
-                chroma_id: received_skin.chroma_id,
-                fantome_path: Some(fantome_path.clone()),
-            });
-            println!("[Party Mode] Adding friend skin from {} for injection: Champion {}, Skin {}", 
-                     received_skin.from_summoner_name, received_skin.champion_id, received_skin.skin_id);
+            let fp = PathBuf::from(fantome_path);
+            let mut found_path: Option<PathBuf> = None;
+
+            // 1) Direct absolute exists
+            if fp.is_absolute() && fp.exists() {
+                println!("[Party Mode][DEBUG] Using absolute fantome from friend: {}", fp.display());
+                found_path = Some(fp.clone());
+            }
+
+            // 2) Map known portable absolute prefixes (e.g., /ezrea/) under champions_dir
+            if found_path.is_none() && fp.is_absolute() {
+                let fp_str = fp.to_string_lossy().replace('\\', "/");
+                if fp_str.starts_with("/ezrea/") {
+                    let tail = &fp_str["/ezrea/".len()..];
+                    let mapped = champions_dir.join(tail);
+                    if mapped.exists() {
+                        println!("[Party Mode][DEBUG] Mapped /ezrea path to champions dir: {}", mapped.display());
+                        found_path = Some(mapped);
+                    } else {
+                        if let Some(base) = PathBuf::from(tail).file_name() {
+                            let by_name = champions_dir.join(base);
+                            if by_name.exists() { 
+                                println!("[Party Mode][DEBUG] Fallback by basename in champions dir: {}", by_name.display());
+                                found_path = Some(by_name); 
+                            }
+                        }
+                    }
+                } else {
+                    // Generic: drop the leading root and try under champions_dir
+                    let rel_parts: PathBuf = fp.iter().skip(1).collect();
+                    let mapped = champions_dir.join(&rel_parts);
+                    if mapped.exists() { 
+                        println!("[Party Mode][DEBUG] Generic mapped absolute to champions dir: {}", mapped.display());
+                        found_path = Some(mapped); 
+                    }
+                }
+            }
+
+            // Helper: try variants in a directory
+            let try_in_dir = |dir: &PathBuf, src: &PathBuf| -> Option<PathBuf> {
+                // If relative src, try full relative join
+                if !src.is_absolute() {
+                    let rel = dir.join(src);
+                    if rel.exists() { return Some(rel); }
+                }
+                // Try by basename
+                if let Some(name) = src.file_name() {
+                    let by_name = dir.join(name);
+                    if by_name.exists() { return Some(by_name); }
+                    if let Some(stem) = PathBuf::from(name).file_stem().and_then(|s| s.to_str()) {
+                        for ext in ["zip", "fantome"] {
+                            let cand = dir.join(format!("{}.{}", stem, ext));
+                            if cand.exists() { return Some(cand); }
+                        }
+                    }
+                }
+                None
+            };
+
+            // 3) Check champions and assets dirs with variants
+            if found_path.is_none() { 
+                if let Some(p) = try_in_dir(&champions_dir, &fp) { 
+                    println!("[Party Mode][DEBUG] Found in champions dir variants: {}", p.display());
+                    found_path = Some(p);
+                }
+            }
+            if found_path.is_none() { 
+                if let Some(p) = try_in_dir(&assets_skins_dir, &fp) { 
+                    println!("[Party Mode][DEBUG] Found in ASSETS/Skins variants: {}", p.display());
+                    found_path = Some(p);
+                }
+            }
+
+            // 4) Shallow recursive search by stem
+            if found_path.is_none() {
+                if let Some(stem) = fp.file_stem().and_then(|s| s.to_str()) {
+                    for dir in [&champions_dir, &assets_skins_dir] {
+                        if let Ok(mut rd) = std::fs::read_dir(dir) {
+                            while let Some(Ok(entry)) = rd.next() {
+                                let path = entry.path();
+                                if path.is_dir() {
+                                    if let Ok(mut inner) = std::fs::read_dir(&path) {
+                                        while let Some(Ok(e2)) = inner.next() {
+                                            let p2 = e2.path();
+                                            if p2.is_file() {
+                                                if let Some(s) = p2.file_stem().and_then(|x| x.to_str()) {
+                                                    if s.eq_ignore_ascii_case(stem) {
+                                                        println!("[Party Mode][DEBUG] Found by shallow scan in {}: {}", dir.display(), p2.display());
+                                                        found_path = Some(p2.clone());
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else if path.is_file() {
+                                    if let Some(s) = path.file_stem().and_then(|x| x.to_str()) {
+                                        if s.eq_ignore_ascii_case(stem) {
+                                            println!("[Party Mode][DEBUG] Found by file match in {}: {}", dir.display(), path.display());
+                                            found_path = Some(path.clone());
+                                            break;
+                                        }
+                                    }
+                                }
+                                if found_path.is_some() { break; }
+                            }
+                        }
+                        if found_path.is_some() { break; }
+                    }
+                }
+            }
+
+            // 5) Fallback: use local config skin mapping for same champion_id and skin_id
+            if found_path.is_none() {
+                if let Some(local_skin) = config.skins.iter().find(|s| s.champion_id == received_skin.champion_id && s.skin_id == received_skin.skin_id) {
+                    if let Some(ref f) = local_skin.fantome {
+                        let cand_abs = PathBuf::from(f);
+                        let mut candidates: Vec<PathBuf> = Vec::new();
+                        if cand_abs.is_absolute() { candidates.push(cand_abs.clone()); }
+                        candidates.push(champions_dir.join(&cand_abs));
+                        if let Some(name) = cand_abs.file_name() {
+                            candidates.push(champions_dir.join(name));
+                            if let Some(stem) = PathBuf::from(name).file_stem().and_then(|s| s.to_str()) {
+                                candidates.push(champions_dir.join(format!("{}.zip", stem)));
+                                candidates.push(champions_dir.join(format!("{}.fantome", stem)));
+                            }
+                        }
+                        candidates.push(assets_skins_dir.join(&cand_abs));
+                        if let Some(name) = cand_abs.file_name() {
+                            candidates.push(assets_skins_dir.join(name));
+                            if let Some(stem) = PathBuf::from(name).file_stem().and_then(|s| s.to_str()) {
+                                candidates.push(assets_skins_dir.join(format!("{}.zip", stem)));
+                                candidates.push(assets_skins_dir.join(format!("{}.fantome", stem)));
+                            }
+                        }
+                        if let Some(found) = candidates.into_iter().find(|p| p.exists()) {
+                            println!("[Party Mode][DEBUG] Fallback matched local config skin: {}", found.display());
+                            found_path = Some(found);
+                        }
+                    }
+                }
+            }
+
+            if let Some(resolved) = found_path {
+                skins_to_inject.push(Skin {
+                    champion_id: received_skin.champion_id,
+                    skin_id: received_skin.skin_id,
+                    chroma_id: received_skin.chroma_id,
+                    // Use resolved local path for reliability
+                    fantome_path: Some(resolved.to_string_lossy().to_string()),
+                });
+                println!(
+                    "[Party Mode] Adding friend skin from {} for injection: Champion {}, Skin {}",
+                    received_skin.from_summoner_name, received_skin.champion_id, received_skin.skin_id
+                );
+            } else {
+                println!(
+                    "[Party Mode] Skipping friend skin from {} (missing fantome: {})",
+                    received_skin.from_summoner_name,
+                    fantome_path
+                );
+                println!("[Party Mode][DEBUG] Champions dir: {}", champions_dir.display());
+                println!("[Party Mode][DEBUG] Assets skins dir: {}", assets_skins_dir.display());
+                println!("[Party Mode][DEBUG] Tried to resolve from: {}", fp.display());
+            }
         }
     }
     
@@ -1209,7 +1455,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle) -> Result<(), String>
     drop(received_skins_map);
     
     if skins_to_inject.is_empty() {
-        println!("[Party Mode] No friend skins to inject");
+        println!("[Party Mode] No friend skins with available files to inject");
         return Ok(());
     }
     
@@ -1219,7 +1465,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle) -> Result<(), String>
         league_path,
         &skins_to_inject,
         &misc_items,
-        &fantome_files_dir,
+        &champions_dir,
     ) {
         Ok(_) => {
             println!("[Party Mode] ✅ Successfully injected {} friend skins", skins_to_inject.len());

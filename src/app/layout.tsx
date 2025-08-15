@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { ThemeProvider } from "next-themes";
 import { ThemeInitializer } from "@/components/providers/ThemeInitializer";
 import { PartyModeProvider } from "@/components/providers/PartyModeProvider";
+import { I18nProvider } from "@/lib/i18n";
 
 const poppins = Poppins({
   weight: ["400", "500", "600", "700"],
@@ -22,9 +23,11 @@ export default function RootLayout({
         className={`${poppins.variable} antialiased flex flex-col h-screen`}
       >
         <ThemeProvider attribute="class" enableSystem>
-          <ThemeInitializer />
-          <PartyModeProvider>{children}</PartyModeProvider>
-          <Toaster richColors position="bottom-center" />
+          <I18nProvider>
+            <ThemeInitializer />
+            <PartyModeProvider>{children}</PartyModeProvider>
+            <Toaster richColors position="bottom-center" />
+          </I18nProvider>
         </ThemeProvider>
       </body>
     </html>

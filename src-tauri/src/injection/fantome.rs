@@ -135,13 +135,54 @@ impl crate::injection::core::SkinInjector {
                     return Ok(Some(path.to_path_buf()));
                 } else {
                     self.log(&format!("❌ Friend's fantome file not found at absolute path: {}", path.display()));
-                    // For friend skins, try to find a similar file in our local directory
+                    // For friend skins, try to map portable prefixes to local directories and search
+                    // Known portable prefix: /ezrea/ -> app champions dir (primary) or ASSETS/Skins (fallback)
+                    let app_champions = self.app_dir.join("champions");
                     if let Some(filename) = path.file_name() {
+                        // Try mapping by tail under champions
+                        let lowered = path.to_string_lossy().replace('\\', "/");
+                        if lowered.starts_with("/ezrea/") {
+                            let tail = &lowered["/ezrea/".len()..];
+                            let mapped = app_champions.join(tail);
+                            self.log(&format!("[DEBUG] Trying mapped /ezrea path: {}", mapped.display()));
+                            if mapped.exists() { return Ok(Some(mapped)); }
+                            // Try by basename under champions
+                            let by_name = app_champions.join(filename);
+                            if by_name.exists() { return Ok(Some(by_name)); }
+                            // Try alt extensions under champions
+                            if let Some(stem) = Path::new(filename).file_stem().and_then(|s| s.to_str()) {
+                                let zip_candidate = app_champions.join(format!("{}.zip", stem));
+                                let fantome_candidate = app_champions.join(format!("{}.fantome", stem));
+                                if zip_candidate.exists() { return Ok(Some(zip_candidate)); }
+                                if fantome_candidate.exists() { return Ok(Some(fantome_candidate)); }
+                            }
+                        }
+                    }
+                    // Fallback to filename/alt-extension search in provided fantome_files_dir
+                    // For friend skins, try to find a similar file in our local directory by filename,
+                    // accepting either .zip or .fantome extensions
+                    if let Some(filename) = path.file_name() {
+                        // Try exact filename
                         let local_path = fantome_files_dir.join(filename);
                         self.log(&format!("[DEBUG] Trying to find similar file locally: {}", local_path.display()));
                         if local_path.exists() {
-                            self.log(&format!("✅ Found similar local fantome file: {}", local_path.display()));
+                            self.log(&format!("✅ Found similar local archive: {}", local_path.display()));
                             return Ok(Some(local_path));
+                        }
+
+                        // Try swapping extensions between .zip <-> .fantome
+                        if let Some(stem) = Path::new(filename).file_stem().and_then(|s| s.to_str()) {
+                            let zip_candidate = fantome_files_dir.join(format!("{}.zip", stem));
+                            let fantome_candidate = fantome_files_dir.join(format!("{}.fantome", stem));
+                            self.log(&format!("[DEBUG] Trying alt extensions: {} | {}", zip_candidate.display(), fantome_candidate.display()));
+                            if zip_candidate.exists() {
+                                self.log(&format!("✅ Found local .zip for shared skin: {}", zip_candidate.display()));
+                                return Ok(Some(zip_candidate));
+                            }
+                            if fantome_candidate.exists() {
+                                self.log(&format!("✅ Found local .fantome for shared skin: {}", fantome_candidate.display()));
+                                return Ok(Some(fantome_candidate));
+                            }
                         }
                     }
                 }

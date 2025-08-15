@@ -16,15 +16,21 @@ import { CustomSkinList } from "@/components/CustomSkinList";
 import { MiscItemView } from "@/components/MiscItemView";
 import { TopBar } from "@/components/layout/TopBar";
 import { toast } from "sonner";
+import { useI18n } from "@/lib/i18n";
 import { DataUpdateModal } from "@/components/DataUpdateModal";
 
 // Loading component using React 19 suspense
-const ChampionsLoader = () => (
-  <div className="flex items-center justify-center h-screen w-full flex-col gap-4">
-    <Loader2 className="h-12 w-12 animate-spin" />
-    <p className="text-muted-foreground text-lg">Loading champions data...</p>
-  </div>
-);
+const ChampionsLoader = () => {
+  const { t } = useI18n();
+  return (
+    <div className="flex items-center justify-center h-screen w-full flex-col gap-4">
+      <Loader2 className="h-12 w-12 animate-spin" />
+      <p className="text-muted-foreground text-lg">
+        {t("loading.champions_data")}
+      </p>
+    </div>
+  );
+};
 
 export default function Home() {
   const { champions, loading, error, hasData } = useChampions();
@@ -81,14 +87,15 @@ export default function Home() {
   };
 
   // If no League path is selected, show directory selector
+  const { t } = useI18n();
+
   if (!leaguePath) {
     return (
       <main className="flex min-h-full flex-col items-center justify-center p-24">
         <div className="flex flex-col items-center gap-8">
-          <h1 className="text-2xl font-bold">Welcome to League Skin Manager</h1>
+          <h1 className="text-2xl font-bold">{t("welcome.title")}</h1>
           <p className="text-muted-foreground">
-            Please select your League of Legends installation directory to
-            continue
+            {t("welcome.select_league_dir")}
           </p>
           <GameDirectorySelector />
         </div>
@@ -114,17 +121,15 @@ export default function Home() {
     return (
       <main className="flex min-h-full flex-col items-center justify-center p-24">
         <div className="flex flex-col items-center gap-8">
-          <h1 className="text-2xl font-bold">Welcome to League Skin Manager</h1>
-          <p className="text-muted-foreground">
-            We need to download champion data before you can use the app
-          </p>
+          <h1 className="text-2xl font-bold">{t("welcome.title")}</h1>
+          <p className="text-muted-foreground">{t("loading.champions_data")}</p>
           <button
             onClick={() => {
               void handleUpdateData();
             }}
             className="bg-primary text-white px-4 py-2 rounded"
           >
-            Download Champion Data
+            {t("update.action")}
           </button>
         </div>
       </main>
@@ -136,9 +141,9 @@ export default function Home() {
       <Suspense fallback={<ChampionsLoader />}>
         <main className="flex min-h-full flex-col items-center justify-center p-24">
           <div className="flex flex-col items-center gap-8">
-            <h1 className="text-2xl font-bold">Initializing...</h1>
+            <h1 className="text-2xl font-bold">{t("settings.title")}</h1>
             <p className="text-muted-foreground">
-              Please wait while we prepare your champion data
+              {t("loading.champions_data")}
             </p>
             <DataUpdateModal isOpen={true} progress={progress} />
           </div>

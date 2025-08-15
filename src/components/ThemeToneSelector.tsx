@@ -7,6 +7,7 @@ import { SunIcon, MoonIcon } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
+import { useI18n } from "@/lib/i18n";
 
 // Define theme tone options with palettes for both light and dark modes
 // Now exported so it can be used by ThemeInitializer
@@ -397,12 +398,13 @@ export function useThemeTone() {
 export function ThemeToneSelector() {
   const { tone, setTone, isDark, toggleTheme, isTransitioning } =
     useThemeTone();
+  const { t } = useI18n();
 
   return (
     <>
       <div className="px-2 py-2">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium">Theme</span>
+          <span className="text-sm font-medium">{t("theme.label")}</span>
           <div className="flex items-center gap-2">
             <SunIcon size={14} className={isDark ? "opacity-40" : ""} />
             <Switch

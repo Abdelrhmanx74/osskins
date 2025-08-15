@@ -7,6 +7,7 @@ import { Button } from "./ui/button";
 import { useChampions } from "@/lib/hooks/use-champions";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
+import { useI18n } from "@/lib/i18n";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ interface CustomSkinListProps {
 }
 
 export function CustomSkinList({ championId }: CustomSkinListProps) {
+  const { t } = useI18n();
   const {
     customSkins,
     isLoading,
@@ -47,7 +49,7 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
   // Handler for adding new custom skins (now supports multiple files)
   const handleAddNewSkin = async () => {
     if (!championId) {
-      toast.error("Please select a champion first");
+      toast.error(t("select.champion_first"));
       return;
     }
 
@@ -59,7 +61,7 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
       }
     } catch (err) {
       console.error("Error uploading skins:", err);
-      toast.error("Error uploading skins. Please try again.");
+      toast.error(t("upload.error"));
     } finally {
       setIsUploading(false);
     }
@@ -68,7 +70,7 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
   // Handler for uploading multiple skins
   const handleUploadMultipleSkins = async () => {
     if (!championId) {
-      toast.error("Please select a champion first");
+      toast.error(t("select.champion_first"));
       return;
     }
 
@@ -89,7 +91,7 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full w-full">
-        <p className="text-muted-foreground">Loading custom skins...</p>
+        <p className="text-muted-foreground">{t("loading.custom_skins")}</p>
       </div>
     );
   }
@@ -97,7 +99,9 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full w-full">
-        <p className="text-destructive">Error loading custom skins: {error}</p>
+        <p className="text-destructive">
+          {t("error.loading_custom_skins")}: {error}
+        </p>
         <Button
           variant="outline"
           className="mt-4"
@@ -116,7 +120,7 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
     return (
       <div className="flex flex-col items-center justify-center h-full w-full p-4">
         <p className="text-muted-foreground">
-          Please select a champion to view their custom skins.
+          {t("select.champion_to_view_custom_skins")}
         </p>
       </div>
     );
@@ -136,7 +140,10 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
         {championCustomSkins.length === 0 && (
           <div className="flex flex-col items-center mt-8">
             <p className="text-muted-foreground mb-4">
-              No custom skins found for {champion?.name ?? "this champion"}.
+              {t("no_custom_skins_for").replace(
+                "{champion}",
+                champion?.name ?? t("this_champion")
+              )}
             </p>
           </div>
         )}
@@ -153,7 +160,7 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
         >
           <Plus className="size-8 opacity-50" />
           <span className="text-lg font-medium">
-            {isUploading ? "Uploading..." : "Add Custom Skins"}
+            {isUploading ? t("uploading") : t("add_custom_skins")}
           </span>
         </Button>
       </div>

@@ -833,6 +833,18 @@ pub async fn handle_party_mode_message(
             
             // Emit the skin received event
             let _ = app.emit("party-mode-skin-received", skin_share.clone());
+            // Also emit a chat log event for dashboard visibility
+            let _ = app.emit("party-mode-chat-log", serde_json::json!({
+                "direction": "received",
+                "from": skin_share.from_summoner_name,
+                "from_id": skin_share.from_summoner_id,
+                "champion_id": skin_share.champion_id,
+                "skin_id": skin_share.skin_id,
+                "skin_name": skin_share.skin_name,
+                "chroma_id": skin_share.chroma_id,
+                "fantome_path": skin_share.fantome_path,
+                "timestamp": skin_share.timestamp,
+            }));
             
             // Note: Injection timing is handled by the main LCU watcher logic
             // which will collect all friend skins and inject them at the appropriate time
@@ -894,7 +906,7 @@ pub async fn send_skin_share_to_paired_friends(
         skin_id,
         skin_name: skin_name.clone(),
         chroma_id,
-        fantome_path,
+        fantome_path: fantome_path.clone(),
         timestamp: chrono::Utc::now().timestamp_millis() as u64,
     };
 
@@ -903,19 +915,32 @@ pub async fn send_skin_share_to_paired_friends(
         data: serde_json::to_value(skin_share)
             .map_err(|e| format!("Failed to serialize skin share: {}", e))?,
     };
+    println!("[Party Mode][DEBUG] Prepared skin_share payload for champion_id={}, skin_id={}, chroma_id={:?}", champion_id, skin_id, chroma_id);
 
     for friend in &sharing_friends {
+        println!("[Party Mode][DEBUG] Sending skin_share to friend {} ({}), share_enabled={} ", friend.summoner_name, friend.summoner_id, friend.share_enabled);
         if let Err(e) = send_chat_message(app, &lcu_connection, &friend.summoner_id, &message).await {
             eprintln!("Failed to send skin share to {}: {}", friend.summoner_name, e);
         } else {
             println!("[Party Mode] Successfully sent skin share to {}: Champion {}, Skin {}", 
                      friend.summoner_name, champion_id, skin_name);
             
-            // Emit event for UI to show toast notification
+            // Emit events for UI: toast + chat log line
             let _ = app.emit("party-mode-skin-sent", serde_json::json!({
                 "to_friend": friend.summoner_name,
                 "champion_id": champion_id,
                 "skin_name": skin_name
+            }));
+            let _ = app.emit("party-mode-chat-log", serde_json::json!({
+                "direction": "sent",
+                "to": friend.summoner_name,
+                "to_id": friend.summoner_id,
+                "champion_id": champion_id,
+                "skin_id": skin_id,
+                "skin_name": skin_name,
+                "chroma_id": chroma_id,
+                "fantome_path": fantome_path.clone(),
+                "timestamp": chrono::Utc::now().timestamp_millis(),
             }));
         }
     }
@@ -956,6 +981,11 @@ pub fn get_skin_name_from_config(app: &AppHandle, champion_id: u32, skin_id: u32
 
 // Helper function to check if all paired friends with sharing enabled have shared their skins for a specific champion
 pub async fn should_inject_now(app: &AppHandle, champion_id: u32) -> Result<bool, String> {
+    // Always require a locked-in champion before proceeding
+    if champion_id == 0 {
+        println!("[Party Mode] ⏳ Local player has not locked in a champion yet - waiting");
+        return Ok(false);
+    }
     let config_dir = app.path().app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join("config");
@@ -983,6 +1013,29 @@ pub async fn should_inject_now(app: &AppHandle, champion_id: u32) -> Result<bool
         return Ok(true);
     }
 
+    // Only consider friends who are actually in the same party (lobby or champ select) as the local player
+    let lcu_connection = match get_lcu_connection(app).await {
+        Ok(conn) => conn,
+        Err(e) => {
+            println!("[Party Mode] Could not get LCU connection ({}), defaulting to inject to avoid blocking", e);
+            return Ok(true);
+        }
+    };
+
+    let party_member_ids = get_current_party_member_summoner_ids(&lcu_connection).await.unwrap_or_default();
+    println!("[Party Mode][DEBUG] Party members (summoner IDs) in current session: {:?}", party_member_ids);
+    let mut friends_in_same_party: Vec<&PairedFriend> = friends_with_sharing
+        .into_iter()
+        .filter(|f| party_member_ids.contains(&f.summoner_id))
+        .collect();
+
+    // Remove self if present just in case
+    if friends_in_same_party.is_empty() {
+        // You're solo or no paired friends in party; don't block injection
+        println!("[Party Mode] Solo or no paired friends in current party - injecting immediately for champion {}", champion_id);
+        return Ok(true);
+    }
+
     // Check if we have received skins from all friends with sharing enabled (for ANY champion)
     let mut friends_who_shared = std::collections::HashSet::new();
     
@@ -991,10 +1044,11 @@ pub async fn should_inject_now(app: &AppHandle, champion_id: u32) -> Result<bool
         // Count friends who shared ANY skin, not just for the current champion
         friends_who_shared.insert(received_skin.from_summoner_id.clone());
     }
+    println!("[Party Mode][DEBUG] Friends who shared (IDs): {:?}", friends_who_shared);
 
     // Count how many friends with sharing enabled we have vs how many shared
-    let total_sharing_friends = friends_with_sharing.len();
-    let sharing_friends_who_shared: usize = friends_with_sharing
+    let total_sharing_friends = friends_in_same_party.len();
+    let sharing_friends_who_shared: usize = friends_in_same_party
         .iter()
         .filter(|friend| friends_who_shared.contains(&friend.summoner_id))
         .count();
@@ -1003,7 +1057,7 @@ pub async fn should_inject_now(app: &AppHandle, champion_id: u32) -> Result<bool
              sharing_friends_who_shared, total_sharing_friends);
 
     // List which friends have shared and which haven't
-    for friend in &friends_with_sharing {
+    for friend in &friends_in_same_party {
         let has_shared = friends_who_shared.contains(&friend.summoner_id);
         println!("[Party Mode] Friend {} ({}): {}", 
                  friend.display_name, 
@@ -1011,11 +1065,7 @@ pub async fn should_inject_now(app: &AppHandle, champion_id: u32) -> Result<bool
                  if has_shared { "✅ shared skin" } else { "⏳ waiting for skin" });
     }
 
-    // Check if local player has locked in a champion (prerequisite for injection)
-    if champion_id == 0 {
-        println!("[Party Mode] ⏳ Local player has not locked in a champion yet - waiting");
-        return Ok(false);
-    }
+    // Locked-in champion enforced at top
 
     // Wait for ALL friends with sharing enabled to share their skins before injecting
     let should_inject = sharing_friends_who_shared == total_sharing_friends;
@@ -1025,9 +1075,62 @@ pub async fn should_inject_now(app: &AppHandle, champion_id: u32) -> Result<bool
     } else {
         println!("[Party Mode] ⏳ Local player locked in champion {}, but waiting for {} more friends with sharing enabled to share their skins", 
                  champion_id, total_sharing_friends - sharing_friends_who_shared);
+        println!("[Party Mode][DEBUG] total_sharing_friends={} shared={}", total_sharing_friends, sharing_friends_who_shared);
     }
 
     Ok(should_inject)
+}
+
+// Determine summoner IDs in the same party (lobby or champ select team) as the local player
+async fn get_current_party_member_summoner_ids(lcu: &LcuConnection) -> Result<std::collections::HashSet<String>, String> {
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let auth = general_purpose::STANDARD.encode(format!("riot:{}", lcu.token));
+
+    // Try champ select session first
+    let cs_url = format!("https://127.0.0.1:{}/lol-champ-select/v1/session", lcu.port);
+    if let Ok(resp) = client.get(&cs_url)
+        .header("Authorization", format!("Basic {}", auth))
+        .send().await {
+        if resp.status().is_success() {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                let mut ids = std::collections::HashSet::new();
+                if let Some(team) = json.get("myTeam").and_then(|v| v.as_array()) {
+                    for p in team {
+                        if let Some(id) = p.get("summonerId").and_then(|v| v.as_i64()) {
+                            ids.insert(id.to_string());
+                        }
+                    }
+                }
+                if !ids.is_empty() { return Ok(ids); }
+            }
+        }
+    }
+
+    // Fallback to lobby data
+    let lobby_url = format!("https://127.0.0.1:{}/lol-lobby/v2/lobby", lcu.port);
+    if let Ok(resp) = client.get(&lobby_url)
+        .header("Authorization", format!("Basic {}", auth))
+        .send().await {
+        if resp.status().is_success() {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                let mut ids = std::collections::HashSet::new();
+                if let Some(members) = json.get("members").and_then(|v| v.as_array()) {
+                    for m in members {
+                        if let Some(id) = m.get("summonerId").and_then(|v| v.as_i64()) {
+                            ids.insert(id.to_string());
+                        }
+                    }
+                }
+                return Ok(ids);
+            }
+        }
+    }
+
+    Ok(std::collections::HashSet::new())
 }
 
 // Add a function to clear received skins (call this when leaving champ select or starting a new session)

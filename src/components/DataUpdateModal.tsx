@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { DataUpdateProgress } from "@/lib/types";
+import { useI18n } from "@/lib/i18n";
 
 interface DataUpdateModalProps {
   isOpen: boolean;
@@ -13,18 +14,22 @@ interface DataUpdateModalProps {
 }
 
 export function DataUpdateModal({ isOpen, progress }: DataUpdateModalProps) {
+  const { t } = useI18n();
   const getStatusMessage = () => {
-    if (!progress) return "Checking for updates...";
+    if (!progress) return t("update.checking");
 
     switch (progress.status) {
       case "checking":
-        return "Checking for updates...";
+        return t("update.checking");
       case "downloading":
-        return "Downloading updates...";
+        return t("update.downloading");
       case "processing":
-        return `Processing ${progress.currentChampion}...`;
+        return t("update.processing").replace(
+          "{champion}",
+          progress.currentChampion || ""
+        );
       default:
-        return "Processing updates...";
+        return t("update.processing_unknown");
     }
   };
 
@@ -33,7 +38,7 @@ export function DataUpdateModal({ isOpen, progress }: DataUpdateModalProps) {
       <DialogContent className="sm:max-w-md">
         <div className="flex flex-col space-y-4">
           <DialogHeader>
-            <DialogTitle>Loading...</DialogTitle>
+            <DialogTitle>{t("loading")}</DialogTitle>
             <p className="text-sm text-muted-foreground">
               {getStatusMessage()}
             </p>

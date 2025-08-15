@@ -1,3 +1,31 @@
+# Mock LCU Server Notes
+
+This mock server now emulates the endpoints used by Party Mode more realistically:
+
+- GET /lol-chat/v1/friends — returns friends with pid/puuid and online availability
+- GET /lol-chat/v1/conversations — returns conversations with pid and id
+- GET /lol-chat/v1/conversations/:id/messages — messages contain numeric `id` like the real LCU
+- POST /lol-chat/v1/conversations — creates chat by pid
+- POST /lol-chat/v1/conversations/:id/messages — accepts `body` and `type`
+- GET /lol-summoner/v1/current-summoner — returns the local user
+- GET /lol-gameflow/v1/session and /lol-gameflow/v1/gameflow-phase — basic phase simulation
+- GET /lol-champ-select/v1/session — reports local pick completion
+- GET /lol-lobby/v2/lobby — reports current party members (user + selected friends)
+
+Test helpers:
+
+- POST /test/toggle-friend-sharing — toggle whether a friend “shares”
+- POST /test/friend-lock-skin — locks friend skin and emits OSS:skin_share
+- POST /test/local-player-lock-skin — simulates local share
+- POST /test/toggle-friend-in-lobby — toggles whether a friend is in your party
+- POST /test/set-selected-champion — sets champ select preview
+
+Tips:
+
+- Party Mode waits only for paired friends who are in your current party (lobby or champ select).
+- If you’re solo or no paired friends are in the party, injection proceeds immediately.
+- Numeric message IDs are used to better match real LCU behavior.
+
 # Mock LCU Server for Party Mode Testing
 
 This mock server simulates the League of Legends Client Update (LCU) API to test the party mode feature of the OSS application.
@@ -5,6 +33,7 @@ This mock server simulates the League of Legends Client Update (LCU) API to test
 ## Features
 
 ### Implemented LCU Endpoints
+
 - **GET /lol-chat/v1/friends** - Returns mock friends list
 - **GET /lol-chat/v1/conversations** - Returns chat conversations
 - **GET /lol-chat/v1/conversations/:id/messages** - Returns messages for a conversation
@@ -16,13 +45,16 @@ This mock server simulates the League of Legends Client Update (LCU) API to test
 - **GET /lol-champ-select/v1/session** - Returns champion select session data
 
 ### Party Mode Simulation
+
 The server correctly simulates party mode by:
+
 1. Processing messages with "OSS:" prefix in chat conversations
 2. Parsing JSON party mode messages (pairing_request, pairing_response, skin_share)
 3. Emitting appropriate Socket.IO events to simulate frontend notifications
 4. Providing a web dashboard for easy testing
 
 ### Test Endpoints
+
 - **POST /test/send-pairing-request** - Simulate receiving a pairing request
 - **POST /test/respond-to-request** - Simulate a friend accepting/declining your request
 - **POST /test/share-skin** - Simulate receiving a skin share
@@ -30,6 +62,7 @@ The server correctly simulates party mode by:
 ## Usage
 
 1. **Start the server:**
+
    ```bash
    cd mock-lcu-server
    npm install
@@ -57,6 +90,7 @@ The party mode feature uses the LCU chat system to exchange messages between fri
 3. **Skin Sharing**: Sent as chat messages with format `OSS:{"message_type":"skin_share","data":{...}}`
 
 The mock server correctly simulates this by:
+
 - Creating conversations between the user and friends
 - Processing OSS-prefixed messages
 - Emitting events that the frontend listens for
@@ -65,10 +99,12 @@ The mock server correctly simulates this by:
 ## Mock Data
 
 The server includes two mock friends:
+
 - **friend1#NA1** (ID: 129649534)
 - **sisi#NA1** (ID: 3458743863674208)
 
 And a mock current user:
+
 - **rogolax** (ID: 148331403)
 
 You can test all party mode functionality with these mock friends.
@@ -77,4 +113,4 @@ You can test all party mode functionality with these mock friends.
 
 This mock server replaces the original custom party-mode endpoints with proper LCU endpoints that match what the real League client provides. The key insight was that party mode works through the chat system, not through custom endpoints.
 
-The server provides both Socket.IO events for real-time updates and proper REST endpoints that match the LCU API structure. 
+The server provides both Socket.IO events for real-time updates and proper REST endpoints that match the LCU API structure.

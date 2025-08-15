@@ -1,3 +1,4 @@
+import { useI18n } from "@/lib/i18n";
 import React, { useState, useEffect } from "react";
 import {
   Dialog,
@@ -31,6 +32,7 @@ import type {
 export default function PartyModeDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const { t } = useI18n();
   const [selectedTab, setSelectedTab] = useState("connect");
   const [searchTerm, setSearchTerm] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -160,9 +162,7 @@ export default function PartyModeDialog() {
     } catch (error) {
       console.error("Failed to add friend:", error);
       const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Failed to add friend";
+        error instanceof Error ? error.message : "Failed to add friend";
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);
@@ -201,31 +201,31 @@ export default function PartyModeDialog() {
             }}
           >
             <Users className="h-4 w-4" />
-            Party Mode
+            {t("party.mode")}
           </DropdownMenuItem>
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
-              Party Mode
+              {t("party.mode")}
             </DialogTitle>
           </DialogHeader>
 
           <Tabs value={selectedTab} onValueChange={setSelectedTab}>
             <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="connect">Friends</TabsTrigger>
+              <TabsTrigger value="connect">{t("friends.label")}</TabsTrigger>
               <TabsTrigger value="connected">
-                Connected ({pairedFriends.length})
+                {t("friends.connected")} ({pairedFriends.length})
               </TabsTrigger>
-              <TabsTrigger value="settings">Settings</TabsTrigger>
+              <TabsTrigger value="settings">{t("settings.title")}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="connect" className="space-y-4">
               <div className="space-y-4">
                 <div className="flex gap-2">
                   <Input
-                    placeholder="Search friends..."
+                    placeholder={t("party.search_placeholder")}
                     value={searchTerm}
                     onChange={(e) => {
                       setSearchTerm(e.target.value);
@@ -249,12 +249,18 @@ export default function PartyModeDialog() {
                     <div className="text-center py-8">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
                       <p className="text-sm text-muted-foreground mt-2">
-                        Loading friends...
+                        {
+                          t(
+                            "loading.champions_data"
+                          ) /* reuse a loading key; consider dedicated key if needed */
+                        }
                       </p>
                     </div>
                   ) : filteredFriends.length === 0 ? (
                     <div className="text-center py-8">
-                      <p className="text-muted-foreground">No friends found</p>
+                      <p className="text-muted-foreground">
+                        {t("friends.no_friends")}
+                      </p>
                     </div>
                   ) : (
                     filteredFriends.map((friend) => {
@@ -263,7 +269,7 @@ export default function PartyModeDialog() {
                           String(cf.summoner_id) === String(friend.summoner_id)
                       );
                       const isConnected = !!pairedFriend;
-                      
+
                       return (
                         <div
                           key={friend.summoner_id}
@@ -309,10 +315,10 @@ export default function PartyModeDialog() {
                   <div className="text-center py-8">
                     <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                     <p className="text-muted-foreground">
-                      No friends connected
+                      {t("friends.no_friends")}
                     </p>
                     <p className="text-sm text-muted-foreground mt-2">
-                      Go to the Friends tab to add friends
+                      {t("party.search_placeholder")}
                     </p>
                   </div>
                 ) : (
@@ -327,7 +333,7 @@ export default function PartyModeDialog() {
                           <div>
                             <p className="font-medium">{friend.display_name}</p>
                             <p className="text-sm text-muted-foreground">
-                              Connected{" "}
+                              {t("friends.connected")}{" "}
                               {new Date(friend.paired_at).toLocaleDateString()}
                             </p>
                           </div>
@@ -340,7 +346,7 @@ export default function PartyModeDialog() {
                           variant="destructive"
                         >
                           <UserMinus className="h-4 w-4 mr-2" />
-                          Remove
+                          {t("misc.delete")}
                         </Button>
                       </div>
                     ))}
@@ -354,9 +360,9 @@ export default function PartyModeDialog() {
                 <CardContent className="space-y-6">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
-                      <Label>Notifications</Label>
+                      <Label>{t("notifications.label")}</Label>
                       <p className="text-sm text-muted-foreground">
-                        Show notifications when skins are shared
+                        {t("notifications.show_on_share")}
                       </p>
                     </div>
                     <Switch

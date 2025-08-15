@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Search } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 import { Input } from "./ui/input";
 import { Champion } from "@/lib/types";
 
@@ -40,6 +41,7 @@ export function ChampionSearch({
 }: ChampionSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [hasFocus, setHasFocus] = useState(false);
+  const { t } = useI18n();
 
   // Handle keyboard input when not focused on input
   useEffect(() => {
@@ -87,7 +89,7 @@ export function ChampionSearch({
       type="search"
       className="rounded-none"
       icon={<Search size={16} />}
-      placeholder="Search champions..."
+      placeholder={t("search.placeholder")}
       value={searchQuery}
       onFocus={() => {
         setHasFocus(true);

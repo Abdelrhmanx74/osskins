@@ -29,6 +29,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Champion } from "@/lib/types";
 import { Badge } from "../ui/badge";
+import { useI18n } from "@/lib/i18n";
 
 interface TopBarProps {
   champions: Champion[];
@@ -104,12 +105,13 @@ export function TopBar({
       await refreshUpdateAvailability();
     } catch (error) {
       console.error("Error during manual update:", error);
-      toast.error("Failed to update data");
+      toast.error(t("update.processing_unknown"));
     }
   }
 
   const updateDisabled =
     activeTab === "custom" || isUpdating || isChecking || isUpToDate === true;
+  const { t } = useI18n();
 
   return (
     <div
@@ -155,8 +157,8 @@ export function TopBar({
             className="w-full justify-center items-center"
           >
             <TabsList>
-              <TabsTrigger value="official">Official</TabsTrigger>
-              <TabsTrigger value="custom">Custom</TabsTrigger>
+              <TabsTrigger value="official">{t("tabs.official")}</TabsTrigger>
+              <TabsTrigger value="custom">{t("tabs.custom")}</TabsTrigger>
             </TabsList>
           </Tabs>
           <InjectionStatusDot />
@@ -175,8 +177,10 @@ export function TopBar({
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>
-                    {pairedFriendsCount} paired friend
-                    {pairedFriendsCount === 1 ? "" : "s"}
+                    {pairedFriendsCount}{" "}
+                    {pairedFriendsCount === 1
+                      ? t("party.pairedFriend")
+                      : t("party.pairedFriends")}
                   </p>
                 </TooltipContent>
               </Tooltip>
@@ -202,12 +206,12 @@ export function TopBar({
               >
                 <RefreshCw className="h-4 w-4" />
                 {isUpToDate === true
-                  ? "Up to date"
+                  ? t("up_to_date")
                   : isChecking
-                  ? "Checking..."
+                  ? t("detecting")
                   : isUpdating
-                  ? "Updating..."
-                  : "Update Data"}
+                  ? t("update.downloading")
+                  : t("update.action")}
               </DropdownMenuItem>
               <TerminalLogsDialog />
               <SettingsDialog />

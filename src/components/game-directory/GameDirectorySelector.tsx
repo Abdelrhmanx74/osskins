@@ -3,10 +3,12 @@ import { Button } from "@/components/ui/button";
 import { useGameStore } from "@/lib/store";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
+import { useI18n } from "@/lib/i18n";
 
 export function GameDirectorySelector() {
   const [isLoading, setIsLoading] = useState(false);
   const { leaguePath, setLeaguePath } = useGameStore();
+  const { t } = useI18n();
 
   const handleSelectDirectory = async () => {
     try {
@@ -14,7 +16,7 @@ export function GameDirectorySelector() {
       const path = await invoke<string>("select_league_directory");
       if (path) {
         setLeaguePath(path);
-        toast.success("League of Legends directory selected successfully");
+        toast.success(t("select.dir.success"));
       }
     } catch (err) {
       console.error("Failed to select League directory:", err);
@@ -30,13 +32,11 @@ export function GameDirectorySelector() {
       const path = await invoke<string>("auto_detect_league");
       if (path) {
         setLeaguePath(path);
-        toast.success("League of Legends installation found");
+        toast.success(t("detect.success"));
       }
     } catch (err) {
       console.error("Failed to detect League directory:", err);
-      toast.error(
-        "Could not find League of Legends installation automatically"
-      );
+      toast.error(t("detect.failed"));
     } finally {
       setIsLoading(false);
     }
@@ -50,14 +50,14 @@ export function GameDirectorySelector() {
           disabled={isLoading}
           variant="default"
         >
-          {isLoading ? "Detecting..." : "Auto-Detect"}
+          {isLoading ? t("detecting") : t("detect.button")}
         </Button>
         <Button
           onClick={() => void handleSelectDirectory()}
           disabled={isLoading}
           variant="outline"
         >
-          {isLoading ? "Selecting..." : "Browse"}
+          {isLoading ? t("selecting") : t("browse.button")}
         </Button>
       </div>
       {leaguePath && (

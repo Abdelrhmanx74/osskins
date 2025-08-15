@@ -6,12 +6,14 @@ import { useMiscItems } from "@/lib/hooks/use-misc-items";
 import { Button } from "./ui/button";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
+import { useI18n } from "@/lib/i18n";
 
 interface MiscItemViewProps {
   type: MiscItemType;
 }
 
 export function MiscItemView({ type }: MiscItemViewProps) {
+  const { t } = useI18n();
   const { selectedMiscItems, selectMiscItem, toggleMiscItemSelection } =
     useGameStore();
   const {
@@ -40,7 +42,7 @@ export function MiscItemView({ type }: MiscItemViewProps) {
       }
     } catch (err) {
       console.error("Error uploading items:", err);
-      toast.error("Error uploading items. Please try again.");
+      toast.error(t("misc.upload_error"));
     } finally {
       setIsUploading(false);
     }
@@ -55,7 +57,7 @@ export function MiscItemView({ type }: MiscItemViewProps) {
   const handleItemDelete = async (itemId: string) => {
     const success = await deleteMiscItem(itemId);
     if (success) {
-      toast.success("Item deleted successfully");
+      toast.success(t("misc.delete_success"));
     }
   };
 
@@ -63,7 +65,7 @@ export function MiscItemView({ type }: MiscItemViewProps) {
     return (
       <div className="flex items-center justify-center h-full w-full">
         <p className="text-muted-foreground">
-          Loading {getTypeDisplayName(type).toLowerCase()} items...
+          {t("misc.loading", { type: getTypeDisplayName(type).toLowerCase() })}
         </p>
       </div>
     );
@@ -73,7 +75,10 @@ export function MiscItemView({ type }: MiscItemViewProps) {
     return (
       <div className="flex flex-col items-center justify-center h-full w-full">
         <p className="text-destructive">
-          Error loading {getTypeDisplayName(type).toLowerCase()} items: {error}
+          {t("misc.error_loading", {
+            type: getTypeDisplayName(type).toLowerCase(),
+            error,
+          })}
         </p>
         <Button
           variant="outline"
@@ -82,7 +87,7 @@ export function MiscItemView({ type }: MiscItemViewProps) {
             window.location.reload();
           }}
         >
-          Retry
+          {t("misc.retry")}
         </Button>
       </div>
     );
@@ -93,7 +98,7 @@ export function MiscItemView({ type }: MiscItemViewProps) {
       <div className="size-full space-y-3 px-20 py-10">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold">
-            {getTypeDisplayName(type)} Items
+            {t("misc.items_title", { type: getTypeDisplayName(type) })}
           </h2>
         </div>
 
@@ -113,13 +118,13 @@ export function MiscItemView({ type }: MiscItemViewProps) {
               <div>
                 <h3 className="font-medium">{item.name}</h3>
                 <p className="text-sm text-muted-foreground">
-                  Type: {item.item_type}
+                  {t("misc.type_label")}: {item.item_type}
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 {selectedItemIds.includes(item.id) && (
                   <div className="px-2 py-1 bg-primary text-primary-foreground text-xs rounded">
-                    Selected
+                    {t("misc.selected")}
                   </div>
                 )}
                 <Button
@@ -130,7 +135,7 @@ export function MiscItemView({ type }: MiscItemViewProps) {
                     void handleItemDelete(item.id);
                   }}
                 >
-                  Delete
+                  {t("misc.delete")}
                 </Button>
               </div>
             </div>
@@ -140,7 +145,9 @@ export function MiscItemView({ type }: MiscItemViewProps) {
         {typeItems.length === 0 && (
           <div className="flex flex-col items-center mt-8">
             <p className="text-muted-foreground mb-4">
-              No {getTypeDisplayName(type).toLowerCase()} items found.
+              {t("misc.no_items", {
+                type: getTypeDisplayName(type).toLowerCase(),
+              })}
             </p>
           </div>
         )}
@@ -158,8 +165,8 @@ export function MiscItemView({ type }: MiscItemViewProps) {
           <Plus className="size-8 opacity-50" />
           <span className="text-lg font-medium">
             {isUploading
-              ? "Uploading..."
-              : `Add ${getTypeDisplayName(type)} Items`}
+              ? t("misc.uploading")
+              : t("misc.add_items", { type: getTypeDisplayName(type) })}
           </span>
         </Button>
       </div>
