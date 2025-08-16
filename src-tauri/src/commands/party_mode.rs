@@ -1007,6 +1007,10 @@ pub async fn should_inject_now(app: &AppHandle, champion_id: u32) -> Result<bool
         .filter(|friend| friend.share_enabled)
         .collect();
 
+    println!("[Party Mode][DEBUG] Paired friends with sharing enabled: {:?}",
+        friends_with_sharing.iter().map(|f| (&f.display_name, &f.summoner_id)).collect::<Vec<_>>()
+    );
+
     // If no friends have sharing enabled, inject immediately
     if friends_with_sharing.is_empty() {
         println!("[Party Mode] No friends with sharing enabled - injecting immediately for champion {}", champion_id);
@@ -1024,15 +1028,25 @@ pub async fn should_inject_now(app: &AppHandle, champion_id: u32) -> Result<bool
 
     let party_member_ids = get_current_party_member_summoner_ids(&lcu_connection).await.unwrap_or_default();
     println!("[Party Mode][DEBUG] Party members (summoner IDs) in current session: {:?}", party_member_ids);
+
+    // Normalize IDs for robust matching
+    let party_ids_normalized: std::collections::HashSet<String> = party_member_ids.into_iter().map(|s| s.trim().to_string()).collect();
     let mut friends_in_same_party: Vec<&PairedFriend> = friends_with_sharing
         .into_iter()
-        .filter(|f| party_member_ids.contains(&f.summoner_id))
+        .filter(|f| party_ids_normalized.contains(&f.summoner_id.trim().to_string()))
         .collect();
+
+    println!("[Party Mode][DEBUG] Paired friends present in same party: {:?}",
+        friends_in_same_party.iter().map(|f| (&f.display_name, &f.summoner_id)).collect::<Vec<_>>()
+    );
 
     // Remove self if present just in case
     if friends_in_same_party.is_empty() {
         // You're solo or no paired friends in party; don't block injection
         println!("[Party Mode] Solo or no paired friends in current party - injecting immediately for champion {}", champion_id);
+        println!("[Party Mode][DEBUG] Paired friends list to check: {:?}",
+            config.party_mode.paired_friends.iter().map(|f| (&f.display_name, &f.summoner_id)).collect::<Vec<_>>()
+        );
         return Ok(true);
     }
 

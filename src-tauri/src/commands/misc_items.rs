@@ -282,10 +282,79 @@ pub fn get_selected_misc_items(app: &AppHandle) -> Result<Vec<MiscItem>, String>
     
     for (item_type, selected_ids) in &config.selected_misc_items {
         println!("DEBUG: Processing type '{}' with {} selected IDs: {:?}", item_type, selected_ids.len(), selected_ids);
-        for misc_item in &all_misc_items {
-            if misc_item.item_type == *item_type && selected_ids.contains(&misc_item.id) {
-                println!("DEBUG: Adding selected item: {} ({})", misc_item.name, misc_item.id);
-                selected_items.push(misc_item.clone());
+        for selected_id in selected_ids {
+            // Handle built-in font IDs (e.g., "builtin-font-korean") by mapping to resource fonts
+            if selected_id.starts_with("builtin-font-") && item_type == "font" {
+                // Determine the builtin name suffix
+                if let Some(suffix) = selected_id.strip_prefix("builtin-font-") {
+                    // Resource directory where bundled fonts may live. Try several common locations to
+                    // handle differences between dev (crate resources) and packaged layouts.
+                    if let Ok(resource_dir) = app.path().resource_dir() {
+                        // Build a list of candidate font paths to check (dev vs packaged layouts)
+                        let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+                        candidates.push(resource_dir.join("fonts").join(format!("{}.fantome", suffix)));
+                        candidates.push(resource_dir.join("resources").join("fonts").join(format!("{}.fantome", suffix)));
+                        candidates.push(resource_dir.join("..").join("resources").join("fonts").join(format!("{}.fantome", suffix)));
+
+                        // Also check the crate's resources folder (useful during cargo run from workspace)
+                        let manifest_fonts = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources").join("fonts").join(format!("{}.fantome", suffix));
+                        candidates.push(manifest_fonts);
+
+                        // Find first existing candidate
+                        let mut found_candidate: Option<std::path::PathBuf> = None;
+                        for cand in candidates.iter() {
+                            if cand.exists() {
+                                found_candidate = Some(cand.clone());
+                                break;
+                            }
+                        }
+
+                        if let Some(candidate) = found_candidate {
+                            // Ensure misc_items_dir exists
+                            let _ = std::fs::create_dir_all(&misc_items_dir);
+
+                            // Destination filename in misc_items dir
+                            let dest_filename = format!("font_builtin_{}.fantome", suffix);
+                            let dest_path = misc_items_dir.join(&dest_filename);
+
+                            // Copy if not already present
+                            if !dest_path.exists() {
+                                if let Err(e) = std::fs::copy(&candidate, &dest_path) {
+                                    println!("DEBUG: Failed to copy builtin font {} to misc_items: {}", candidate.display(), e);
+                                } else {
+                                    println!("DEBUG: Copied builtin font {} -> {}", candidate.display(), dest_path.display());
+                                }
+                            } else {
+                                println!("DEBUG: Builtin font already copied: {}", dest_path.display());
+                            }
+
+                            // Construct a MiscItem entry matching expectations of injector
+                            let builtin_misc = crate::injection::MiscItem {
+                                id: selected_id.clone(),
+                                name: suffix.to_string(),
+                                item_type: item_type.clone(),
+                                fantome_path: dest_filename,
+                            };
+                            println!("DEBUG: Adding builtin selected item: {} ({})", builtin_misc.name, builtin_misc.id);
+                            selected_items.push(builtin_misc);
+                            continue;
+                        } else {
+                            // Log the primary candidate path for debugging
+                            let primary = resource_dir.join("fonts").join(format!("{}.fantome", suffix));
+                            println!("DEBUG: Builtin font resource not found in known locations, primary checked: {}", primary.display());
+                        }
+                    } else {
+                        println!("DEBUG: resource_dir unavailable; cannot resolve builtin font {}", selected_id);
+                    }
+                }
+            }
+
+            // Fallback: match against uploaded/available misc items
+            for misc_item in &all_misc_items {
+                if misc_item.item_type == *item_type && selected_ids.contains(&misc_item.id) {
+                    println!("DEBUG: Adding selected item: {} ({})", misc_item.name, misc_item.id);
+                    selected_items.push(misc_item.clone());
+                }
             }
         }
     }

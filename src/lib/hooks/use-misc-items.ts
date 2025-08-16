@@ -11,8 +11,8 @@ export function useMiscItems() {
     setMiscItems,
     addMiscItem,
     removeMiscItem,
-  selectMultipleMiscItems,
-  selectMiscItem,
+    selectMultipleMiscItems,
+    selectMiscItem,
   } = useGameStore();
 
   // Load misc items from backend
@@ -86,7 +86,8 @@ export function useMiscItems() {
         }
       } else {
         // single-select: pick the last uploaded item if any, otherwise keep existing
-        const lastNewId = newItemIds.length > 0 ? newItemIds[newItemIds.length - 1] : null;
+        const lastNewId =
+          newItemIds.length > 0 ? newItemIds[newItemIds.length - 1] : null;
         if (lastNewId) {
           selectMiscItem(type, lastNewId);
         }

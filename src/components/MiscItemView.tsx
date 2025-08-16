@@ -171,7 +171,7 @@ export function MiscItemView({ type }: MiscItemViewProps) {
                   </div>
                 )}
                 {/* Built-in fonts cannot be deleted */}
-                {!(String(item.id).startsWith("builtin-font-")) && (
+                {!String(item.id).startsWith("builtin-font-") && (
                   <Button
                     variant="destructive"
                     size="sm"
@@ -193,7 +193,7 @@ export function MiscItemView({ type }: MiscItemViewProps) {
           </div>
         ))}
 
-  {displayItems.length === 0 && (
+        {displayItems.length === 0 && (
           <div className="flex flex-col items-center mt-8">
             <p className="text-muted-foreground mb-4">
               {t("misc.no_items", {
