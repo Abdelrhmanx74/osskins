@@ -37,7 +37,7 @@
     "dist/types/**/*.ts"
   ],
   "exclude": [
-  "node_modules",
-  "src-tauri"
+    "node_modules",
+    "src-tauri"
   ]
 }

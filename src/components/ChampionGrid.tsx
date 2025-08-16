@@ -56,35 +56,28 @@ export function ChampionGrid({
 
   return (
     <div className="w-fit mx-auto grid grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2">
-      {/* Show misc cards only in custom mode */}
-      {isCustomMode && (
-        <>
-          <MiscCard
-            icon={Map}
-            type="map"
-            onClick={handleMapClick}
-            title="Map"
-          />
-          <MiscCard
-            icon={Languages}
-            type="font"
-            onClick={handleFontClick}
-            title="Font"
-          />
-          <MiscCard
-            icon={Shapes}
-            type="hud"
-            onClick={handleHudClick}
-            title="HUD"
-          />
-          <MiscCard
-            icon={Package}
-            type="misc"
-            onClick={handleMiscClick}
-            title="Misc"
-          />
-        </>
-      )}
+      {/* Misc cards - available in both official and custom tabs */}
+      <>
+        <MiscCard icon={Map} type="map" onClick={handleMapClick} title="Map" />
+        <MiscCard
+          icon={Languages}
+          type="font"
+          onClick={handleFontClick}
+          title="Font"
+        />
+        <MiscCard
+          icon={Shapes}
+          type="hud"
+          onClick={handleHudClick}
+          title="HUD"
+        />
+        <MiscCard
+          icon={Package}
+          type="misc"
+          onClick={handleMiscClick}
+          title="Misc"
+        />
+      </>
 
       {champions.map((champion) => (
         <ChampionCard

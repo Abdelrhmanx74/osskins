@@ -12,6 +12,26 @@ import { useI18n } from "@/lib/i18n";
 // Define theme tone options with palettes for both light and dark modes
 // Now exported so it can be used by ThemeInitializer
 export const TONES = [
+  // Special / dark
+  {
+    name: "Void",
+    value: "void",
+    palette: {
+      // deep, high-contrast dark theme with neon highlights
+      primary: "oklch(0.60 0.28 260)",
+      background: "oklch(0.96 0.05 260)",
+      backgroundDark: "oklch(0.06 0.02 260)",
+      foreground: "oklch(0.16 0.02 260)",
+      foregroundDark: "oklch(0.98 0.02 260)",
+      border: "oklch(0.88 0.06 260)",
+      borderDark: "oklch(0.20 0.03 260)",
+      accent: "oklch(0.86 0.32 320)",
+      accentDark: "oklch(0.44 0.18 320)",
+      muted: "oklch(0.95 0.03 260)",
+      mutedDark: "oklch(0.22 0.04 260)",
+    },
+  },
+
   // Cool/blue group
   {
     name: "Ice",
@@ -210,26 +230,6 @@ export const TONES = [
       mutedDark: "oklch(0.32 0.06 28)",
     },
   },
-
-  // Special / dark
-  {
-    name: "Void",
-    value: "void",
-    palette: {
-      // deep, high-contrast dark theme with neon highlights
-      primary: "oklch(0.60 0.28 260)",
-      background: "oklch(0.96 0.05 260)",
-      backgroundDark: "oklch(0.06 0.02 260)",
-      foreground: "oklch(0.16 0.02 260)",
-      foregroundDark: "oklch(0.98 0.02 260)",
-      border: "oklch(0.88 0.06 260)",
-      borderDark: "oklch(0.20 0.03 260)",
-      accent: "oklch(0.86 0.32 320)",
-      accentDark: "oklch(0.44 0.18 320)",
-      muted: "oklch(0.95 0.03 260)",
-      mutedDark: "oklch(0.22 0.04 260)",
-    },
-  },
 ];
 
 // The key used to store tone in localStorage as a backup
@@ -359,8 +359,8 @@ async function saveThemePreferences(tone: string, isDark: boolean) {
  * Custom hook for theme tone management
  */
 export function useThemeTone() {
-  // Default to blue tone
-  const [tone, setToneState] = useState<string>("gray");
+  // Default to 'void' special dark tone instead of shadcn default
+  const [tone, setToneState] = useState<string>("slate");
   const [initialized, setInitialized] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const { theme, setTheme, resolvedTheme } = useTheme();
@@ -455,8 +455,11 @@ export function useThemeTone() {
     // Don't make CSS changes during transitions
     if (isTransitioning) return;
 
-    // Get the selected tone palette
-    const selected = TONES.find((t) => t.value === tone) ?? TONES[1];
+    // Get the selected tone palette (prefer 'void' when missing)
+    const selected =
+      TONES.find((t) => t.value === tone) ??
+      TONES.find((t) => t.value === "void") ??
+      TONES[0];
 
     // Apply CSS variables with a small delay to ensure DOM is ready
     const applyVars = () => {

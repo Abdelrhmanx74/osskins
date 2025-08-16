@@ -176,12 +176,12 @@ export default function Home() {
             />
           </div>
 
-          {/* Right side - Content based on active tab */}
+          {/* Right side - Content: if a misc item type is selected show its view, otherwise show tab-specific content */}
           <div className="w-3/4 xl:w-4/5 flex justify-center overflow-y-auto p-2 size-full">
-            {activeTab === "official" ? (
-              <SkinGrid champion={selectedChampionData ?? null} />
-            ) : selectedMiscItem ? (
+            {selectedMiscItem ? (
               <MiscItemView type={selectedMiscItem} />
+            ) : activeTab === "official" ? (
+              <SkinGrid champion={selectedChampionData ?? null} />
             ) : (
               <CustomSkinList championId={selectedChampion} />
             )}
