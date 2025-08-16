@@ -61,15 +61,37 @@ pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResul
 async fn fetch_latest_commit_sha() -> Result<String, String> {
     let url = "https://api.github.com/repos/darkseal-org/lol-skins/commits?per_page=1";
     let client = reqwest::Client::new();
-    let resp = client
-        .get(url)
-        .header("User-Agent", "osskins-tauri")
+    let mut req = client.get(url).header("User-Agent", "osskins-tauri");
+
+    // Prefer token from environment to avoid being rate-limited by unauthenticated requests
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        if !token.trim().is_empty() {
+            req = req.header("Authorization", format!("token {}", token));
+        }
+    }
+
+    let resp = req
         .send()
         .await
         .map_err(|e| format!("Failed to fetch commits: {}", e))?;
 
     if !resp.status().is_success() {
-        return Err(format!("GitHub API returned status {}", resp.status()));
+        // try to capture some diagnostic info from the response body and rate-limit headers
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let body = resp.text().await.unwrap_or_else(|_| "<unable to read body>".to_string());
+        let rl_remaining = headers
+            .get("x-ratelimit-remaining")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("-");
+        let rl_reset = headers
+            .get("x-ratelimit-reset")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("-");
+        return Err(format!(
+            "GitHub API returned status {} (x-ratelimit-remaining={}, x-ratelimit-reset={}) - body: {}",
+            status, rl_remaining, rl_reset, body
+        ));
     }
 
     let json: serde_json::Value = resp.json().await.map_err(|e| format!("Invalid JSON: {}", e))?;
@@ -119,15 +141,34 @@ pub async fn get_changed_champions_since(last_sha: String) -> Result<Vec<String>
     );
     println!("[DataUpdate] Comparing commits via: {}", url);
     let client = reqwest::Client::new();
-    let resp = client
-        .get(&url)
-        .header("User-Agent", "osskins-tauri")
+    let mut req = client.get(&url).header("User-Agent", "osskins-tauri");
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        if !token.trim().is_empty() {
+            req = req.header("Authorization", format!("token {}", token));
+        }
+    }
+
+    let resp = req
         .send()
         .await
         .map_err(|e| format!("Failed to compare commits: {}", e))?;
 
     if !resp.status().is_success() {
-        return Err(format!("GitHub compare API returned status {}", resp.status()));
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let body = resp.text().await.unwrap_or_else(|_| "<unable to read body>".to_string());
+        let rl_remaining = headers
+            .get("x-ratelimit-remaining")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("-");
+        let rl_reset = headers
+            .get("x-ratelimit-reset")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("-");
+        return Err(format!(
+            "GitHub compare API returned status {} (x-ratelimit-remaining={}, x-ratelimit-reset={}) - body: {}",
+            status, rl_remaining, rl_reset, body
+        ));
     }
 
     let json: serde_json::Value = resp.json().await.map_err(|e| format!("Invalid JSON: {}", e))?;

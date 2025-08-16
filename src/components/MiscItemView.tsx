@@ -58,10 +58,10 @@ export function MiscItemView({ type }: MiscItemViewProps) {
             fantome_path: "minecraft.fantome",
           },
           {
-            id: "builtin-font-ultrakill",
-            name: "Ultrakill",
+            id: "builtin-font-arcade",
+            name: "Arcade",
             item_type: "font",
-            fantome_path: "ultrakill.fantome",
+            fantome_path: "arcade.fantome",
           },
         ]
       : [];
