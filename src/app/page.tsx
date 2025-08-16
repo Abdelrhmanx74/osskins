@@ -36,6 +36,23 @@ export default function Home() {
   const { champions, loading, error, hasData } = useChampions();
   const { updateData, isUpdating, progress } = useDataUpdate();
   const { leaguePath, activeTab, favorites, toggleFavorite } = useGameStore();
+  const { showUpdateModal, setShowUpdateModal } = useGameStore();
+
+  // If the store requests showing the update modal (e.g., after selecting directory), start the update and show modal
+  // We start the update when the flag is set; modal UI is driven by `isUpdating` and `progress`.
+  useEffect(() => {
+    if (showUpdateModal) {
+      // clear the flag and start update
+      setShowUpdateModal(false);
+      void (async () => {
+        try {
+          await updateData();
+        } catch (e) {
+          console.error("Failed to update data from modal trigger:", e);
+        }
+      })();
+    }
+  }, [showUpdateModal, setShowUpdateModal, updateData]);
 
   // Initialize app (load league path, etc)
   // Initialization and config loading are handled globally by AppInitializer

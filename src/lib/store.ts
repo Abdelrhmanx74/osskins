@@ -36,6 +36,8 @@ interface GameState {
   customSkins: Map<number, CustomSkin[]>;
   miscItems: Map<MiscItemType, MiscItem[]>;
   selectedMiscItems: Map<MiscItemType, string[]>; // Multiple selected misc items per type
+  showUpdateModal: boolean;
+  setShowUpdateModal: (v: boolean) => void;
   setLeaguePath: (path: string) => void;
   setLcuStatus: (status: string) => void;
   setInjectionStatus: (status: InjectionStatus) => void; // Add this
@@ -125,6 +127,11 @@ export const useGameStore = create<GameState>((set) => ({
     if (typeof window !== "undefined") {
       localStorage.setItem("hasCompletedOnboarding", completed.toString());
     }
+  },
+  // Control whether the data-update modal should be shown (triggered after selecting directory)
+  showUpdateModal: false,
+  setShowUpdateModal: (v: boolean) => {
+    set(() => ({ showUpdateModal: v }));
   },
   setActiveTab: (tab) => {
     set({ activeTab: tab });

@@ -3,12 +3,14 @@ import { useGameStore } from "@/lib/store";
 import { invoke } from "@tauri-apps/api/core";
 import { useDataUpdate } from "./use-data-update";
 import { toast } from "sonner";
+import { useI18n } from "@/lib/i18n";
 
 export function useInitialization() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [hasStartedUpdate, setHasStartedUpdate] = useState(false);
   const { updateData } = useDataUpdate();
   const { setLeaguePath, selectSkin, setFavorites } = useGameStore();
+  const { t } = useI18n();
 
   // Handle initial setup
   useEffect(() => {
@@ -88,46 +90,8 @@ export function useInitialization() {
           void invoke("start_auto_inject", { leaguePath: league_path });
         }
 
-        // Only check for updates if we haven't already started
-        if (!hasStartedUpdate && mounted) {
-          try {
-            const updateInfo = await invoke<{
-              success: boolean;
-              updatedChampions?: string[];
-            }>("check_data_updates");
-
-            console.log("[Init] check_data_updates ->", updateInfo);
-
-            const hasNew = (updateInfo.updatedChampions?.length ?? 0) > 0;
-
-            if (hasNew) {
-              if (auto_update_data !== false) {
-                console.log("[Init] Auto update is ON -> starting update");
-                setHasStartedUpdate(true);
-                await updateData();
-              } else {
-                console.log(
-                  "[Init] Auto update is OFF -> showing toast prompt"
-                );
-                toast("New data is available", {
-                  closeButton: true,
-                  duration: 999999,
-                  action: {
-                    label: "Update data",
-                    onClick: () => {
-                      setHasStartedUpdate(true);
-                      void updateData();
-                    },
-                  },
-                });
-              }
-            } else {
-              console.log("[Init] No new data available");
-            }
-          } catch (e) {
-            console.warn("[Init] check_data_updates failed", e);
-          }
-        }
+        // Initialization no longer triggers or checks for remote commits.
+        // Update must be started manually via the UI.
 
         if (mounted) {
           setIsInitialized(true);

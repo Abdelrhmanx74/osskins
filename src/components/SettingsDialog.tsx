@@ -27,42 +27,16 @@ import {
 import { ThemeToneSelector } from "./ThemeToneSelector";
 import { Separator } from "./ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { useDataUpdate } from "@/lib/hooks/use-data-update";
 import { useI18n } from "@/lib/i18n";
 
 export function SettingsDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [autoUpdate, setAutoUpdate] = useState(true);
   const { leaguePath, setLeaguePath } = useGameStore();
-  const { updateData } = useDataUpdate();
+  const { setShowUpdateModal } = useGameStore();
   const { locale, setLocale, t } = useI18n();
 
-  useEffect(() => {
-    // Load current setting
-    const load = async () => {
-      try {
-        const cfg = await invoke("load_config");
-        if (cfg && typeof cfg === "object" && "auto_update_data" in cfg) {
-          const v = (cfg as Record<string, unknown>)["auto_update_data"];
-          setAutoUpdate(v !== false);
-        }
-      } catch (e) {
-        // ignore
-      }
-    };
-    void load();
-  }, []);
-
-  const persistAutoUpdate = async (value: boolean) => {
-    try {
-      await invoke("set_auto_update_data", { value });
-      toast.success(t("settings.saved"));
-    } catch (e) {
-      console.error("Failed to save auto update setting", e);
-      toast.error(t("settings.save_failed"));
-    }
-  };
+  // No auto-update toggle in settings UI (commit-based update logic removed)
 
   const handleSelectDirectory = async () => {
     try {
@@ -70,7 +44,7 @@ export function SettingsDialog() {
       const path = await invoke<string>("select_league_directory");
       if (path) {
         setLeaguePath(path);
-        toast.success(t("select.dir.success"));
+        setShowUpdateModal(true);
       }
     } catch (err) {
       console.error("Failed to select League directory:", err);
@@ -86,7 +60,7 @@ export function SettingsDialog() {
       const path = await invoke<string>("auto_detect_league");
       if (path) {
         setLeaguePath(path);
-        toast.success(t("detect.success"));
+        setShowUpdateModal(true);
       }
     } catch (err) {
       console.error("Failed to detect League directory:", err);
@@ -148,47 +122,7 @@ export function SettingsDialog() {
             </div>
           </div>
 
-          {/* Auto update toggle */}
-          <div className="flex items-center justify-between mt-2">
-            <div className="flex flex-col">
-              <Label>{t("autoUpdate.label")}</Label>
-              <span className="text-xs text-muted-foreground">
-                {t("autoUpdate.desc")}
-              </span>
-            </div>
-            <Switch
-              checked={autoUpdate}
-              onCheckedChange={(v) => {
-                const next = !!v;
-                setAutoUpdate(next);
-                void persistAutoUpdate(next);
-                // If turning OFF auto-update, immediately check and prompt
-                if (!next) {
-                  void (async () => {
-                    try {
-                      const info = await invoke<{
-                        success: boolean;
-                        updatedChampions?: string[];
-                      }>("check_data_updates");
-                      const hasNew = (info.updatedChampions?.length ?? 0) > 0;
-                      if (hasNew) {
-                        toast(t("update.available"), {
-                          action: {
-                            label: t("update.action"),
-                            onClick: () => {
-                              void updateData();
-                            },
-                          },
-                        });
-                      }
-                    } catch (e) {
-                      console.warn("Failed to check updates after toggle", e);
-                    }
-                  })();
-                }
-              }}
-            />
-          </div>
+          {/* Auto-update removed: update flow is manual via TopBar */}
         </div>
 
         <Separator />

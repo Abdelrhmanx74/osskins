@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n";
 export function GameDirectorySelector() {
   const [isLoading, setIsLoading] = useState(false);
   const { leaguePath, setLeaguePath } = useGameStore();
+  const { setShowUpdateModal } = useGameStore();
   const { t } = useI18n();
 
   const handleSelectDirectory = async () => {
@@ -16,7 +17,8 @@ export function GameDirectorySelector() {
       const path = await invoke<string>("select_league_directory");
       if (path) {
         setLeaguePath(path);
-        toast.success(t("select.dir.success"));
+        // Open the data update modal so user can start the download explicitly
+        setShowUpdateModal(true);
       }
     } catch (err) {
       console.error("Failed to select League directory:", err);
@@ -32,7 +34,7 @@ export function GameDirectorySelector() {
       const path = await invoke<string>("auto_detect_league");
       if (path) {
         setLeaguePath(path);
-        toast.success(t("detect.success"));
+        setShowUpdateModal(true);
       }
     } catch (err) {
       console.error("Failed to detect League directory:", err);

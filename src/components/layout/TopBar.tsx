@@ -54,33 +54,9 @@ export function TopBar({
   const { activeTab, setActiveTab } = useGameStore();
   const pairedFriendsCount = usePartyModeStore((s) => s.pairedFriends.length);
 
-  // Track update availability
-  const [isChecking, setIsChecking] = useState(false);
-  const [isUpToDate, setIsUpToDate] = useState<boolean | null>(null);
-
-  const refreshUpdateAvailability = useMemo(
-    () => async () => {
-      try {
-        setIsChecking(true);
-        const info = await invoke<{
-          success: boolean;
-          updatedChampions?: string[];
-        }>("check_data_updates");
-        const hasNew = (info.updatedChampions?.length ?? 0) > 0;
-        setIsUpToDate(!hasNew);
-      } catch (e) {
-        // On failure, do not disable the button
-        setIsUpToDate(null);
-      } finally {
-        setIsChecking(false);
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    void refreshUpdateAvailability();
-  }, [refreshUpdateAvailability]);
+  // No availability probe: update button is enabled unless updating or on custom tab
+  const isChecking = false;
+  const isUpToDate: boolean | null = null;
 
   // Load saved tab preference from localStorage
   useEffect(() => {
@@ -101,16 +77,14 @@ export function TopBar({
   async function handleManualUpdate() {
     try {
       await onUpdateData();
-      // After update, refresh availability to reflect up-to-date state
-      await refreshUpdateAvailability();
+      // no availability probe
     } catch (error) {
       console.error("Error during manual update:", error);
       toast.error(t("update.processing_unknown"));
     }
   }
 
-  const updateDisabled =
-    activeTab === "custom" || isUpdating || isChecking || isUpToDate === true;
+  const updateDisabled = activeTab === "custom" || isUpdating;
   const { t } = useI18n();
 
   return (
@@ -205,13 +179,7 @@ export function TopBar({
                 disabled={updateDisabled}
               >
                 <RefreshCw className="h-4 w-4" />
-                {isUpToDate === true
-                  ? t("up_to_date")
-                  : isChecking
-                  ? t("detecting")
-                  : isUpdating
-                  ? t("update.downloading")
-                  : t("update.action")}
+                {isUpdating ? t("update.downloading") : t("update.action")}
               </DropdownMenuItem>
               <TerminalLogsDialog />
               <SettingsDialog />
