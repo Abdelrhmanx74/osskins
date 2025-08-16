@@ -11,7 +11,8 @@ export function useMiscItems() {
     setMiscItems,
     addMiscItem,
     removeMiscItem,
-    selectMultipleMiscItems,
+  selectMultipleMiscItems,
+  selectMiscItem,
   } = useGameStore();
 
   // Load misc items from backend
@@ -68,16 +69,27 @@ export function useMiscItems() {
         addMiscItem(item);
       });
 
-      // Auto-select all items of this type (both existing and new ones)
+      // Auto-select behavior:
+      // - For 'misc' type allow multi-select (select all existing + new)
+      // - For map/font/hud enforce single-select. Choose the newest uploaded item.
       const allItemsOfType = miscItems.get(type) ?? [];
       const newItemIds = newItems.map((item) => item.id);
-      const allItemIds = [
-        ...allItemsOfType.map((item) => item.id),
-        ...newItemIds,
-      ];
 
-      if (allItemIds.length > 0) {
-        selectMultipleMiscItems(type, allItemIds);
+      if (type === "misc") {
+        const allItemIds = [
+          ...allItemsOfType.map((item) => item.id),
+          ...newItemIds,
+        ];
+
+        if (allItemIds.length > 0) {
+          selectMultipleMiscItems(type, allItemIds);
+        }
+      } else {
+        // single-select: pick the last uploaded item if any, otherwise keep existing
+        const lastNewId = newItemIds.length > 0 ? newItemIds[newItemIds.length - 1] : null;
+        if (lastNewId) {
+          selectMiscItem(type, lastNewId);
+        }
       }
 
       toast.success(

@@ -15,7 +15,7 @@
     "detect.failed": "No se pudo detectar League automáticamente",
     "close.button": "Cerrar",
     "language.label": "Idioma",
-    "watermark": "Esta aplicación es 100% gratuita, no la compres a nadie. Únete a nuestra comunidad en: {link}",
+    "watermark": "Esta aplicación es 100% gratuita, no la compres a nadie. Únete a nuestra comunidad en:",
     "update.available": "Nuevos datos están disponibles",
     "update.action": "Actualizar datos",
     "terminal.logs_title": "Registros del terminal",

@@ -109,7 +109,7 @@ export function SettingsDialog() {
           {t("settings.title")}
         </DropdownMenuItem>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{t("settings.title")}</DialogTitle>
           <DialogDescription>{t("settings.description")}</DialogDescription>
@@ -193,8 +193,6 @@ export function SettingsDialog() {
 
         <Separator />
 
-        <ThemeToneSelector />
-
         {/* Language selector */}
         <div className="grid grid-cols-1 gap-2 mt-4">
           <Label>{t("language.label")}</Label>
@@ -224,9 +222,19 @@ export function SettingsDialog() {
           </Select>
         </div>
 
+        <ThemeToneSelector />
+
         {/* Watermark Notice */}
         <div className="text-xs text-center mt-2 select-none">
-          {t("watermark").replace("{link}", "https://discord.gg/tHyHnx5DKX")}
+          {t("watermark")}{" "}
+          <a
+            href="https://discord.gg/tHyHnx5DKX"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+          >
+            https://discord.gg/tHyHnx5DKX
+          </a>
         </div>
 
         <DialogFooter>

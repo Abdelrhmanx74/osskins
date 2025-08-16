@@ -38,10 +38,7 @@ export default function Home() {
   const { leaguePath, activeTab, favorites, toggleFavorite } = useGameStore();
 
   // Initialize app (load league path, etc)
-  useInitialization();
-
-  // Load initial config from backend
-  useConfigLoader();
+  // Initialization and config loading are handled globally by AppInitializer
 
   // Save/load selected champions and favorites
   useChampionPersistence();
@@ -111,10 +108,6 @@ export default function Home() {
         </div>
       </main>
     );
-  }
-
-  if (loading) {
-    return <ChampionsLoader />;
   }
 
   if (hasData === false) {

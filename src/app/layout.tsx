@@ -5,6 +5,7 @@ import { ThemeProvider } from "next-themes";
 import { ThemeInitializer } from "@/components/providers/ThemeInitializer";
 import { PartyModeProvider } from "@/components/providers/PartyModeProvider";
 import { I18nProvider } from "@/lib/i18n";
+import { AppInitializer } from "@/components/AppInitializer";
 
 const poppins = Poppins({
   weight: ["400", "500", "600", "700"],
@@ -25,7 +26,9 @@ export default function RootLayout({
         <ThemeProvider attribute="class" enableSystem>
           <I18nProvider>
             <ThemeInitializer />
-            <PartyModeProvider>{children}</PartyModeProvider>
+            <AppInitializer>
+              <PartyModeProvider>{children}</PartyModeProvider>
+            </AppInitializer>
             <Toaster richColors position="bottom-center" />
           </I18nProvider>
         </ThemeProvider>

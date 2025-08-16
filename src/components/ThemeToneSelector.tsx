@@ -12,157 +12,222 @@ import { useI18n } from "@/lib/i18n";
 // Define theme tone options with palettes for both light and dark modes
 // Now exported so it can be used by ThemeInitializer
 export const TONES = [
+  // Cool/blue group
   {
-    name: "Gray",
-    value: "gray",
+    name: "Ice",
+    value: "ice",
     palette: {
-      primary: "oklch(0.55 0 0)",
-      background: "oklch(0.98 0 0)",
-      backgroundDark: "oklch(0.18 0 0)",
-      foreground: "oklch(0.18 0 0)",
-      foregroundDark: "oklch(0.98 0 0)",
-      border: "oklch(0.85 0 0)",
-      borderDark: "oklch(0.25 0 0)",
-      accent: "oklch(0.7 0 0)",
-      accentDark: "oklch(0.3 0 0)",
-      muted: "oklch(0.93 0 0)",
-      mutedDark: "oklch(0.22 0 0)",
+      primary: "oklch(0.82 0.12 220)",
+      background: "oklch(0.99 0.03 220)",
+      backgroundDark: "oklch(0.16 0.06 220)",
+      foreground: "oklch(0.12 0.02 220)",
+      foregroundDark: "oklch(0.98 0.02 220)",
+      border: "oklch(0.90 0.04 220)",
+      borderDark: "oklch(0.30 0.06 220)",
+      accent: "oklch(0.80 0.16 220)",
+      accentDark: "oklch(0.38 0.10 220)",
+      muted: "oklch(0.98 0.02 220)",
+      mutedDark: "oklch(0.28 0.04 220)",
     },
   },
   {
-    name: "Blue",
-    value: "blue",
+    name: "Sky",
+    value: "sky",
     palette: {
-      primary: "oklch(0.65 0.13 250)",
-      background: "oklch(0.98 0.02 250)",
-      backgroundDark: "oklch(0.22 0.06 250)",
-      foreground: "oklch(0.18 0.01 250)",
-      foregroundDark: "oklch(0.98 0.01 250)",
-      border: "oklch(0.85 0.04 250)",
-      borderDark: "oklch(0.3 0.05 250)",
-      accent: "oklch(0.7 0.09 250)",
-      accentDark: "oklch(0.35 0.09 250)",
-      muted: "oklch(0.93 0.02 250)",
-      mutedDark: "oklch(0.28 0.03 250)",
+      primary: "oklch(0.80 0.14 200)",
+      background: "oklch(0.99 0.05 200)",
+      backgroundDark: "oklch(0.18 0.07 200)",
+      foreground: "oklch(0.14 0.02 200)",
+      foregroundDark: "oklch(0.97 0.02 200)",
+      border: "oklch(0.90 0.06 200)",
+      borderDark: "oklch(0.34 0.06 200)",
+      accent: "oklch(0.82 0.18 200)",
+      accentDark: "oklch(0.40 0.12 200)",
+      muted: "oklch(0.98 0.04 200)",
+      mutedDark: "oklch(0.30 0.05 200)",
     },
   },
   {
-    name: "Red",
-    value: "red",
+    name: "Slate",
+    value: "slate",
     palette: {
-      primary: "oklch(0.65 0.18 25)",
-      background: "oklch(0.98 0.02 25)",
-      backgroundDark: "oklch(0.22 0.09 25)",
-      foreground: "oklch(0.18 0.01 25)",
-      foregroundDark: "oklch(0.98 0.01 25)",
-      border: "oklch(0.85 0.04 25)",
-      borderDark: "oklch(0.3 0.06 25)",
-      accent: "oklch(0.7 0.09 25)",
-      accentDark: "oklch(0.35 0.12 25)",
-      muted: "oklch(0.93 0.02 25)",
-      mutedDark: "oklch(0.28 0.03 25)",
+      // cool, desaturated slate-blue with subtle teal accent
+      primary: "oklch(0.62 0.10 210)",
+      background: "oklch(0.99 0.03 210)",
+      backgroundDark: "oklch(0.10 0.08 210)",
+      foreground: "oklch(0.12 0.02 210)",
+      foregroundDark: "oklch(0.98 0.02 210)",
+      border: "oklch(0.90 0.05 210)",
+      borderDark: "oklch(0.32 0.06 210)",
+      accent: "oklch(0.80 0.18 185)",
+      accentDark: "oklch(0.42 0.14 185)",
+      muted: "oklch(0.97 0.03 210)",
+      mutedDark: "oklch(0.26 0.05 210)",
+    },
+  },
+
+  // Teal/green transition
+  {
+    name: "Teal",
+    value: "teal",
+    palette: {
+      primary: "oklch(0.70 0.15 185)",
+      background: "oklch(0.98 0.03 185)",
+      backgroundDark: "oklch(0.18 0.08 185)",
+      foreground: "oklch(0.14 0.02 185)",
+      foregroundDark: "oklch(0.96 0.02 185)",
+      border: "oklch(0.86 0.06 185)",
+      borderDark: "oklch(0.32 0.06 185)",
+      accent: "oklch(0.78 0.20 185)",
+      accentDark: "oklch(0.36 0.12 185)",
+      muted: "oklch(0.95 0.03 185)",
+      mutedDark: "oklch(0.28 0.04 185)",
     },
   },
   {
-    name: "Rose",
-    value: "rose",
+    name: "Mint",
+    value: "mint",
     palette: {
-      primary: "oklch(0.7 0.13 20)",
-      background: "oklch(0.98 0.02 20)",
-      backgroundDark: "oklch(0.22 0.09 20)",
-      foreground: "oklch(0.18 0.01 20)",
-      foregroundDark: "oklch(0.98 0.01 20)",
-      border: "oklch(0.85 0.04 20)",
-      borderDark: "oklch(0.3 0.06 20)",
-      accent: "oklch(0.7 0.09 20)",
-      accentDark: "oklch(0.35 0.12 20)",
-      muted: "oklch(0.93 0.02 20)",
-      mutedDark: "oklch(0.28 0.03 20)",
+      primary: "oklch(0.78 0.18 150)",
+      background: "oklch(0.98 0.04 150)",
+      backgroundDark: "oklch(0.16 0.08 150)",
+      foreground: "oklch(0.12 0.02 150)",
+      foregroundDark: "oklch(0.97 0.02 150)",
+      border: "oklch(0.88 0.06 150)",
+      borderDark: "oklch(0.30 0.06 150)",
+      accent: "oklch(0.80 0.20 150)",
+      accentDark: "oklch(0.38 0.12 150)",
+      muted: "oklch(0.96 0.03 150)",
+      mutedDark: "oklch(0.26 0.04 150)",
     },
   },
   {
-    name: "Yellow",
-    value: "yellow",
+    name: "Verdure",
+    value: "verdure",
     palette: {
-      primary: "oklch(0.9 0.18 100)",
-      background: "oklch(0.99 0.03 100)",
-      backgroundDark: "oklch(0.32 0.09 100)",
-      foreground: "oklch(0.22 0.01 100)",
-      foregroundDark: "oklch(0.98 0.01 100)",
-      border: "oklch(0.93 0.04 100)",
-      borderDark: "oklch(0.38 0.06 100)",
-      accent: "oklch(0.8 0.09 100)",
-      accentDark: "oklch(0.4 0.12 100)",
-      muted: "oklch(0.97 0.02 100)",
-      mutedDark: "oklch(0.35 0.03 100)",
+      // deep, forest green with warm amber accent
+      primary: "oklch(0.56 0.30 140)",
+      background: "oklch(0.98 0.04 140)",
+      backgroundDark: "oklch(0.08 0.10 140)",
+      foreground: "oklch(0.14 0.02 140)",
+      foregroundDark: "oklch(0.96 0.02 140)",
+      border: "oklch(0.86 0.06 140)",
+      borderDark: "oklch(0.30 0.06 140)",
+      accent: "oklch(0.88 0.26 48)",
+      accentDark: "oklch(0.44 0.18 48)",
+      muted: "oklch(0.96 0.04 140)",
+      mutedDark: "oklch(0.22 0.05 140)",
+    },
+  },
+
+  // Purple / Neon group
+  {
+    name: "Neon",
+    value: "neon",
+    palette: {
+      primary: "oklch(0.78 0.28 320)",
+      background: "oklch(0.99 0.08 320)",
+      backgroundDark: "oklch(0.12 0.12 320)",
+      foreground: "oklch(0.10 0.02 320)",
+      foregroundDark: "oklch(0.98 0.02 320)",
+      border: "oklch(0.90 0.10 320)",
+      borderDark: "oklch(0.36 0.12 320)",
+      accent: "oklch(0.88 0.34 320)",
+      accentDark: "oklch(0.46 0.18 320)",
+      muted: "oklch(0.98 0.06 320)",
+      mutedDark: "oklch(0.30 0.06 320)",
     },
   },
   {
-    name: "Orange",
-    value: "orange",
+    name: "Lavender",
+    value: "lavender",
     palette: {
-      primary: "oklch(0.85 0.18 60)",
-      background: "oklch(0.99 0.03 60)",
-      backgroundDark: "oklch(0.32 0.09 60)",
-      foreground: "oklch(0.22 0.01 60)",
-      foregroundDark: "oklch(0.98 0.01 60)",
-      border: "oklch(0.93 0.04 60)",
-      borderDark: "oklch(0.38 0.06 60)",
-      accent: "oklch(0.8 0.09 60)",
-      accentDark: "oklch(0.4 0.12 60)",
-      muted: "oklch(0.97 0.02 60)",
-      mutedDark: "oklch(0.35 0.03 60)",
+      primary: "oklch(0.74 0.18 270)",
+      background: "oklch(0.98 0.04 270)",
+      backgroundDark: "oklch(0.18 0.08 270)",
+      foreground: "oklch(0.12 0.02 270)",
+      foregroundDark: "oklch(0.96 0.02 270)",
+      border: "oklch(0.88 0.06 270)",
+      borderDark: "oklch(0.34 0.06 270)",
+      accent: "oklch(0.82 0.22 270)",
+      accentDark: "oklch(0.40 0.14 270)",
+      muted: "oklch(0.96 0.04 270)",
+      mutedDark: "oklch(0.30 0.05 270)",
     },
   },
   {
-    name: "Green",
-    value: "green",
+    name: "Aurora",
+    value: "aurora",
     palette: {
-      primary: "oklch(0.7 0.13 140)",
-      background: "oklch(0.98 0.02 140)",
-      backgroundDark: "oklch(0.22 0.09 140)",
-      foreground: "oklch(0.18 0.01 140)",
-      foregroundDark: "oklch(0.98 0.01 140)",
-      border: "oklch(0.85 0.04 140)",
-      borderDark: "oklch(0.3 0.06 140)",
-      accent: "oklch(0.7 0.09 140)",
-      accentDark: "oklch(0.35 0.12 140)",
-      muted: "oklch(0.93 0.02 140)",
-      mutedDark: "oklch(0.28 0.03 140)",
+      // vibrant, shifting-chroma look: magenta primary with cool teal accents
+      primary: "oklch(0.78 0.30 300)",
+      background: "oklch(0.98 0.06 260)",
+      backgroundDark: "oklch(0.10 0.14 220)",
+      foreground: "oklch(0.10 0.02 300)",
+      foregroundDark: "oklch(0.98 0.02 300)",
+      border: "oklch(0.90 0.08 280)",
+      borderDark: "oklch(0.32 0.08 220)",
+      accent: "oklch(0.82 0.34 170)",
+      accentDark: "oklch(0.46 0.18 170)",
+      muted: "oklch(0.97 0.06 260)",
+      mutedDark: "oklch(0.26 0.06 220)",
+    },
+  },
+
+  // Warm / yellow then warm red
+  {
+    name: "Lime",
+    value: "lime",
+    palette: {
+      // tuned to a warm, vivid summer yellow
+      primary: "oklch(0.92 0.30 95)",
+      background: "oklch(0.995 0.06 95)",
+      backgroundDark: "oklch(0.34 0.12 95)",
+      foreground: "oklch(0.12 0.02 95)",
+      foregroundDark: "oklch(0.98 0.02 95)",
+      border: "oklch(0.94 0.10 95)",
+      borderDark: "oklch(0.40 0.10 95)",
+      accent: "oklch(0.92 0.36 95)",
+      accentDark: "oklch(0.48 0.20 95)",
+      muted: "oklch(0.99 0.05 95)",
+      mutedDark: "oklch(0.36 0.06 95)",
     },
   },
   {
-    name: "Violet",
-    value: "violet",
+    name: "Sunset",
+    value: "sunset",
     palette: {
-      primary: "oklch(0.7 0.13 300)",
-      background: "oklch(0.98 0.02 300)",
-      backgroundDark: "oklch(0.22 0.09 300)",
-      foreground: "oklch(0.18 0.01 300)",
-      foregroundDark: "oklch(0.98 0.01 300)",
-      border: "oklch(0.85 0.04 300)",
-      borderDark: "oklch(0.3 0.06 300)",
-      accent: "oklch(0.7 0.09 300)",
-      accentDark: "oklch(0.35 0.12 300)",
-      muted: "oklch(0.93 0.02 300)",
-      mutedDark: "oklch(0.28 0.03 300)",
+      primary: "oklch(0.74 0.22 28)",
+      background: "oklch(0.99 0.06 28)",
+      backgroundDark: "oklch(0.18 0.10 28)",
+      foreground: "oklch(0.12 0.02 28)",
+      foregroundDark: "oklch(0.98 0.02 28)",
+      border: "oklch(0.90 0.08 28)",
+      borderDark: "oklch(0.36 0.08 28)",
+      accent: "oklch(0.86 0.26 28)",
+      accentDark: "oklch(0.40 0.14 28)",
+      muted: "oklch(0.97 0.05 28)",
+      mutedDark: "oklch(0.32 0.06 28)",
     },
   },
+
+  // Special / dark
   {
-    name: "Cyan",
-    value: "cyan",
+    name: "Void",
+    value: "void",
     palette: {
-      primary: "oklch(0.8 0.13 200)",
-      background: "oklch(0.98 0.02 200)",
-      backgroundDark: "oklch(0.22 0.09 200)",
-      foreground: "oklch(0.18 0.01 200)",
-      foregroundDark: "oklch(0.98 0.01 200)",
-      border: "oklch(0.85 0.04 200)",
-      borderDark: "oklch(0.3 0.06 200)",
-      accent: "oklch(0.7 0.09 200)",
-      accentDark: "oklch(0.35 0.12 200)",
-      muted: "oklch(0.93 0.02 200)",
-      mutedDark: "oklch(0.28 0.03 200)",
+      // deep, high-contrast dark theme with neon highlights
+      primary: "oklch(0.60 0.28 260)",
+      background: "oklch(0.96 0.05 260)",
+      backgroundDark: "oklch(0.06 0.02 260)",
+      foreground: "oklch(0.16 0.02 260)",
+      foregroundDark: "oklch(0.98 0.02 260)",
+      border: "oklch(0.88 0.06 260)",
+      borderDark: "oklch(0.20 0.03 260)",
+      accent: "oklch(0.86 0.32 320)",
+      accentDark: "oklch(0.44 0.18 320)",
+      muted: "oklch(0.95 0.03 260)",
+      mutedDark: "oklch(0.22 0.04 260)",
     },
   },
 ];
@@ -204,10 +269,35 @@ export function setThemeToneVars(
   );
 
   // Set accent based on mode
-  root.style.setProperty(
-    "--accent",
-    isDark ? palette.accentDark : palette.accent
-  );
+  // Determine a matching accent. Some palettes may provide an accent
+  // that visually clashes with their primary (different hue). Parse
+  // OKLCH strings and fall back to primary when the hue delta is large.
+  function parseOklch(s: string | undefined) {
+    if (!s) return null;
+    const m = /oklch\(\s*([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s*\)/i.exec(s);
+    if (!m) return null;
+    return { L: parseFloat(m[1]), C: parseFloat(m[2]), H: parseFloat(m[3]) };
+  }
+
+  const primaryParsed = parseOklch(palette.primary);
+  const accentParsed = parseOklch(isDark ? palette.accentDark : palette.accent);
+
+  let accentToUse = isDark ? palette.accentDark : palette.accent;
+
+  if (primaryParsed && accentParsed) {
+    const h1 = primaryParsed.H % 360;
+    const h2 = accentParsed.H % 360;
+    let diff = Math.abs(h1 - h2);
+    if (diff > 180) diff = 360 - diff;
+
+    // If hue difference is large, use primary as the accent so bg-accent
+    // matches the tone (avoids unexpected green highlights on purples).
+    if (diff > 45) {
+      accentToUse = palette.primary;
+    }
+  }
+
+  root.style.setProperty("--accent", accentToUse);
 
   // Set muted based on mode
   root.style.setProperty("--muted", isDark ? palette.mutedDark : palette.muted);
