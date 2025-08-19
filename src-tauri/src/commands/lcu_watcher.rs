@@ -12,6 +12,10 @@ use crate::commands::party_mode::{RECEIVED_SKINS, clear_received_skins};
 use std::sync::atomic::{AtomicU8, Ordering};
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
+use std::fs::File;
+use std::io::Write;
+use copypasta::{ClipboardContext, ClipboardProvider};
+use chrono::Utc;
 
 // LCU (League Client) watcher and communication
 
@@ -747,8 +751,52 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
     Ok(())
 }
 
-fn emit_terminal_log(app: &AppHandle, message: &str) {
-    let _ = app.emit("terminal-log", message);
+fn emit_terminal_log(_app: &AppHandle, message: &str) {
+    // Buffer logs in memory for later printing. Keep emitting to stdout for backwards visibility.
+    println!("{}", message);
+    if let Ok(mut buf) = LOG_BUFFER.lock() {
+        buf.push(message.to_string());
+        // Keep buffer bounded to last 2000 lines
+        if buf.len() > 2000 {
+            let excess = buf.len() - 2000;
+            buf.drain(0..excess);
+        }
+    }
+}
+
+// Global in-memory log buffer
+static LOG_BUFFER: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+/// Write buffered logs to a timestamped temp file and copy contents to clipboard.
+#[tauri::command]
+pub fn print_logs(app: AppHandle) -> Result<String, String> {
+    let buf = LOG_BUFFER.lock().map_err(|e| format!("Lock error: {}", e))?;
+    if buf.is_empty() {
+        return Err("No logs available".to_string());
+    }
+
+    let app_dir = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let out_dir = app_dir.join("logs");
+    if let Err(e) = std::fs::create_dir_all(&out_dir) {
+        return Err(format!("Failed to create log dir: {}", e));
+    }
+
+    let filename = format!("osskins-logs-{}.txt", Utc::now().format("%Y%m%d-%H%M%S"));
+    let out_path = out_dir.join(&filename);
+
+    let mut file = File::create(&out_path).map_err(|e| format!("Failed to create file: {}", e))?;
+    for line in buf.iter() {
+        if let Err(e) = writeln!(file, "{}", line) {
+            return Err(format!("Failed to write logs: {}", e));
+        }
+    }
+
+    // Copy to clipboard
+    let mut ctx = ClipboardContext::new().map_err(|e| format!("Clipboard init failed: {}", e))?;
+    let joined = buf.join("\n");
+    ctx.set_contents(joined).map_err(|e| format!("Clipboard write failed: {}", e))?;
+
+    Ok(out_path.to_string_lossy().to_string())
 }
 
 // Add helper function for cleaner log messages

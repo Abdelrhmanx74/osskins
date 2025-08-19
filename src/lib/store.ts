@@ -187,28 +187,17 @@ export const useGameStore = create<GameState>((set) => ({
   addMiscItem: (item) => {
     set((state) => {
       const newMiscItems = new Map(state.miscItems);
-      const newSelectedMiscItems = new Map(state.selectedMiscItems);
       const itemType = item.item_type as MiscItemType;
 
       const existingItems = newMiscItems.get(itemType) ?? [];
-      const updatedItems = [...existingItems, item];
+      // Normalize stored item ids to strings to avoid mismatches with selection ids
+      const storedItem = { ...item, id: String(item.id) } as MiscItem;
+      const updatedItems = [...existingItems, storedItem];
       newMiscItems.set(itemType, updatedItems);
 
-      // Check if this is a completely new type or if we should preserve user selections
-      const hasExistingSelections = newSelectedMiscItems.has(itemType);
-
-      if (hasExistingSelections) {
-        // User has made selections before, just add the new item to the selected list
-        const currentSelections = newSelectedMiscItems.get(itemType) ?? [];
-        newSelectedMiscItems.set(itemType, [...currentSelections, item.id]);
-      } else {
-        // This is a new type, start with just the new item selected
-        newSelectedMiscItems.set(itemType, [item.id]);
-      }
-
+      // Do not modify selectedMiscItems here; selection is managed by upload handlers.
       return {
         miscItems: newMiscItems,
-        selectedMiscItems: newSelectedMiscItems,
       };
     });
   },
@@ -219,7 +208,10 @@ export const useGameStore = create<GameState>((set) => ({
 
       // Find and remove the item from the appropriate type
       for (const [type, items] of newMiscItems.entries()) {
-        const updatedItems = items.filter((item) => item.id !== itemId);
+        // Ensure comparison is done using strings (backend may return numbers)
+        const updatedItems = items.filter(
+          (item) => String(item.id) !== String(itemId)
+        );
         if (updatedItems.length !== items.length) {
           // We found and removed the item
           if (updatedItems.length === 0) {
@@ -229,9 +221,11 @@ export const useGameStore = create<GameState>((set) => ({
           }
 
           // If this was a selected item, remove it from the selection
-          const currentSelections = newSelectedMiscItems.get(type) ?? [];
+          const currentSelections = (newSelectedMiscItems.get(type) ?? []).map(
+            String
+          );
           const updatedSelections = currentSelections.filter(
-            (id) => id !== itemId
+            (id) => id !== String(itemId)
           );
           if (updatedSelections.length === 0) {
             newSelectedMiscItems.delete(type);
@@ -253,12 +247,14 @@ export const useGameStore = create<GameState>((set) => ({
       const miscItemsMap = new Map<MiscItemType, MiscItem[]>();
 
       // Group items by type
+      // Normalize item ids to strings when populating the map
       items.forEach((item) => {
         const existingItems =
           miscItemsMap.get(item.item_type as MiscItemType) ?? [];
+        const storedItem = { ...item, id: String(item.id) } as MiscItem;
         miscItemsMap.set(item.item_type as MiscItemType, [
           ...existingItems,
-          item,
+          storedItem,
         ]);
       });
 
@@ -277,11 +273,29 @@ export const useGameStore = create<GameState>((set) => ({
   selectMiscItem: (type, itemId) => {
     set((state) => {
       const newSelectedMiscItems = new Map(state.selectedMiscItems);
+      // Debug
+      try {
+        console.debug("store.selectMiscItem called", {
+          type,
+          itemId,
+          before: Array.from(newSelectedMiscItems.entries()),
+        });
+      } catch (e) {
+        console.error(e);
+      }
       if (itemId === null) {
         newSelectedMiscItems.delete(type);
       } else {
         // For backward compatibility, selecting a single item replaces all selections for that type
-        newSelectedMiscItems.set(type, [itemId]);
+        newSelectedMiscItems.set(type, [String(itemId)]);
+      }
+      try {
+        console.debug("store.selectMiscItem result", {
+          type,
+          after: Array.from(newSelectedMiscItems.entries()),
+        });
+      } catch (e) {
+        console.error(e);
       }
 
       return { selectedMiscItems: newSelectedMiscItems };
@@ -290,10 +304,27 @@ export const useGameStore = create<GameState>((set) => ({
   selectMultipleMiscItems: (type, itemIds) => {
     set((state) => {
       const newSelectedMiscItems = new Map(state.selectedMiscItems);
+      try {
+        console.debug("store.selectMultipleMiscItems called", {
+          type,
+          itemIds,
+          before: Array.from(newSelectedMiscItems.entries()),
+        });
+      } catch (e) {
+        console.error(e);
+      }
       if (itemIds.length === 0) {
         newSelectedMiscItems.delete(type);
       } else {
-        newSelectedMiscItems.set(type, itemIds);
+        newSelectedMiscItems.set(type, itemIds.map(String));
+      }
+      try {
+        console.debug("store.selectMultipleMiscItems result", {
+          type,
+          after: Array.from(newSelectedMiscItems.entries()),
+        });
+      } catch (e) {
+        console.error(e);
       }
 
       return { selectedMiscItems: newSelectedMiscItems };
@@ -305,8 +336,18 @@ export const useGameStore = create<GameState>((set) => ({
 
       for (const [type, itemIds] of Object.entries(selections)) {
         if (Array.isArray(itemIds)) {
-          newSelectedMiscItems.set(type as MiscItemType, itemIds);
+          // Normalize IDs to strings to avoid type mismatches (backend may store numbers)
+          newSelectedMiscItems.set(type as MiscItemType, itemIds.map(String));
         }
+      }
+
+      try {
+        console.debug("store.setSelectedMiscItems", {
+          selections,
+          result: Array.from(newSelectedMiscItems.entries()),
+        });
+      } catch (e) {
+        console.error(e);
       }
 
       return { selectedMiscItems: newSelectedMiscItems };
@@ -315,11 +356,24 @@ export const useGameStore = create<GameState>((set) => ({
   toggleMiscItemSelection: (type, itemId) => {
     set((state) => {
       const newSelectedMiscItems = new Map(state.selectedMiscItems);
-      const currentSelections = newSelectedMiscItems.get(type) ?? [];
+      // Normalize stored ids to strings to avoid mismatches between number/string ids
+      const normalizedId = String(itemId);
+      const currentSelections = (newSelectedMiscItems.get(type) ?? []).map(
+        String
+      );
+      try {
+        console.debug("store.toggleMiscItemSelection called", {
+          type,
+          itemId: normalizedId,
+          before: currentSelections,
+        });
+      } catch (e) {
+        console.error(e);
+      }
 
-      if (currentSelections.includes(itemId)) {
+      if (currentSelections.includes(normalizedId)) {
         // Remove if already selected
-        const filtered = currentSelections.filter((id) => id !== itemId);
+        const filtered = currentSelections.filter((id) => id !== normalizedId);
         if (filtered.length === 0) {
           newSelectedMiscItems.delete(type);
         } else {
@@ -327,7 +381,16 @@ export const useGameStore = create<GameState>((set) => ({
         }
       } else {
         // Add to selection
-        newSelectedMiscItems.set(type, [...currentSelections, itemId]);
+        newSelectedMiscItems.set(type, [...currentSelections, normalizedId]);
+      }
+
+      try {
+        console.debug("store.toggleMiscItemSelection result", {
+          type,
+          after: Array.from(newSelectedMiscItems.entries()),
+        });
+      } catch (e) {
+        console.error(e);
       }
 
       return { selectedMiscItems: newSelectedMiscItems };

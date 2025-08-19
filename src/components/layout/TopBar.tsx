@@ -20,7 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { TerminalLogsDialog } from "@/components/TerminalLogsDialog";
+import { PrintLogsButton } from "@/components/PrintLogsButton";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import PartyModeDialog from "@/components/PartyModeDialog";
 import { useGameStore, SkinTab } from "@/lib/store";
@@ -135,7 +135,7 @@ export function TopBar({
               <TabsTrigger value="custom">{t("tabs.custom")}</TabsTrigger>
             </TabsList>
           </Tabs>
-          <InjectionStatusDot />
+          <InjectionStatusDot showLabel bordered />
           {/* Party Mode indicator */}
           {pairedFriendsCount > 0 && (
             <TooltipProvider>
@@ -181,7 +181,7 @@ export function TopBar({
                 <RefreshCw className="h-4 w-4" />
                 {isUpdating ? t("update.downloading") : t("update.action")}
               </DropdownMenuItem>
-              <TerminalLogsDialog />
+              <PrintLogsButton />
               <SettingsDialog />
             </DropdownMenuContent>
           </DropdownMenu>

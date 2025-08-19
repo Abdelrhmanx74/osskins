@@ -85,7 +85,7 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
     <Card
       ref={cardRef}
       className={cn(
-        "size-full relative cursor-pointer p-0 rounded-none overflow-hidden transition-all duration-300",
+        "size-full min-h-[420px] relative cursor-pointer p-0 rounded-none overflow-hidden transition-all duration-300",
         isSelected ? "ring-2 ring-primary" : ""
       )}
       onClick={handleClick}
@@ -98,8 +98,8 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
           <Image
             src={currentImageSrc}
             alt={selectedChroma?.name ?? skin.name}
-            width={308}
-            height={560}
+            width={310}
+            height={420}
             className={cn(
               "object-cover transition-opacity duration-200",
               imgLoaded ? "opacity-100" : "opacity-0"

@@ -45,6 +45,20 @@ export function useMiscItems() {
 
       const newItem = await invoke<MiscItem>("upload_misc_item", { request });
       addMiscItem(newItem);
+      // For single upload, auto-select the new item appropriately
+      if (type === "misc") {
+        // append to existing selections
+        const current =
+          useGameStore.getState().selectedMiscItems.get(type) ?? [];
+        useGameStore
+          .getState()
+          .selectMultipleMiscItems(type, [
+            ...current.map(String),
+            String(newItem.id),
+          ]);
+      } else {
+        useGameStore.getState().selectMiscItem(type, String(newItem.id));
+      }
       return true;
     } catch (err) {
       console.error("Failed to upload misc item:", err);
@@ -70,22 +84,26 @@ export function useMiscItems() {
       });
 
       // Auto-select behavior:
-      // - For 'misc' type allow multi-select (select all existing + new)
-      // - For map/font/hud enforce single-select. Choose the newest uploaded item.
-      const allItemsOfType = miscItems.get(type) ?? [];
-      const newItemIds = newItems.map((item) => item.id);
+      // - For 'misc' type (multi-select): preserve existing selections, add newly uploaded ids.
+      //   If there are no existing selections, select only the newly uploaded items.
+      // - For map/font/hud enforce single-select: choose the newest uploaded item.
+      const newItemIds = newItems.map((item) => String(item.id));
 
       if (type === "misc") {
-        const allItemIds = [
-          ...allItemsOfType.map((item) => item.id),
-          ...newItemIds,
-        ];
+        const currentSelections =
+          useGameStore.getState().selectedMiscItems.get(type) ?? [];
+        const normalizedCurrent = currentSelections.map(String);
 
-        if (allItemIds.length > 0) {
-          selectMultipleMiscItems(type, allItemIds);
+        const merged =
+          normalizedCurrent.length > 0
+            ? [...normalizedCurrent, ...newItemIds]
+            : [...newItemIds];
+
+        if (merged.length > 0) {
+          selectMultipleMiscItems(type, merged);
         }
       } else {
-        // single-select: pick the last uploaded item if any, otherwise keep existing
+        // single-select: pick the last uploaded item if any
         const lastNewId =
           newItemIds.length > 0 ? newItemIds[newItemIds.length - 1] : null;
         if (lastNewId) {
@@ -100,6 +118,14 @@ export function useMiscItems() {
       );
       return true;
     } catch (err) {
+      // If user cancelled the file dialog, backend returns an error string "No files selected".
+      // Treat this as a non-fatal cancellation (don't spam the console in dev mode).
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.includes("No files selected")) {
+        // User cancelled the dialog; no need to show an error toast or console spam.
+        return false;
+      }
+
       console.error("Failed to upload multiple misc items:", err);
       const errorMessage =
         err instanceof Error ? err.message : "Failed to upload misc items";

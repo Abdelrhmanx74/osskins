@@ -52,6 +52,7 @@ uuid = { version = "1.0", features = ["v4"] } # For generating unique IDs
 tokio = { version = "1.0", features = ["full"] } # For async operations
 rfd = "0.14" # For file dialogs
 percent-encoding = "2.3"
+copypasta = "0.8"
 
 [features]
 # by default Tauri runs in production mode

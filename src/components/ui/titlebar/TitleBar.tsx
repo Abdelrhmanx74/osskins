@@ -5,15 +5,11 @@ import {
   WebviewWindow,
   getCurrentWebviewWindow,
 } from "@tauri-apps/api/webviewWindow";
+import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
-import { Minus, Square, X } from "lucide-react";
+import { Minus, EyeOff, X } from "lucide-react";
 
-interface TitleBarProps {
-  title?: string;
-}
-
-export function TitleBar({ title = "League Skin Manager" }: TitleBarProps) {
-  const [isMaximized, setIsMaximized] = useState(false);
+export function TitleBar() {
   const [appWindow, setAppWindow] = useState<WebviewWindow | null>(null);
 
   useEffect(() => {
@@ -22,53 +18,12 @@ export function TitleBar({ title = "League Skin Manager" }: TitleBarProps) {
       try {
         const currentWindow = getCurrentWebviewWindow();
         setAppWindow(currentWindow);
-
-        // Check if the window is maximized initially
-        try {
-          const maximized = await currentWindow.isMaximized();
-          setIsMaximized(maximized);
-        } catch (error) {
-          console.error("Failed to check if window is maximized:", error);
-        }
-
-        // Listen for window resize events
-        const unlistenResize = await currentWindow.listen(
-          "tauri://resize",
-          () => {
-            currentWindow
-              .isMaximized()
-              .then((maximized) => {
-                setIsMaximized(maximized);
-              })
-              .catch((error: unknown) => {
-                console.error(
-                  "Failed to check if window is maximized on resize:",
-                  error
-                );
-              });
-          }
-        );
-
-        return unlistenResize;
       } catch (error) {
         console.error("Failed to initialize window:", error);
-        return null;
       }
     };
 
-    let unlisten: (() => void) | null = null;
-    initWindow()
-      .then((unlistenFn) => {
-        unlisten = unlistenFn;
-      })
-      .catch((error: unknown) => {
-        console.error("Failed to initialize window listeners:", error);
-      });
-
-    return () => {
-      // Cleanup event listeners
-      if (unlisten) unlisten();
-    };
+    void initWindow();
   }, []);
 
   const minimize = async () => {
@@ -81,27 +36,19 @@ export function TitleBar({ title = "League Skin Manager" }: TitleBarProps) {
     }
   };
 
-  const toggleMaximize = async () => {
+  const hideInTray = async () => {
     try {
-      if (appWindow) {
-        if (isMaximized) {
-          await appWindow.unmaximize();
-        } else {
-          await appWindow.maximize();
-        }
-      }
+      await invoke("hide_window");
     } catch (error) {
-      console.error("Failed to toggle maximize:", error);
+      console.error("Failed to invoke hide_window:", error);
     }
   };
 
   const close = async () => {
     try {
-      if (appWindow) {
-        await appWindow.close();
-      }
+      await invoke("exit_app");
     } catch (error) {
-      console.error("Failed to close window:", error);
+      console.error("Failed to invoke exit_app:", error);
     }
   };
 
@@ -120,10 +67,10 @@ export function TitleBar({ title = "League Skin Manager" }: TitleBarProps) {
         variant="ghost"
         size="icon"
         className="p-4"
-        onClick={() => void toggleMaximize()}
-        aria-label={isMaximized ? "Restore" : "Maximize"}
+        onClick={() => void hideInTray()}
+        aria-label="Hide in tray"
       >
-        <Square className="h-4 w-4" />
+        <EyeOff className="h-4 w-4" />
       </Button>
       <Button
         variant="ghost"

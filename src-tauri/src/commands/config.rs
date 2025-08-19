@@ -91,12 +91,22 @@ pub async fn save_selected_skins(
         .map_err(|e| format!("Failed to create config dir: {}", e))?;
     let file = config_dir.join("config.json");
 
-    // Read existing config if it exists
+    // Read existing config if it exists. Be tolerant of empty/malformed files by
+    // falling back to an empty object and logging the issue.
     let mut config: serde_json::Value = if file.exists() {
-        let content = std::fs::read_to_string(&file)
-            .map_err(|e| format!("Failed to read config.json: {}", e))?;
-        serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse config.json: {}", e))?
+        match std::fs::read_to_string(&file) {
+            Ok(content) => match serde_json::from_str(&content) {
+                Ok(v) => v,
+                Err(e) => {
+                    println!("Warning: Failed to parse existing config.json, will overwrite: {}", e);
+                    serde_json::json!({})
+                }
+            },
+            Err(e) => {
+                println!("Warning: Failed to read config.json, will create new: {}", e);
+                serde_json::json!({})
+            }
+        }
     } else {
         serde_json::json!({})
     };
@@ -141,10 +151,41 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
             last_data_commit: None,
         });
     }
-    let content = std::fs::read_to_string(&file)
-        .map_err(|e| format!("Failed to read config.json: {}", e))?;
-    let mut cfg: SavedConfig = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse config.json: {}", e))?;
+    let content = match std::fs::read_to_string(&file) {
+        Ok(c) => c,
+        Err(e) => {
+            println!("Warning: Failed to read config.json: {}. Returning default config.", e);
+            return Ok(SavedConfig { 
+                league_path: None, 
+                skins: Vec::new(),
+                custom_skins: Vec::new(),
+                favorites: Vec::new(), 
+                theme: None,
+                party_mode: PartyModeConfig::default(),
+                selected_misc_items: std::collections::HashMap::new(),
+                auto_update_data: true,
+                last_data_commit: None,
+            });
+        }
+    };
+
+    let mut cfg: SavedConfig = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("Warning: Failed to parse config.json: {}. Returning default config.", e);
+            return Ok(SavedConfig { 
+                league_path: None, 
+                skins: Vec::new(),
+                custom_skins: Vec::new(),
+                favorites: Vec::new(), 
+                theme: None,
+                party_mode: PartyModeConfig::default(),
+                selected_misc_items: std::collections::HashMap::new(),
+                auto_update_data: true,
+                last_data_commit: None,
+            });
+        }
+    };
 
     // Backfill defaults
     if cfg.last_data_commit.is_none() {

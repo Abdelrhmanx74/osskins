@@ -14,8 +14,16 @@ interface MiscItemViewProps {
 
 export function MiscItemView({ type }: MiscItemViewProps) {
   const { t } = useI18n();
-  const { selectedMiscItems, selectMiscItem, toggleMiscItemSelection } =
-    useGameStore();
+  // Subscribe to the selectedMiscItems Map (stable snapshot) and derive the array for this type
+  const selectedMiscItemsMap = useGameStore((s) => s.selectedMiscItems);
+  const selectMiscItem = useGameStore((s) => s.selectMiscItem);
+  const toggleMiscItemSelection = useGameStore(
+    (s) => s.toggleMiscItemSelection
+  );
+  const selectedItemIds = React.useMemo(
+    () => selectedMiscItemsMap.get(type) ?? [],
+    [selectedMiscItemsMap, type]
+  );
   const {
     miscItems,
     isLoading,
@@ -30,7 +38,6 @@ export function MiscItemView({ type }: MiscItemViewProps) {
 
   // Get items for this type
   const typeItems = miscItems.get(type) ?? [];
-  const selectedItemIds = selectedMiscItems.get(type) ?? [];
 
   // Built-in base fonts (static). Files are located in src-tauri/resources/fonts.
   // NOTE: The attachments contain 4 .fantome files; user requested 5 base fonts so
@@ -87,12 +94,26 @@ export function MiscItemView({ type }: MiscItemViewProps) {
 
   // Handle item selection: single-select for map/font/hud, multi-select for misc
   const handleItemSelect = (itemId: string) => {
+    try {
+      console.debug("MiscItemView.handleItemSelect", {
+        type,
+        itemId,
+        selectedItemIds,
+      });
+    } catch (e) {
+      console.error(e);
+    }
     if (type === "misc") {
       // preserve multi-select behavior for misc tab
       toggleMiscItemSelection(type, itemId);
     } else {
-      // enforce single selection for other types
-      selectMiscItem(type, itemId);
+      // enforce single selection for other types, but allow toggling off
+      if (selectedItemIds.includes(itemId)) {
+        // already selected -> unselect
+        selectMiscItem(type, null);
+      } else {
+        selectMiscItem(type, itemId);
+      }
     }
   };
 
@@ -145,53 +166,56 @@ export function MiscItemView({ type }: MiscItemViewProps) {
           </h2>
         </div>
 
-        {displayItems.map((item) => (
-          <div
-            key={item.id}
-            className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-              selectedItemIds.includes(item.id)
-                ? "border-primary bg-primary/10"
-                : "border-border hover:border-primary/50"
-            }`}
-            onClick={() => {
-              handleItemSelect(item.id);
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-medium">{item.name}</h3>
-                <p className="text-sm text-muted-foreground">
-                  {t("misc.type_label")}: {item.item_type}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {selectedItemIds.includes(item.id) && (
-                  <div className="px-2 py-1 bg-primary text-primary-foreground text-xs rounded">
-                    {t("misc.selected")}
-                  </div>
-                )}
-                {/* Built-in fonts cannot be deleted */}
-                {!String(item.id).startsWith("builtin-font-") && (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void handleItemDelete(item.id);
-                    }}
-                  >
-                    {t("misc.delete")}
-                  </Button>
-                )}
-                {String(item.id).startsWith("builtin-font-") && (
-                  <div className="px-2 py-1 text-xs rounded bg-muted text-muted-foreground">
-                    Built-in
-                  </div>
-                )}
+        {displayItems.map((item) => {
+          const id = String(item.id);
+          return (
+            <div
+              key={id}
+              className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                selectedItemIds.includes(id)
+                  ? "border-primary bg-primary/10"
+                  : "border-border hover:border-primary/50"
+              }`}
+              onClick={() => {
+                handleItemSelect(id);
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium">{item.name}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {t("misc.type_label")}: {item.item_type}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {selectedItemIds.includes(id) && (
+                    <div className="px-2 py-1 bg-primary text-primary-foreground text-xs rounded">
+                      {t("misc.selected")}
+                    </div>
+                  )}
+                  {/* Built-in fonts cannot be deleted */}
+                  {!id.startsWith("builtin-font-") && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleItemDelete(id);
+                      }}
+                    >
+                      {t("misc.delete")}
+                    </Button>
+                  )}
+                  {id.startsWith("builtin-font-") && (
+                    <div className="px-2 py-1 text-xs rounded bg-muted text-muted-foreground">
+                      Built-in
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {displayItems.length === 0 && (
           <div className="flex flex-col items-center mt-8">

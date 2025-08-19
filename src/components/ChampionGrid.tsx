@@ -55,7 +55,7 @@ export function ChampionGrid({
   }
 
   return (
-    <div className="w-fit mx-auto grid grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2">
+    <div className="w-fit mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-2">
       {/* Misc cards - available in both official and custom tabs */}
       <>
         <MiscCard icon={Map} type="map" onClick={handleMapClick} title="Map" />

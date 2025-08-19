@@ -120,12 +120,16 @@ fn main() {
             get_party_mode_settings,
             update_party_mode_settings,
             start_party_mode_chat_monitor,
+            print_logs,
 
             // data commit tracking
             set_last_data_commit,
             get_latest_data_commit,
             get_changed_champions_since,
             get_changed_champions_from_config,
+            // app control
+            exit_app,
+            hide_window,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
