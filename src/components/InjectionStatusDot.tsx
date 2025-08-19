@@ -16,6 +16,8 @@ export function InjectionStatusDot({
   const { injectionStatus, setInjectionStatus } = useGameStore();
   const toastShownRef = useRef<Record<string, boolean>>({});
   const errorTimeoutRef = useRef<number | null>(null);
+  const lastCleanupAtRef = useRef<number>(0);
+  const lastSuccessAtRef = useRef<number>(0);
 
   // Behavior desired:
   // - Yellow pulsing while injection process is running ("injecting")
@@ -27,11 +29,32 @@ export function InjectionStatusDot({
   useEffect(() => {
     let unlistenStatus: () => void = () => {};
     let unlistenError: () => void = () => {};
+    let unlistenTerminalLog: () => void = () => {};
 
     void (async () => {
+      // Listen for terminal logs to detect cleanup messages emitted by the backend
+      unlistenTerminalLog = await listen<string>("terminal-log", (e) => {
+        const logMsg = e.payload;
+        const current = useGameStore.getState().injectionStatus;
+        if (
+          (logMsg.includes("Cleaning up") && current === "success") ||
+          logMsg.includes("Stopping skin injection process") ||
+          logMsg.includes("Skin injection stopped")
+        ) {
+          lastCleanupAtRef.current = Date.now();
+          setInjectionStatus("idle");
+          toastShownRef.current = {};
+          if (errorTimeoutRef.current) {
+            clearTimeout(errorTimeoutRef.current);
+            errorTimeoutRef.current = null;
+          }
+        }
+      });
+
       // Accept both string and boolean payloads because some backend paths emit booleans
       unlistenStatus = await listen<unknown>("injection-status", (e) => {
         const payload = e.payload;
+        const now = Date.now();
 
         // If backend emitted a boolean (some code paths do), map true->success, false->error
         if (typeof payload === "boolean") {
@@ -41,11 +64,18 @@ export function InjectionStatusDot({
             errorTimeoutRef.current = null;
           }
           if (payload) {
-            setInjectionStatus("success");
-            toast.dismiss();
-            if (!toastShownRef.current.success) {
-              toast.success("Skin injection completed successfully");
-              toastShownRef.current.success = true;
+            lastSuccessAtRef.current = now;
+            // only accept success if it is not older than the last cleanup
+            if (now >= lastCleanupAtRef.current) {
+              setInjectionStatus("success");
+              toast.dismiss();
+              if (!toastShownRef.current.success) {
+                toast.success("Skin injection completed successfully");
+                toastShownRef.current.success = true;
+              }
+            } else {
+              // stale success event; ignore
+              return;
             }
           } else {
             // boolean false indicates injection failure in some backend paths
@@ -81,12 +111,19 @@ export function InjectionStatusDot({
             clearTimeout(errorTimeoutRef.current);
             errorTimeoutRef.current = null;
           }
-          setInjectionStatus("success");
-          // dismiss any pending error toasts and show success once
-          toast.dismiss();
-          if (!toastShownRef.current.success) {
-            toast.success("Skin injection completed successfully");
-            toastShownRef.current.success = true;
+          const now = Date.now();
+          lastSuccessAtRef.current = now;
+          if (now >= lastCleanupAtRef.current) {
+            setInjectionStatus("success");
+            // dismiss any pending error toasts and show success once
+            toast.dismiss();
+            if (!toastShownRef.current.success) {
+              toast.success("Skin injection completed successfully");
+              toastShownRef.current.success = true;
+            }
+          } else {
+            // stale success; ignore
+            return;
           }
         } else if (status === "error") {
           // show error (red) and schedule revert to idle in case backend doesn't emit cleanup
@@ -161,6 +198,7 @@ export function InjectionStatusDot({
     return () => {
       unlistenStatus();
       unlistenError();
+      unlistenTerminalLog();
       if (errorTimeoutRef.current) {
         clearTimeout(errorTimeoutRef.current);
         errorTimeoutRef.current = null;

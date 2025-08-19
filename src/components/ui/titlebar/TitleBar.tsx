@@ -58,7 +58,10 @@ export function TitleBar() {
         variant="ghost"
         size="icon"
         className="p-4"
-        onClick={() => void minimize()}
+        onClick={() => {
+          void minimize();
+          return undefined;
+        }}
         aria-label="Minimize"
       >
         <Minus className="h-4 w-4" />
@@ -67,7 +70,10 @@ export function TitleBar() {
         variant="ghost"
         size="icon"
         className="p-4"
-        onClick={() => void hideInTray()}
+        onClick={() => {
+          void hideInTray();
+          return undefined;
+        }}
         aria-label="Hide in tray"
       >
         <EyeOff className="h-4 w-4" />
@@ -76,7 +82,10 @@ export function TitleBar() {
         variant="ghost"
         size="icon"
         className="p-4 dark:hover:bg-destructive hover:text-destructive-foreground"
-        onClick={() => void close()}
+        onClick={() => {
+          void close();
+          return undefined;
+        }}
         aria-label="Close"
       >
         <X className="h-4 w-4" />

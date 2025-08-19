@@ -48,14 +48,20 @@ export function GameDirectorySelector() {
     <div className="flex flex-col gap-4 items-center">
       <div className="flex items-center gap-4">
         <Button
-          onClick={() => void handleAutoDetect()}
+          onClick={() => {
+            void handleAutoDetect();
+            return undefined;
+          }}
           disabled={isLoading}
           variant="default"
         >
           {isLoading ? t("detecting") : t("detect.button")}
         </Button>
         <Button
-          onClick={() => void handleSelectDirectory()}
+          onClick={() => {
+            void handleSelectDirectory();
+            return undefined;
+          }}
           disabled={isLoading}
           variant="outline"
         >

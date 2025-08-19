@@ -20,8 +20,12 @@ export function PrintLogsButton() {
     <DropdownMenuItem
       onClick={() => {
         void handle();
+        return undefined;
       }}
-      onSelect={(e) => e.preventDefault()}
+      onSelect={(e) => {
+        e.preventDefault();
+        return undefined;
+      }}
     >
       <Terminal className="h-4 w-4" />
       Print logs

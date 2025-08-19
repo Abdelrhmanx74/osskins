@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { Settings } from "lucide-react";
 import { DropdownMenuItem } from "./ui/dropdown-menu";
 import { Label } from "./ui/label";
+import { Terminal, Clipboard, Check } from "lucide-react";
 import {
   Select,
   SelectTrigger,
@@ -35,6 +36,7 @@ export function SettingsDialog() {
   const { leaguePath, setLeaguePath } = useGameStore();
   const { setShowUpdateModal } = useGameStore();
   const { locale, setLocale, t } = useI18n();
+  const [copied, setCopied] = useState(false);
 
   // No auto-update toggle in settings UI (commit-based update logic removed)
 
@@ -171,7 +173,38 @@ export function SettingsDialog() {
           </a>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="w-full flex sm:justify-between items-center">
+          <Button
+            variant="outline"
+            onClick={() => {
+              void (async () => {
+                try {
+                  const path = await invoke<string>("print_logs");
+                  // Signal copied/available
+                  setCopied(true);
+                  toast.success(`${t("logs.saved")} ${path}`);
+                  setTimeout(() => {
+                    setCopied(false);
+                  }, 2000);
+                } catch (e) {
+                  console.error(e);
+                  toast.error(t("logs.failed"));
+                }
+              })();
+            }}
+          >
+            {copied ? (
+              <div className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-green-500" />
+                <span>{t("logs.copied")}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Clipboard className="h-4 w-4" />
+                <span>{t("logs.print")}</span>
+              </div>
+            )}
+          </Button>
           <DialogClose asChild>
             <Button variant="default">{t("close.button")}</Button>
           </DialogClose>

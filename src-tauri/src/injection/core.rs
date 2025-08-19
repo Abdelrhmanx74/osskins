@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::os::windows::process::CommandExt;
 use tauri::{AppHandle, Emitter, Manager};
 use crate::injection::error::{InjectionError, ModState, Skin, MiscItem};
+use std::process::Child;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -24,6 +25,8 @@ pub struct SkinInjector {
     #[allow(dead_code)]
     pub(crate) champion_names: HashMap<u32, String>, // Keep for compatibility but not used actively
     pub(crate) app_handle: Option<AppHandle>,
+    // Stored handle for the spawned overlay process so we can stop it cleanly
+    pub(crate) overlay_process: Option<std::process::Child>,
 }
 
 impl SkinInjector {
@@ -123,6 +126,7 @@ impl SkinInjector {
             mod_tools_path,
             champion_names,
             app_handle: Some(app_handle.clone()),
+            overlay_process: None,
         })
     }
     
@@ -199,18 +203,20 @@ impl SkinInjector {
             format!("ℹ️ {}", message)
         };
 
-        // Write to log file and print
+        // Write to per-injector log file if present (best-effort)
         if let Some(log_file) = &mut self.log_file {
             let _ = writeln!(log_file, "{}", emoji_message);
             let _ = log_file.flush();
         }
-        println!("{}", emoji_message);
-        
+
+        // Also append to global logs so Print Logs captures injection details
+        crate::commands::lcu_watcher::append_global_log(&emoji_message);
+
         // Emit the log to the frontend
         if let Some(app) = &self.app_handle {
             let _ = app.emit("terminal-log", &emoji_message);
         }
-        
+
         self.status = message.to_string();
     }
     
@@ -374,6 +380,14 @@ impl SkinInjector {
     // Add a cleanup method to stop the injection
     pub fn cleanup(&mut self) -> Result<(), InjectionError> {
         self.log("Stopping skin injection process...");
+        // If we have an overlay process that we started, try to terminate it cleanly
+        if let Some(mut child) = self.overlay_process.take() {
+            self.log("Terminating overlay process started by injector...");
+            // Try graceful kill
+            let _ = child.kill();
+            // Wait briefly for it to exit
+            let _ = child.wait();
+        }
         
         // Find and kill the mod-tools processes - more aggressive approach
         #[cfg(target_os = "windows")]

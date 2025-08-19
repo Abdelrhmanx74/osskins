@@ -283,40 +283,61 @@ impl crate::injection::core::SkinInjector {
     pub(crate) fn process_fantome_file(&mut self, fantome_path: &Path) -> Result<PathBuf, InjectionError> {
         self.log(&format!("Processing fantome file: {}", fantome_path.display()));
         
-        // Create temp extraction directory
-        let file_stem = fantome_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-        let extract_dir = self.app_dir.join("temp").join(&file_stem);
-        let mod_dir = self.app_dir.join("mods").join(&file_stem);
+    // Create a unique temp extraction directory to avoid collisions when
+    // processing multiple fantome files with the same name or concurrent runs.
+    let file_stem = fantome_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+        // Use timestamp_nanos_opt when available; fall back to timestamp_nanos() for older chrono
+        let unique_suffix = chrono::Local::now()
+            .timestamp_nanos_opt()
+            .unwrap_or_else(|| chrono::Local::now().timestamp_nanos());
+    let extract_dir = self.app_dir.join("temp").join(format!("{}-{}", file_stem, unique_suffix));
+    let mod_dir = self.app_dir.join("mods").join(&file_stem);
         
-        // Clean up any existing directories
-        if extract_dir.exists() {
-            fs::remove_dir_all(&extract_dir)?;
-        }
+        // Clean up any existing mod directory (we always recreate mods from scratch)
         if mod_dir.exists() {
             fs::remove_dir_all(&mod_dir)?;
         }
-        
-        // Check file size to decide which extraction method to use
+
+        // Determine file size to pick extraction strategy
         let file_size = match fs::metadata(fantome_path) {
             Ok(metadata) => metadata.len(),
-            Err(_) => 0, // Default to standard extraction if we can't get size
+            Err(_) => 0,
         };
-        
-        // Use memory-mapped extraction for larger files
-        if file_size > 1_048_576 { // >1MB
-            self.extract_fantome_mmap(fantome_path, &extract_dir)?;
-        } else {
-            // Use standard extraction for smaller files
-            self.extract_fantome(fantome_path, &extract_dir)?;
+
+        // Run extraction and mod creation inside a closure so we can always
+        // perform the extraction directory cleanup afterwards (like a finally block).
+        let result = (|| -> Result<(), InjectionError> {
+            // Ensure the extract directory is clean before extracting
+            if extract_dir.exists() {
+                let _ = fs::remove_dir_all(&extract_dir);
+            }
+            fs::create_dir_all(&extract_dir)?;
+
+            // Use memory-mapped extraction for larger files
+            if file_size > 1_048_576 {
+                self.extract_fantome_mmap(fantome_path, &extract_dir)?;
+            } else {
+                self.extract_fantome(fantome_path, &extract_dir)?;
+            }
+
+            // Create mod structure from the extracted content
+            self.create_mod_from_extracted(&extract_dir, &mod_dir)?;
+
+            Ok(())
+        })();
+
+        // Always try to remove the temporary extraction directory. Log but don't fail on cleanup.
+        if extract_dir.exists() {
+            if let Err(e) = fs::remove_dir_all(&extract_dir) {
+                self.log(&format!("Warning: failed to remove temporary extraction dir {}: {}", extract_dir.display(), e));
+            }
         }
-        
-        // Create mod structure
-        self.create_mod_from_extracted(&extract_dir, &mod_dir)?;
-        
-        // Clean up extraction directory
-        fs::remove_dir_all(&extract_dir)?;
-        
-        Ok(mod_dir)
+
+        // Return the result of the processing (propagate any error), otherwise the mod_dir
+        match result {
+            Ok(_) => Ok(mod_dir),
+            Err(e) => Err(e),
+        }
     }
     
 }

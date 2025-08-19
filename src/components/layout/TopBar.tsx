@@ -20,7 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { PrintLogsButton } from "@/components/PrintLogsButton";
+// Print logs moved into Settings dialog
 import { SettingsDialog } from "@/components/SettingsDialog";
 import PartyModeDialog from "@/components/PartyModeDialog";
 import { useGameStore, SkinTab } from "@/lib/store";
@@ -181,7 +181,6 @@ export function TopBar({
                 <RefreshCw className="h-4 w-4" />
                 {isUpdating ? t("update.downloading") : t("update.action")}
               </DropdownMenuItem>
-              <PrintLogsButton />
               <SettingsDialog />
             </DropdownMenuContent>
           </DropdownMenu>

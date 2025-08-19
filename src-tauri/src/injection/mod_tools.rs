@@ -299,15 +299,17 @@ impl crate::injection::core::SkinInjector {
                 overlay_dir.to_str().unwrap(),
                 config_path.to_str().unwrap(),
                 &format!("--game:{}", self.game_path.to_str().unwrap()),  // Use game_path which points to Game directory
-                "--opts:configless"
+                "--opts:none"
             ]);
             
             #[cfg(target_os = "windows")]
             command.creation_flags(CREATE_NO_WINDOW);
 
             match command.spawn() {
-                Ok(_) => {
+                Ok(child) => {
                     self.log("Overlay process started successfully");
+                    // Store the child so we can terminate it later during cleanup
+                    self.overlay_process = Some(child);
                     return Ok(());
                 },
                 Err(e) => {
