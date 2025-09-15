@@ -32,14 +32,14 @@ export function PartyModeProvider({ children }: PartyModeProviderProps) {
         const unsubscribeSkinReceived = await partyModeApi.onSkinReceived(
           (skinShare) => {
             toast.info(
-              `🎨 ${skinShare.from_summoner_name} shared ${skinShare.skin_name} for champion ${skinShare.champion_id}`,
+              `🎨 ${skinShare.from_summoner_name} shared ${skinShare.skin_name}`,
               {
                 duration: 5000,
               }
             );
           }
         );
-        
+
         const unsubscribeSkinSent = await listen<SkinSentEvent>(
           "party-mode-skin-sent",
           (event) => {
@@ -49,7 +49,7 @@ export function PartyModeProvider({ children }: PartyModeProviderProps) {
             });
           }
         );
-        
+
         const unsubscribePairedFriendsUpdated = await listen(
           "party-mode-paired-friends-updated",
           () => {
@@ -57,7 +57,7 @@ export function PartyModeProvider({ children }: PartyModeProviderProps) {
             void loadPairedFriends();
           }
         );
-        
+
         unsubscribeFunctions = [
           unsubscribeSkinReceived,
           unsubscribeSkinSent,

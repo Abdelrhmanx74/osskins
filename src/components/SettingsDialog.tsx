@@ -29,6 +29,9 @@ import { ThemeToneSelector } from "./ThemeToneSelector";
 import { Separator } from "./ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { useI18n } from "@/lib/i18n";
+import { skinManagementApi } from "@/lib/api/skin-management";
+import { Upload, Download } from "lucide-react";
+import { useRef } from "react";
 
 export function SettingsDialog() {
   const [isOpen, setIsOpen] = useState(false);
@@ -37,6 +40,8 @@ export function SettingsDialog() {
   const { setShowUpdateModal } = useGameStore();
   const { locale, setLocale, t } = useI18n();
   const [copied, setCopied] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { clearAllSelections, selectSkin } = useGameStore();
 
   // No auto-update toggle in settings UI (commit-based update logic removed)
 
@@ -69,6 +74,93 @@ export function SettingsDialog() {
       toast.error(t("detect.failed"));
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Export only the skins array to a JSON file
+  const handleExportSkins = async () => {
+    try {
+      const cfg = await skinManagementApi.loadConfig();
+      const data = JSON.stringify(cfg.skins, null, 2);
+      const blob = new Blob([data], { type: "application/json" });
+      const ts = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const filename = `skins-export-${ts.getFullYear()}${pad(
+        ts.getMonth() + 1
+      )}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(
+        ts.getSeconds()
+      )}.json`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success(t("export.skins.success"));
+    } catch (err) {
+      console.error("Export skins failed", err);
+      toast.error(t("export.skins.failed"));
+    }
+  };
+
+  // Import a JSON file containing an array of SkinData and save it
+  const handleImportSkinsFromFile = async (file: File) => {
+    try {
+      const text = await file.text();
+      const parsed: unknown = JSON.parse(text);
+      if (!Array.isArray(parsed))
+        throw new Error("Invalid format: not an array");
+
+      // Basic shape validation and normalization
+      type AnyRecord = Record<string, unknown>;
+      const isRecord = (v: unknown): v is AnyRecord =>
+        typeof v === "object" && v !== null;
+
+      const skins: Array<{
+        champion_id: number;
+        skin_id: number;
+        chroma_id?: number;
+        fantome?: string;
+      }> = (parsed as unknown[])
+        .filter(isRecord)
+        .map((it) => ({
+          champion_id: Number(it["champion_id"] as number | string),
+          skin_id: Number(it["skin_id"] as number | string),
+          chroma_id:
+            (it["chroma_id"] as number | string | undefined | null) != null
+              ? Number(it["chroma_id"] as number | string)
+              : undefined,
+          fantome:
+            typeof it["fantome"] === "string" ? it["fantome"] : undefined,
+        }))
+        .filter(
+          (it) => Number.isFinite(it.champion_id) && Number.isFinite(it.skin_id)
+        );
+
+      if (skins.length === 0) throw new Error("Empty or invalid skins array");
+
+      // Load current config to preserve other fields
+      const cfg = await skinManagementApi.loadConfig();
+      await skinManagementApi.saveSelectedSkins(
+        cfg.league_path ?? "",
+        skins,
+        cfg.favorites,
+        cfg.theme,
+        cfg.selected_misc_items
+      );
+
+      // Update local UI selections for immediate feedback
+      clearAllSelections();
+      for (const s of skins) {
+        selectSkin(s.champion_id, s.skin_id, s.chroma_id, s.fantome);
+      }
+
+      toast.success(t("import.skins.success", { count: skins.length }));
+    } catch (err) {
+      console.error("Import skins failed", err);
+      toast.error(t("import.skins.failed"));
     }
   };
 
@@ -124,6 +216,46 @@ export function SettingsDialog() {
             </div>
           </div>
 
+          <Separator />
+
+          {/* Import / Export skins */}
+          <div className="grid grid-cols-1 gap-3 mt-4">
+            <Label>{t("skins.import_export.title")}</Label>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => {
+                  void handleExportSkins();
+                }}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                {t("export.skins")}
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void handleImportSkinsFromFile(f);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }}
+              />
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                {t("import.skins")}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t("skins.import_export.help")}
+            </p>
+          </div>
           {/* Auto-update removed: update flow is manual via TopBar */}
         </div>
 

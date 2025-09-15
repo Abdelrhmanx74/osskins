@@ -2,10 +2,7 @@ import { create } from "zustand";
 import { partyModeApi } from "@/lib/api/party-mode";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
-import type {
-  PairedFriend,
-  SkinShare,
-} from "@/lib/types/party-mode";
+import type { PairedFriend, SkinShare } from "@/lib/types/party-mode";
 
 interface SkinSentEvent {
   skin_name: string;
@@ -35,17 +32,17 @@ export const usePartyModeStore = create<PartyModeState>((set, get) => ({
     try {
       await partyModeApi.startChatMonitor();
       await get().loadPairedFriends();
-      
+
       // Set up global event listeners
       const unsubscribeSkinReceived = await partyModeApi.onSkinReceived(
         (skinShare: SkinShare) => {
           toast.info(
-            `🎨 ${skinShare.from_summoner_name} shared ${skinShare.skin_name} for champion ${skinShare.champion_id}`,
+            `🎨 ${skinShare.from_summoner_name} shared ${skinShare.skin_name}`,
             { duration: 5000 }
           );
         }
       );
-      
+
       const unsubscribeSkinSent = await listen<SkinSentEvent>(
         "party-mode-skin-sent",
         (event) => {
@@ -55,14 +52,14 @@ export const usePartyModeStore = create<PartyModeState>((set, get) => ({
           });
         }
       );
-      
+
       const unsubscribePairedFriendsUpdated = await listen(
         "party-mode-paired-friends-updated",
         () => {
           void get().loadPairedFriends();
         }
       );
-      
+
       // Store unsubscribers if you want to clean up later (not shown here)
       set({ isInitialized: true });
     } catch (error) {

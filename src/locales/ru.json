@@ -69,5 +69,17 @@
     "select.champion_to_view_skins": "Выберите чемпиона, чтобы увидеть его скины",
     "welcome.title": "Добро пожаловать в League Skin Manager",
     "welcome.select_league_dir": "Пожалуйста, выберите каталог установки League of Legends, чтобы продолжить",
-    "loading.champions_data": "Загрузка данных чемпионов..."
+    "loading.champions_data": "Загрузка данных чемпионов...",
+    "injection.nothing": "Ничего не внедрено",
+    "injection.injecting": "Внедрение скинов...",
+    "injection.success": "Внедрено - оверлей активен",
+    "injection.error": "Ошибка внедрения",
+    "skins.import_export.title": "Импорт/Экспорт скинов",
+    "import.skins": "Импорт скинов",
+    "export.skins": "Экспорт скинов",
+    "skins.import_export.help": "Экспортируются только выбранные официальные скины. Импорт ожидает JSON-массив из { champion_id, skin_id, chroma_id?, fantome? }.",
+    "export.skins.success": "Скины экспортированы",
+    "export.skins.failed": "Не удалось экспортировать скины",
+    "import.skins.success": "Импортировано {count} скинов",
+    "import.skins.failed": "Не удалось импортировать скины"
 }

@@ -69,5 +69,17 @@
     "update.processing": "Procesando {champion}...",
     "update.processing_unknown": "Procesando actualizaciones...",
     "loading": "Cargando...",
-    "party.search_placeholder": "Buscar amigos..."
+    "party.search_placeholder": "Buscar amigos...",
+    "injection.nothing": "Nada inyectado",
+    "injection.injecting": "Inyectando skins...",
+    "injection.success": "Inyectado - overlay activo",
+    "injection.error": "Error de inyección",
+    "skins.import_export.title": "Importar/Exportar skins",
+    "import.skins": "Importar skins",
+    "export.skins": "Exportar skins",
+    "skins.import_export.help": "Solo se exportan los skins oficiales seleccionados. La importación espera un array JSON de { champion_id, skin_id, chroma_id?, fantome? }.",
+    "export.skins.success": "Skins exportados",
+    "export.skins.failed": "Error al exportar skins",
+    "import.skins.success": "{count} skins importados",
+    "import.skins.failed": "Error al importar skins"
 }

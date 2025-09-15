@@ -48,5 +48,17 @@
     "select.champion_to_view_skins": "스킨을 보려면 챔피언을 선택하세요",
     "welcome.title": "League Skin Manager에 오신 것을 환영합니다",
     "welcome.select_league_dir": "계속하려면 League of Legends 설치 디렉토리를 선택하세요",
-    "loading.champions_data": "챔피언 데이터 로드 중..."
+    "loading.champions_data": "챔피언 데이터 로드 중...",
+    "injection.nothing": "주입된 내용 없음",
+    "injection.injecting": "스킨 주입 중...",
+    "injection.success": "주입됨 - 오버레이 실행 중",
+    "injection.error": "주입 오류",
+    "skins.import_export.title": "스킨 가져오기/내보내기",
+    "import.skins": "스킨 가져오기",
+    "export.skins": "스킨 내보내기",
+    "skins.import_export.help": "선택한 공식 스킨만 내보냅니다. 가져오기는 { champion_id, skin_id, chroma_id?, fantome? } 형태의 JSON 배열을 기대합니다.",
+    "export.skins.success": "스킨 내보내기 완료",
+    "export.skins.failed": "스킨 내보내기 실패",
+    "import.skins.success": "{count}개의 스킨 가져옴",
+    "import.skins.failed": "스킨 가져오기 실패"
 }

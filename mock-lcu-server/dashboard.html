@@ -134,6 +134,11 @@
     <div class="section phases">
       <h2>LCU Phase Controls</h2>
       <div id="phase-buttons"></div>
+      <div style="margin-top: 0.75rem">
+        <button id="clear-state-btn" style="background: #d32f2f; color: white">
+          Clear Party State
+        </button>
+      </div>
       <div class="status">
         Current Phase: <span id="current-phase">Lobby</span>
       </div>
@@ -141,6 +146,34 @@
 
     <div class="section">
       <h2>Party Mode Simulation - Friends vs You</h2>
+      <div
+        style="
+          margin-bottom: 0.75rem;
+          display: flex;
+          gap: 1rem;
+          flex-wrap: wrap;
+        "
+      >
+        <div>
+          <h3 style="margin: 0; color: #ffb300">Quick Tests</h3>
+          <div
+            style="
+              margin-top: 0.5rem;
+              display: flex;
+              gap: 0.5rem;
+              flex-wrap: wrap;
+            "
+          >
+            <button id="btn-test-aram">Test ARAM (auto-share)</button>
+            <button id="btn-test-swift">Test Swift Play (2 picks)</button>
+            <button id="btn-reset">Reset (Lobby + clear)</button>
+          </div>
+          <div
+            id="test-state"
+            style="margin-top: 0.5rem; font-size: 0.9em; color: #ccc"
+          ></div>
+        </div>
+      </div>
       <div class="stats">
         <div class="stat">
           <div class="stat-number" id="sharing-count">0</div>
@@ -291,6 +324,14 @@
 
         document.getElementById("sharing-count").textContent = sharingCount;
         document.getElementById("locked-count").textContent = lockedCount;
+        const ts = document.getElementById("test-state");
+        if (ts) {
+          ts.textContent = `Mode: ${
+            partyState.aramEnabled ? "ARAM" : "Normal"
+          } | Swift picks: ${
+            (partyState.swiftPlaySelections || []).join(", ") || "none"
+          }`;
+        }
       }
 
       function loadPartyState() {
@@ -305,6 +346,28 @@
             logEvent(`Error loading party state: ${err.message}`);
           });
       }
+
+      // Clear party state button handler
+      document.addEventListener("DOMContentLoaded", () => {
+        const btn = document.getElementById("clear-state-btn");
+        if (btn) {
+          btn.addEventListener("click", () => {
+            fetch("/test/clear-party-state", { method: "POST" })
+              .then((res) => res.json())
+              .then((data) => {
+                logEvent(data.message || "Party state cleared");
+                // Clear UI logs
+                document.getElementById("event-log").innerHTML = "";
+                document.getElementById("chat-log").innerHTML = "";
+                // Reload state
+                loadPartyState();
+              })
+              .catch((err) => {
+                logEvent(`Error clearing party state: ${err.message}`);
+              });
+          });
+        }
+      });
 
       function renderPhaseButtons() {
         const container = document.getElementById("phase-buttons");
@@ -441,6 +504,86 @@
       renderPhaseButtons();
       loadPartyState();
       logEvent("Mock LCU Dashboard loaded - Party Mode Ready");
+
+      // One-click scenarios
+      document.getElementById("btn-test-aram").onclick = async () => {
+        // Reset
+        await fetch("/test/clear-party-state", { method: "POST" });
+        await fetch("/test/friends/sharing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: true }),
+        });
+        await fetch("/test/friends/lobby", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ inLobby: true }),
+        });
+        await fetch("/test/aram/enable", { method: "POST" });
+        setPhase("ChampSelect");
+        logEvent("Started ARAM test: friends will auto-assign and share");
+        loadPartyState();
+      };
+
+      document.getElementById("btn-test-swift").onclick = async () => {
+        // Reset
+        await fetch("/test/clear-party-state", { method: "POST" });
+        await fetch("/test/friends/sharing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: true }),
+        });
+        await fetch("/test/friends/lobby", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ inLobby: true }),
+        });
+        await fetch("/test/aram/disable", { method: "POST" });
+        // Pick two common champions from the list (0 and 3)
+        const picks = [
+          partyState.availableSkins?.[0]?.championId,
+          partyState.availableSkins?.[3]?.championId,
+        ].filter(Boolean);
+        await fetch("/test/swift-play/select", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ championIds: picks }),
+        });
+        setPhase("Lobby");
+        // Make friends lock-in and send shares to simulate Swift Play team selections
+        try {
+          const skins = partyState.availableSkins || [];
+          // Each friend locks both picks (2 messages per friend = 4 total)
+          for (let friendIndex = 0; friendIndex < 2; friendIndex++) {
+            for (const cid of picks) {
+              const sIdx = skins.findIndex((s) => s.championId === cid);
+              if (sIdx >= 0) {
+                await fetch("/test/friend-lock-skin", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ friendIndex, skinIndex: sIdx }),
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Swift friend-lock simulation failed", e);
+        }
+        // Give backend a moment to read incoming OSS shares before queueing
+        await new Promise((r) => setTimeout(r, 600));
+        setPhase("Matchmaking");
+        logEvent(`Started Swift Play test with picks: ${picks.join(", ")}`);
+        loadPartyState();
+      };
+
+      document.getElementById("btn-reset").onclick = async () => {
+        await fetch("/test/clear-party-state", { method: "POST" });
+        await fetch("/test/aram/disable", { method: "POST" });
+        await fetch("/test/swift-play/clear", { method: "POST" });
+        setPhase("Lobby");
+        logEvent("Reset to Lobby and cleared modes");
+        loadPartyState();
+      };
     </script>
   </body>
 </html>

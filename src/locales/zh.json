@@ -69,5 +69,17 @@
     "select.champion_to_view_skins": "选择一个英雄以查看他的皮肤",
     "welcome.title": "欢迎来到 League Skin Manager",
     "welcome.select_league_dir": "请选择你的英雄联盟安装目录以继续",
-    "loading.champions_data": "正在加载英雄数据..."
+    "loading.champions_data": "正在加载英雄数据...",
+    "injection.nothing": "未注入任何内容",
+    "injection.injecting": "正在注入皮肤...",
+    "injection.success": "已注入 - 叠加层运行中",
+    "injection.error": "注入错误",
+    "skins.import_export.title": "导入/导出皮肤",
+    "import.skins": "导入皮肤",
+    "export.skins": "导出皮肤",
+    "skins.import_export.help": "仅导出你选择的官方皮肤。导入需要一个包含 { champion_id, skin_id, chroma_id?, fantome? } 的 JSON 数组。",
+    "export.skins.success": "皮肤已导出",
+    "export.skins.failed": "导出皮肤失败",
+    "import.skins.success": "已导入 {count} 个皮肤",
+    "import.skins.failed": "导入皮肤失败"
 }

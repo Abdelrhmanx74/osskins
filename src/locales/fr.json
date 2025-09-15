@@ -69,5 +69,17 @@
     "select.champion_to_view_skins": "Choisis un champ pour voir les skins",
     "welcome.title": "Bienvenue sur League Skin Manager",
     "welcome.select_league_dir": "Choisis ton dossier d'installation League pour commencer",
-    "loading.champions_data": "Chargement des champs..."
+    "loading.champions_data": "Chargement des champs...",
+    "injection.nothing": "Rien injecté",
+    "injection.injecting": "Injection des skins...",
+    "injection.success": "Injecté - superposition active",
+    "injection.error": "Erreur d'injection",
+    "skins.import_export.title": "Importer/Exporter skins",
+    "import.skins": "Importer skins",
+    "export.skins": "Exporter skins",
+    "skins.import_export.help": "Exporte uniquement tes skins officiels sélectionnés. L'import attend un tableau JSON de { champion_id, skin_id, chroma_id?, fantome? }.",
+    "export.skins.success": "Skins exportés",
+    "export.skins.failed": "Échec de l'export des skins",
+    "import.skins.success": "{count} skins importés",
+    "import.skins.failed": "Échec de l'import des skins"
 }

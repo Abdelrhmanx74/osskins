@@ -100,7 +100,7 @@ The mock server correctly simulates this by:
 
 The server includes two mock friends:
 
-- **friend1#NA1** (ID: 129649534)
+- **friend1#NA1** (ID: 3458743863674223)
 - **sisi#NA1** (ID: 3458743863674208)
 
 And a mock current user:

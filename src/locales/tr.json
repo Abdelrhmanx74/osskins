@@ -69,5 +69,17 @@
     "select.champion_to_view_skins": "Skinlerini görüntülemek için bir şampiyon seçin",
     "welcome.title": "League Skin Manager'a Hoşgeldiniz",
     "welcome.select_league_dir": "Devam etmek için lütfen League of Legends kurulum dizininizi seçin",
-    "loading.champions_data": "Şampiyon verileri yükleniyor..."
+    "loading.champions_data": "Şampiyon verileri yükleniyor...",
+    "injection.nothing": "Hiçbir şey enjekte edilmedi",
+    "injection.injecting": "Skinler enjekte ediliyor...",
+    "injection.success": "Enjekte edildi - overlay çalışıyor",
+    "injection.error": "Enjeksiyon hatası",
+    "skins.import_export.title": "Skinleri İçe/Dışa Aktar",
+    "import.skins": "Skinleri içe aktar",
+    "export.skins": "Skinleri dışa aktar",
+    "skins.import_export.help": "Yalnızca seçili resmi skinler dışa aktarılır. İçe aktarma, { champion_id, skin_id, chroma_id?, fantome? } içeren bir JSON dizisi bekler.",
+    "export.skins.success": "Skinler dışa aktarıldı",
+    "export.skins.failed": "Skinler dışa aktarılamadı",
+    "import.skins.success": "{count} skin içe aktarıldı",
+    "import.skins.failed": "Skinler içe aktarılamadı"
 }

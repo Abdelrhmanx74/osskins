@@ -69,5 +69,17 @@
     "select.champion_to_view_skins": "Wähl 'nen Champ, um Skins zu sehen",
     "welcome.title": "Willkommen beim League Skin Manager",
     "welcome.select_league_dir": "Wähl dein League-Installationsverzeichnis, um loszulegen",
-    "loading.champions_data": "Lade Champ-Daten..."
+    "loading.champions_data": "Lade Champ-Daten...",
+    "injection.nothing": "Nichts injiziert",
+    "injection.injecting": "Skins werden injiziert...",
+    "injection.success": "Injiziert - Overlay läuft",
+    "injection.error": "Injektionsfehler",
+    "skins.import_export.title": "Import/Export Skins",
+    "import.skins": "Skins importieren",
+    "export.skins": "Skins exportieren",
+    "skins.import_export.help": "Exportiert nur deine ausgewählten offiziellen Skins. Import erwartet ein JSON-Array von { champion_id, skin_id, chroma_id?, fantome? }.",
+    "export.skins.success": "Skins exportiert",
+    "export.skins.failed": "Export der Skins fehlgeschlagen",
+    "import.skins.success": "{count} Skins importiert",
+    "import.skins.failed": "Import der Skins fehlgeschlagen"
 }

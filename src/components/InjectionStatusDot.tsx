@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
 import { useGameStore } from "@/lib/store";
 import { Separator } from "./ui/separator";
+import { useI18n } from "@/lib/i18n";
 
 type Status = "idle" | "injecting" | "success" | "error";
 
@@ -14,6 +15,7 @@ export function InjectionStatusDot({
   bordered?: boolean;
 }) {
   const { injectionStatus, setInjectionStatus } = useGameStore();
+  const { t } = useI18n();
   const toastShownRef = useRef<Record<string, boolean>>({});
   const errorTimeoutRef = useRef<number | null>(null);
   const lastCleanupAtRef = useRef<number>(0);
@@ -210,27 +212,25 @@ export function InjectionStatusDot({
   let color = "";
   let animate = "";
   let label = "";
-
   let inlineStyle: React.CSSProperties | undefined;
   switch (injectionStatus) {
     case "injecting":
       color = "bg-yellow-400";
-      // whole-dot glow: persistent pulse; use inline boxShadow to guarantee it's present in all builds
       animate = "animate-pulse";
       inlineStyle = { boxShadow: "0 0 12px rgba(250,204,21,0.6)" };
-      label = "Injecting skins...";
+      label = t("injection.injecting");
       break;
     case "success":
       color = "bg-green-500";
-      label = "Injected - overlay running";
+      label = t("injection.success");
       break;
     case "error":
       color = "bg-red-500";
-      label = "Injection error";
+      label = t("injection.error");
       break;
     default:
       color = "bg-gray-500";
-      label = "Nothing injected";
+      label = t("injection.nothing");
   }
 
   return (

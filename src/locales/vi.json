@@ -69,5 +69,17 @@
     "select.champion_to_view_skins": "Chọn một tướng để xem skin của họ",
     "welcome.title": "Chào mừng đến League Skin Manager",
     "welcome.select_league_dir": "Vui lòng chọn thư mục cài đặt League of Legends để tiếp tục",
-    "loading.champions_data": "Đang tải dữ liệu tướng..."
+    "loading.champions_data": "Đang tải dữ liệu tướng...",
+    "injection.nothing": "Không có gì được tiêm",
+    "injection.injecting": "Đang tiêm skins...",
+    "injection.success": "Đã tiêm - overlay đang chạy",
+    "injection.error": "Lỗi tiêm",
+    "skins.import_export.title": "Nhập/Xuất skin",
+    "import.skins": "Nhập skin",
+    "export.skins": "Xuất skin",
+    "skins.import_export.help": "Chỉ xuất các skin chính thức đã chọn. Nhập yêu cầu một mảng JSON gồm { champion_id, skin_id, chroma_id?, fantome? }.",
+    "export.skins.success": "Đã xuất skin",
+    "export.skins.failed": "Xuất skin thất bại",
+    "import.skins.success": "Đã nhập {count} skin",
+    "import.skins.failed": "Nhập skin thất bại"
 }
