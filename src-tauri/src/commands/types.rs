@@ -82,6 +82,10 @@ pub struct PartyModeConfig {
     pub paired_friends: Vec<PairedFriend>,
     #[serde(default)]
     pub notifications: bool,
+    #[serde(default)]
+    pub verbose_logging: bool,
+    #[serde(default = "default_max_share_age")]
+    pub max_share_age_secs: u64,
 }
 
 impl Default for PartyModeConfig {
@@ -89,9 +93,13 @@ impl Default for PartyModeConfig {
         Self {
             paired_friends: Vec::new(),
             notifications: true,
+            verbose_logging: false,
+            max_share_age_secs: default_max_share_age(),
         }
     }
 }
+
+fn default_max_share_age() -> u64 { 300 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairedFriend {

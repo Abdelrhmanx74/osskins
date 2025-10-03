@@ -7,7 +7,9 @@ use crate::commands::types::{
 };
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone)]
 pub struct InMemoryReceivedSkin {
@@ -22,13 +24,60 @@ pub struct InMemoryReceivedSkin {
 
 // Global in-memory map for received skins (key: summoner+champion)
 pub static RECEIVED_SKINS: Lazy<Mutex<HashMap<String, InMemoryReceivedSkin>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static CURRENT_SESSION_ID: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+
+pub(crate) static PARTY_MODE_VERBOSE: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
+
+macro_rules! verbose_log {
+    ($($arg:tt)*) => ({
+        if PARTY_MODE_VERBOSE.load(Ordering::Relaxed) {
+            println!($($arg)*);
+        }
+    })
+}
+
+macro_rules! normal_log {
+    ($($arg:tt)*) => ({ println!($($arg)*); })
+}
 
 // Helper to generate key
 fn received_skin_key(from_summoner_id: &str, champion_id: u32) -> String {
     format!("{}_{}", from_summoner_id, champion_id)
 }
 
+// Outbound share de-duplication within a phase: track one send per friend per champion
+static SENT_SKIN_SHARES: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+
+fn sent_share_key(friend_summoner_id: &str, champion_id: u32, skin_id: u32, chroma_id: Option<u32>) -> String {
+    let chroma = chroma_id.unwrap_or(0);
+    format!("{}_{}_{}_{}", friend_summoner_id.trim(), champion_id, skin_id, chroma)
+}
+
+// Exposed so watcher can reset dedupers on phase changes
+pub fn clear_sent_shares() {
+    if let Ok(mut s) = SENT_SKIN_SHARES.lock() { s.clear(); }
+}
+
 const PARTY_MODE_MESSAGE_PREFIX: &str = "OSS:";
+const MAX_SHARE_AGE_SECS: u64 = 300;
+
+fn get_configured_max_share_age_secs(app: &AppHandle) -> u64 {
+    let config_dir = app.path().app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("config");
+    let config_file = config_dir.join("config.json");
+    if !config_file.exists() {
+        return MAX_SHARE_AGE_SECS;
+    }
+
+    match std::fs::read_to_string(&config_file) {
+        Ok(contents) => match serde_json::from_str::<SavedConfig>(&contents) {
+            Ok(cfg) => cfg.party_mode.max_share_age_secs,
+            Err(_) => MAX_SHARE_AGE_SECS,
+        },
+        Err(_) => MAX_SHARE_AGE_SECS,
+    }
+}
 
 // Tauri command to get friends list from LCU
 #[tauri::command]
@@ -175,6 +224,60 @@ pub async fn remove_paired_friend(app: AppHandle, friend_summoner_id: String) ->
     let _ = app.emit("party-mode-paired-friends-updated", ());
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn set_party_mode_verbose_logging(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    let config_dir = app.path().app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("config");
+    let config_file = config_dir.join("config.json");
+
+    let mut config: SavedConfig = if config_file.exists() {
+        let raw = std::fs::read_to_string(&config_file).map_err(|e| format!("Failed to read config: {}", e))?;
+        serde_json::from_str(&raw).map_err(|e| format!("Failed to parse config: {}", e))?
+    } else {
+        SavedConfig { league_path: None, skins: Vec::new(), custom_skins: Vec::new(), favorites: Vec::new(), theme: None, party_mode: PartyModeConfig::default(), selected_misc_items: std::collections::HashMap::new(), auto_update_data: true, last_data_commit: None }
+    };
+
+    config.party_mode.verbose_logging = enabled;
+    PARTY_MODE_VERBOSE.store(enabled, Ordering::Relaxed);
+
+    std::fs::create_dir_all(&config_dir).map_err(|e| format!("Failed to create config dir: {}", e))?;
+    let serialized = serde_json::to_string_pretty(&config).map_err(|e| format!("Failed to serialize config: {}", e))?;
+    std::fs::write(&config_file, serialized).map_err(|e| format!("Failed to persist config: {}", e))?;
+
+    let _ = app.emit("party-mode-config-updated", serde_json::json!({ "verbose_logging": enabled }));
+    Ok(enabled)
+}
+
+#[tauri::command]
+pub async fn get_party_mode_verbose_logging(_app: AppHandle) -> Result<bool, String> {
+    Ok(PARTY_MODE_VERBOSE.load(Ordering::Relaxed))
+}
+
+#[tauri::command]
+pub async fn set_party_mode_max_share_age(app: AppHandle, seconds: u64) -> Result<u64, String> {
+    let config_dir = app.path().app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("config");
+    let config_file = config_dir.join("config.json");
+
+    let mut config: SavedConfig = if config_file.exists() {
+        let raw = std::fs::read_to_string(&config_file).map_err(|e| format!("Failed to read config: {}", e))?;
+        serde_json::from_str(&raw).map_err(|e| format!("Failed to parse config: {}", e))?
+    } else {
+        SavedConfig { league_path: None, skins: Vec::new(), custom_skins: Vec::new(), favorites: Vec::new(), theme: None, party_mode: PartyModeConfig::default(), selected_misc_items: std::collections::HashMap::new(), auto_update_data: true, last_data_commit: None }
+    };
+
+    config.party_mode.max_share_age_secs = seconds;
+
+    std::fs::create_dir_all(&config_dir).map_err(|e| format!("Failed to create config dir: {}", e))?;
+    let serialized = serde_json::to_string_pretty(&config).map_err(|e| format!("Failed to serialize config: {}", e))?;
+    std::fs::write(&config_file, serialized).map_err(|e| format!("Failed to persist config: {}", e))?;
+
+    let _ = app.emit("party-mode-config-updated", serde_json::json!({ "max_share_age_secs": seconds }));
+    Ok(seconds)
 }
 
 // Tauri command to get paired friends
@@ -762,6 +865,37 @@ async fn get_friend_display_name(app: &AppHandle, friend_summoner_id: &str) -> R
     Err(format!("Friend with summoner ID {} not found", friend_summoner_id))
 }
 
+async fn refresh_session_tracker(app: &AppHandle) {
+    let maybe_lcu = get_lcu_connection(app).await;
+    let Ok(lcu) = maybe_lcu else { return; };
+    let client = match reqwest::Client::builder().danger_accept_invalid_certs(true).build() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let auth = general_purpose::STANDARD.encode(format!("riot:{}", lcu.token));
+    let url = format!("https://127.0.0.1:{}/lol-gameflow/v1/session", lcu.port);
+    if let Ok(resp) = client.get(&url).header("Authorization", format!("Basic {}", auth)).send().await {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            let session_id = json.get("gameId").and_then(|v| v.as_i64()).map(|id| format!("game:{}", id))
+                .or_else(|| json.get("gameData").and_then(|gd| gd.get("gameId")).and_then(|v| v.as_i64()).map(|id| format!("game:{}", id)))
+                .or_else(|| {
+                    let bucket = (SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() / 600) * 600;
+                    Some(format!("bucket:{}", bucket))
+                });
+
+            if let Some(new_id) = session_id {
+                let mut guard = CURRENT_SESSION_ID.lock().unwrap();
+                if guard.as_ref() != Some(&new_id) {
+                    normal_log!("[Party Mode][SESSION] session changed {:?} -> {}; clearing received skins", *guard, new_id);
+                    clear_received_skins();
+                    *guard = Some(new_id);
+                }
+            }
+        }
+    }
+}
+
 // Function to handle incoming party mode messages (called from LCU watcher)
 pub async fn handle_party_mode_message(
     app: &AppHandle,
@@ -773,48 +907,65 @@ pub async fn handle_party_mode_message(
     }
 
     let message_json = &message_body[PARTY_MODE_MESSAGE_PREFIX.len()..];
+    verbose_log!("[Party Mode][INBOUND][RAW] {}", message_json);
     let message: PartyModeMessage = serde_json::from_str(message_json)
         .map_err(|e| format!("Failed to parse party mode message: {}", e))?;
+    verbose_log!("[Party Mode][INBOUND][PARSED] type={}", message.message_type);
 
-    // Get current user's summoner ID to filter out self-sent messages
     let current_summoner = match get_current_summoner(app).await {
-        Ok(summoner) => summoner,
+        Ok(s) => s,
         Err(e) => {
-            println!("[Party Mode] Warning: Could not get current summoner, proceeding anyway: {}", e);
+            normal_log!("[Party Mode][WARN] Could not resolve current summoner ({}); continuing", e);
             CurrentSummoner {
-                summoner_id: "unknown".to_string(),
-                display_name: "Unknown".to_string(),
+                summoner_id: "unknown".into(),
+                display_name: "Unknown".into(),
             }
         }
     };
+
+    refresh_session_tracker(app).await;
 
     match message.message_type.as_str() {
         "skin_share" => {
             let skin_share: SkinShare = serde_json::from_value(message.data)
                 .map_err(|e| format!("Failed to parse skin share: {}", e))?;
-            
-            // Filter out messages from the current user (don't process your own skin shares)
+
             if skin_share.from_summoner_id == current_summoner.summoner_id {
-                println!("[Party Mode] Ignoring skin_share from self ({})", current_summoner.display_name);
+                verbose_log!("[Party Mode][INBOUND] Ignoring self skin_share from {}", current_summoner.display_name);
                 return Ok(());
             }
-            
-            // Only process skin_share if in ChampSelect phase
+
+            let now_secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+            let share_ts = match i64::try_from(skin_share.timestamp) {
+                Ok(ts) => ts,
+                Err(_) => {
+                    verbose_log!("[Party Mode][INBOUND][SKIP] timestamp {} overflows i64", skin_share.timestamp);
+                    return Ok(());
+                }
+            };
+            let age_secs = (now_secs - share_ts).max(0) as u64;
+            let max_age = get_configured_max_share_age_secs(app);
+            if age_secs > max_age {
+                verbose_log!("[Party Mode][INBOUND][SKIP] stale share age={}s (> {}s) from {}", age_secs, max_age, skin_share.from_summoner_name);
+                return Ok(());
+            }
+
             if !crate::commands::lcu_watcher::is_in_champ_select() {
-                println!("[Party Mode] Ignoring skin_share from {} for champion {} because not in ChampSelect phase", 
-                    skin_share.from_summoner_name, skin_share.champion_id);
-                return Ok(());
+                normal_log!("[Party Mode] Received skin share from {} while not in ChampSelect; storing for later", skin_share.from_summoner_name);
             }
-            
-            println!("[Party Mode] Processing skin share from {}: Champion {}, Skin {}, Skin Name: {}",
+
+            verbose_log!("[Party Mode][INBOUND][STORE] {}({}) champ={} skin={} chroma={:?} fantome={:?} age={}s",
                 skin_share.from_summoner_name,
+                skin_share.from_summoner_id,
                 skin_share.champion_id,
                 skin_share.skin_id,
-                skin_share.skin_name);
-            
-            // Store received skin data in memory only
+                skin_share.chroma_id,
+                skin_share.fantome_path,
+                age_secs);
+
             let key = received_skin_key(&skin_share.from_summoner_id, skin_share.champion_id);
             let mut map = RECEIVED_SKINS.lock().unwrap();
+            let before = map.len();
             map.insert(key, InMemoryReceivedSkin {
                 from_summoner_id: skin_share.from_summoner_id.clone(),
                 from_summoner_name: skin_share.from_summoner_name.clone(),
@@ -824,16 +975,10 @@ pub async fn handle_party_mode_message(
                 fantome_path: skin_share.fantome_path.clone(),
                 received_at: skin_share.timestamp,
             });
-            
-            println!("[Party Mode] Received skin from {} for champion {} (stored in memory for this session only)", 
-                     skin_share.from_summoner_name, skin_share.champion_id);
-            
-            // Drop the lock before emitting the event
+            verbose_log!("[Party Mode][INBOUND][STORE] cache size {} -> {}", before, map.len());
             drop(map);
-            
-            // Emit the skin received event
+
             let _ = app.emit("party-mode-skin-received", skin_share.clone());
-            // Also emit a chat log event for dashboard visibility
             let _ = app.emit("party-mode-chat-log", serde_json::json!({
                 "direction": "received",
                 "from": skin_share.from_summoner_name,
@@ -845,14 +990,11 @@ pub async fn handle_party_mode_message(
                 "fantome_path": skin_share.fantome_path,
                 "timestamp": skin_share.timestamp,
             }));
-            
-            // Note: Injection timing is handled by the main LCU watcher logic
-            // which will collect all friend skins and inject them at the appropriate time
-            println!("[Party Mode] Skin share received and stored. Injection will be handled by LCU watcher timing logic.");
+
+            normal_log!("[Party Mode] Stored skin share from {} for champion {}", skin_share.from_summoner_name, skin_share.champion_id);
         }
-        _ => {
-            // Unknown message type, ignore
-            println!("[Party Mode] Ignoring unknown message type: {}", message.message_type);
+        other => {
+            verbose_log!("[Party Mode][INBOUND] Ignoring message type {}", other);
         }
     }
 
@@ -878,30 +1020,90 @@ pub async fn send_skin_share_to_paired_friends(
 
     let config_data = std::fs::read_to_string(&config_file)
         .map_err(|e| format!("Failed to read config: {}", e))?;
-    
     let config: SavedConfig = serde_json::from_str(&config_data)
         .map_err(|e| format!("Failed to parse config: {}", e))?;
 
-    // Filter friends to only those with sharing enabled
     let sharing_friends: Vec<&PairedFriend> = config.party_mode.paired_friends
         .iter()
         .filter(|friend| friend.share_enabled)
         .collect();
 
     if sharing_friends.is_empty() {
-        println!("[Party Mode] No friends with sharing enabled");
+        verbose_log!("[Party Mode][OUTBOUND] No paired friends with sharing enabled; skipping broadcast");
         return Ok(());
     }
 
-    let lcu_connection = get_lcu_connection(app).await?;
-    let current_summoner = get_current_summoner(app).await?;
+    verbose_log!("[Party Mode][OUTBOUND] Preparing share payload champ={} skin={} chroma={:?} fantome={:?} to {} friends",
+        champion_id, skin_id, chroma_id, fantome_path, sharing_friends.len());
 
-    // Try to get the actual skin name from the skin data if possible
+    let lcu_conn = match get_lcu_connection(app).await {
+        Ok(conn) => conn,
+        Err(e) => {
+            normal_log!("[Party Mode][OUTBOUND][WARN] Unable to reach LCU ({}); skipping share to avoid spamming friends", e);
+            return Ok(());
+        }
+    };
+
+    let mut party_member_ids: HashSet<String> = HashSet::new();
+    let mut membership_source = None;
+
+    match get_current_party_member_summoner_ids(&lcu_conn).await {
+        Ok(ids) if !ids.is_empty() => {
+            membership_source = Some("champ-select/lobby");
+            party_member_ids = ids;
+        }
+        _ => {
+            match get_gameflow_party_member_summoner_ids(&lcu_conn).await {
+                Ok(ids) if !ids.is_empty() => {
+                    membership_source = Some("gameflow");
+                    party_member_ids = ids;
+                }
+                Ok(_) => {
+                    verbose_log!("[Party Mode][OUTBOUND] Gameflow did not expose teammate IDs");
+                }
+                Err(e) => {
+                    verbose_log!("[Party Mode][OUTBOUND] Gameflow lookup failed: {}", e);
+                }
+            }
+        }
+    }
+
+    if party_member_ids.is_empty() {
+        normal_log!("[Party Mode][OUTBOUND] No party membership data available; skipping skin_share to avoid spamming unrelated friends. Enable verbose logging for diagnostics.");
+        return Ok(());
+    }
+
+    verbose_log!("[Party Mode][OUTBOUND] Party member IDs source={:?} values={:?}", membership_source, party_member_ids);
+
+    let mut sharing_friends_in_party: Vec<&PairedFriend> = Vec::new();
+    let mut sharing_friends_outside: Vec<&PairedFriend> = Vec::new();
+
+    for friend in &sharing_friends {
+        if party_member_ids.contains(&friend.summoner_id) {
+            sharing_friends_in_party.push(*friend);
+        } else {
+            sharing_friends_outside.push(*friend);
+        }
+    }
+
+    if sharing_friends_in_party.is_empty() {
+        normal_log!("[Party Mode] Sharing enabled but none of the paired friends are in your confirmed party; not sending skin_share.");
+        return Ok(());
+    }
+
+    if !sharing_friends_outside.is_empty() {
+        normal_log!("[Party Mode][INFO] Not sending to {} paired friend(s) outside your party: {:?}",
+            sharing_friends_outside.len(),
+            sharing_friends_outside.iter().map(|f| format!("{}({})", f.display_name, f.summoner_id)).collect::<Vec<_>>()
+        );
+    }
+
+    let current_summoner = get_current_summoner(app).await?;
     let skin_name = get_skin_name_from_config(app, champion_id, skin_id).unwrap_or_else(|| format!("Skin {}", skin_id));
-    
+
     let skin_share = SkinShare {
-        from_summoner_id: current_summoner.summoner_id,
-        from_summoner_name: current_summoner.display_name,
+        from_summoner_id: current_summoner.summoner_id.clone(),
+        from_summoner_name: current_summoner.display_name.clone(),
         champion_id,
         skin_id,
         skin_name: skin_name.clone(),
@@ -911,38 +1113,49 @@ pub async fn send_skin_share_to_paired_friends(
     };
 
     let message = PartyModeMessage {
-        message_type: "skin_share".to_string(),
-        data: serde_json::to_value(skin_share)
-            .map_err(|e| format!("Failed to serialize skin share: {}", e))?,
+        message_type: "skin_share".into(),
+        data: serde_json::to_value(&skin_share).map_err(|e| format!("Failed to serialize skin share: {}", e))?,
     };
-    println!("[Party Mode][DEBUG] Prepared skin_share payload for champion_id={}, skin_id={}, chroma_id={:?}", champion_id, skin_id, chroma_id);
 
-    for friend in &sharing_friends {
-        println!("[Party Mode][DEBUG] Sending skin_share to friend {} ({}), share_enabled={} ", friend.summoner_name, friend.summoner_id, friend.share_enabled);
-        if let Err(e) = send_chat_message(app, &lcu_connection, &friend.summoner_id, &message).await {
-            eprintln!("Failed to send skin share to {}: {}", friend.summoner_name, e);
-        } else {
-            println!("[Party Mode] Successfully sent skin share to {}: Champion {}, Skin {}", 
-                     friend.summoner_name, champion_id, skin_name);
-            
-            // Emit events for UI: toast + chat log line
-            let _ = app.emit("party-mode-skin-sent", serde_json::json!({
-                "to_friend": friend.summoner_name,
-                "champion_id": champion_id,
-                "skin_name": skin_name
-            }));
-            let _ = app.emit("party-mode-chat-log", serde_json::json!({
-                "direction": "sent",
-                "to": friend.summoner_name,
-                "to_id": friend.summoner_id,
-                "champion_id": champion_id,
-                "skin_id": skin_id,
-                "skin_name": skin_name,
-                "chroma_id": chroma_id,
-                "fantome_path": fantome_path.clone(),
-                "timestamp": chrono::Utc::now().timestamp_millis(),
-            }));
+    verbose_log!("[Party Mode][OUTBOUND] Delivering skin_share to {} confirmed party friend(s)", sharing_friends_in_party.len());
+
+    for friend in sharing_friends_in_party {
+        let key = sent_share_key(&friend.summoner_id, champion_id, skin_id, chroma_id);
+        {
+            let mut sent = SENT_SKIN_SHARES.lock().unwrap();
+            if sent.contains(&key) {
+                verbose_log!("[Party Mode][OUTBOUND] Skipping {} (already sent this phase)", friend.summoner_name);
+                continue;
+            }
+            sent.insert(key.clone());
         }
+
+        verbose_log!("[Party Mode][OUTBOUND] -> {}({})", friend.summoner_name, friend.summoner_id);
+        if let Err(e) = send_chat_message(app, &lcu_conn, &friend.summoner_id, &message).await {
+            let mut sent = SENT_SKIN_SHARES.lock().unwrap();
+            sent.remove(&key);
+            eprintln!("[Party Mode][OUTBOUND][ERROR] Failed to send to {}({}): {}", friend.summoner_name, friend.summoner_id, e);
+            continue;
+        }
+
+        normal_log!("[Party Mode] Shared skin {} (champ {} skin {}) with {}", skin_name, champion_id, skin_id, friend.summoner_name);
+
+        let _ = app.emit("party-mode-skin-sent", serde_json::json!({
+            "to_friend": friend.summoner_name,
+            "champion_id": champion_id,
+            "skin_name": skin_name
+        }));
+        let _ = app.emit("party-mode-chat-log", serde_json::json!({
+            "direction": "sent",
+            "to": friend.summoner_name,
+            "to_id": friend.summoner_id,
+            "champion_id": champion_id,
+            "skin_id": skin_id,
+            "skin_name": skin_name,
+            "chroma_id": chroma_id,
+            "fantome_path": fantome_path.clone(),
+            "timestamp": skin_share.timestamp,
+        }));
     }
 
     Ok(())
@@ -981,118 +1194,135 @@ pub fn get_skin_name_from_config(app: &AppHandle, champion_id: u32, skin_id: u32
 
 // Helper function to check if all paired friends with sharing enabled have shared their skins for a specific champion
 pub async fn should_inject_now(app: &AppHandle, champion_id: u32) -> Result<bool, String> {
-    // Always require a locked-in champion before proceeding
     if champion_id == 0 {
-        println!("[Party Mode] ⏳ Local player has not locked in a champion yet - waiting");
+        verbose_log!("[Party Mode][INJECT] champion not locked; holding");
         return Ok(false);
     }
+
     let config_dir = app.path().app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join("config");
     let config_file = config_dir.join("config.json");
 
     if !config_file.exists() {
-        return Ok(true); // No config means no friends, so inject immediately
+        return Ok(true);
     }
 
     let config_data = std::fs::read_to_string(&config_file)
         .map_err(|e| format!("Failed to read config: {}", e))?;
-    
     let config: SavedConfig = serde_json::from_str(&config_data)
         .map_err(|e| format!("Failed to parse config: {}", e))?;
 
-    // Get friends with sharing enabled
     let friends_with_sharing: Vec<&PairedFriend> = config.party_mode.paired_friends
         .iter()
-        .filter(|friend| friend.share_enabled)
+        .filter(|f| f.share_enabled)
         .collect();
 
-    println!("[Party Mode][DEBUG] Paired friends with sharing enabled: {:?}",
-        friends_with_sharing.iter().map(|f| (&f.display_name, &f.summoner_id)).collect::<Vec<_>>()
-    );
+    verbose_log!("[Party Mode][INJECT] sharing-enabled friends: {:?}", friends_with_sharing.iter().map(|f| (&f.display_name, &f.summoner_id)).collect::<Vec<_>>());
 
-    // If no friends have sharing enabled, inject immediately
     if friends_with_sharing.is_empty() {
-        println!("[Party Mode] No friends with sharing enabled - injecting immediately for champion {}", champion_id);
+        normal_log!("[Party Mode] No paired friends have sharing enabled; injecting local skins for champion {}", champion_id);
         return Ok(true);
     }
 
-    // Only consider friends who are actually in the same party (lobby or champ select) as the local player
     let lcu_connection = match get_lcu_connection(app).await {
         Ok(conn) => conn,
         Err(e) => {
-            println!("[Party Mode] Could not get LCU connection ({}), defaulting to inject to avoid blocking", e);
+            normal_log!("[Party Mode][INJECT][WARN] Could not reach LCU ({}); defaulting to inject to avoid blocking", e);
             return Ok(true);
         }
     };
 
-    let party_member_ids = get_current_party_member_summoner_ids(&lcu_connection).await.unwrap_or_default();
-    println!("[Party Mode][DEBUG] Party members (summoner IDs) in current session: {:?}", party_member_ids);
+    let mut party_member_ids = get_current_party_member_summoner_ids(&lcu_connection).await.unwrap_or_default();
+    if party_member_ids.is_empty() {
+        party_member_ids = get_gameflow_party_member_summoner_ids(&lcu_connection).await.unwrap_or_default();
+    }
 
-    // Normalize IDs for robust matching
-    let party_ids_normalized: std::collections::HashSet<String> = party_member_ids.into_iter().map(|s| s.trim().to_string()).collect();
-    let mut friends_in_same_party: Vec<&PairedFriend> = friends_with_sharing
+    verbose_log!("[Party Mode][INJECT] party member IDs: {:?}", party_member_ids);
+
+    let party_ids_normalized: HashSet<String> = party_member_ids.into_iter().map(|s| s.trim().to_string()).collect();
+    let friends_in_party: Vec<&PairedFriend> = friends_with_sharing
         .into_iter()
         .filter(|f| party_ids_normalized.contains(&f.summoner_id.trim().to_string()))
         .collect();
 
-    println!("[Party Mode][DEBUG] Paired friends present in same party: {:?}",
-        friends_in_same_party.iter().map(|f| (&f.display_name, &f.summoner_id)).collect::<Vec<_>>()
-    );
-
-    // Remove self if present just in case
-    if friends_in_same_party.is_empty() {
-        // You're solo or no paired friends in party; don't block injection
-        println!("[Party Mode] Solo or no paired friends in current party - injecting immediately for champion {}", champion_id);
-        println!("[Party Mode][DEBUG] Paired friends list to check: {:?}",
-            config.party_mode.paired_friends.iter().map(|f| (&f.display_name, &f.summoner_id)).collect::<Vec<_>>()
-        );
+    if friends_in_party.is_empty() {
+        normal_log!("[Party Mode] No paired friends detected in your current party; injecting champion {} with local cosmetics", champion_id);
         return Ok(true);
     }
 
-    // Check if we have received skins from all friends with sharing enabled (for ANY champion)
-    let mut friends_who_shared = std::collections::HashSet::new();
-    
-    let received_skins = RECEIVED_SKINS.lock().unwrap();
-    for (_key, received_skin) in received_skins.iter() {
-        // Count friends who shared ANY skin, not just for the current champion
-        friends_who_shared.insert(received_skin.from_summoner_id.clone());
-    }
-    println!("[Party Mode][DEBUG] Friends who shared (IDs): {:?}", friends_who_shared);
+    let mut queue_id = None;
+    let mut game_mode = None;
+    let mut is_aram = false;
+    let mut is_swift = false;
 
-    // Count how many friends with sharing enabled we have vs how many shared
-    let total_sharing_friends = friends_in_same_party.len();
-    let sharing_friends_who_shared: usize = friends_in_same_party
-        .iter()
-        .filter(|friend| friends_who_shared.contains(&friend.summoner_id))
-        .count();
+    if let Ok(client) = reqwest::Client::builder().danger_accept_invalid_certs(true).build() {
+        let auth = general_purpose::STANDARD.encode(format!("riot:{}", lcu_connection.token));
+        let url = format!("https://127.0.0.1:{}/lol-gameflow/v1/session", lcu_connection.port);
+        if let Ok(resp) = client.get(&url).header("Authorization", format!("Basic {}", auth)).send().await {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                queue_id = json.get("gameData").and_then(|gd| gd.get("queue")).and_then(|q| q.get("id")).and_then(|v| v.as_i64());
+                game_mode = json.get("gameData").and_then(|gd| gd.get("gameMode")).and_then(|v| v.as_str()).map(|s| s.to_string());
+                if let Some(q) = queue_id { if q == 450 { is_aram = true; } }
+                if let Some(mode) = &game_mode { if mode.eq_ignore_ascii_case("aram") { is_aram = true; } }
 
-    println!("[Party Mode] Injection timing check: {}/{} friends with sharing enabled have shared skins (any champion)", 
-             sharing_friends_who_shared, total_sharing_friends);
-
-    // List which friends have shared and which haven't
-    for friend in &friends_in_same_party {
-        let has_shared = friends_who_shared.contains(&friend.summoner_id);
-        println!("[Party Mode] Friend {} ({}): {}", 
-                 friend.display_name, 
-                 friend.summoner_id,
-                 if has_shared { "✅ shared skin" } else { "⏳ waiting for skin" });
-    }
-
-    // Locked-in champion enforced at top
-
-    // Wait for ALL friends with sharing enabled to share their skins before injecting
-    let should_inject = sharing_friends_who_shared == total_sharing_friends;
-    
-    if should_inject {
-        println!("[Party Mode] ✅ All friends with sharing enabled have shared AND local player has locked in champion {} - proceeding with injection", champion_id);
-    } else {
-        println!("[Party Mode] ⏳ Local player locked in champion {}, but waiting for {} more friends with sharing enabled to share their skins", 
-                 champion_id, total_sharing_friends - sharing_friends_who_shared);
-        println!("[Party Mode][DEBUG] total_sharing_friends={} shared={}", total_sharing_friends, sharing_friends_who_shared);
+                if let Some(gd) = json.get("gameData") {
+                    if let Some(pcs) = gd.get("playerChampionSelections").and_then(|v| v.as_array()) {
+                        for selection in pcs {
+                            if let Some(ids) = selection.get("championIds").and_then(|v| v.as_array()) {
+                                if ids.len() >= 2 { is_swift = true; break; }
+                            }
+                        }
+                    }
+                    if let Some(selected) = gd.get("selectedChampions").and_then(|v| v.as_array()) {
+                        if selected.len() >= 2 { is_swift = true; }
+                    }
+                }
+            }
+        }
     }
 
-    Ok(should_inject)
+    verbose_log!("[Party Mode][INJECT] queueId={:?} mode={:?} is_aram={} is_swift_play={}", queue_id, game_mode, is_aram, is_swift);
+
+    let mut friends_who_shared: HashSet<String> = HashSet::new();
+    {
+        let map = RECEIVED_SKINS.lock().unwrap();
+        for value in map.values() {
+            friends_who_shared.insert(value.from_summoner_id.clone());
+        }
+    }
+
+    let total = friends_in_party.len();
+    let shared = friends_in_party.iter().filter(|f| friends_who_shared.contains(&f.summoner_id)).count();
+
+    verbose_log!("[Party Mode][INJECT] friends shared {}/{}", shared, total);
+
+    for friend in &friends_in_party {
+        let status = if friends_who_shared.contains(&friend.summoner_id) { "shared" } else { "waiting" };
+        verbose_log!("[Party Mode][INJECT][FRIEND] {}({}) -> {}", friend.display_name, friend.summoner_id, status);
+    }
+
+    prune_stale_received_skins(app);
+
+    if shared == total {
+        normal_log!("[Party Mode] All paired friends have shared; injecting champion {}", champion_id);
+        return Ok(true);
+    }
+
+    if is_aram {
+        if shared > 0 {
+            normal_log!("[Party Mode][ARAM] Partial shares {}/{}; injecting early to avoid ARAM delays", shared, total);
+            return Ok(true);
+        }
+    }
+
+    if is_swift && total > 0 && shared * 2 >= total {
+        normal_log!("[Party Mode][SwiftPlay] >=50% shares ({}/{}); injecting", shared, total);
+        return Ok(true);
+    }
+
+    normal_log!("[Party Mode] Waiting for {} more friend share(s) before injecting champion {}", total - shared, champion_id);
+    Ok(false)
 }
 
 // Determine summoner IDs in the same party (lobby or champ select team) as the local player
@@ -1147,8 +1377,97 @@ async fn get_current_party_member_summoner_ids(lcu: &LcuConnection) -> Result<st
     Ok(std::collections::HashSet::new())
 }
 
+async fn get_gameflow_party_member_summoner_ids(lcu: &LcuConnection) -> Result<HashSet<String>, String> {
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let auth = general_purpose::STANDARD.encode(format!("riot:{}", lcu.token));
+    let url = format!("https://127.0.0.1:{}/lol-gameflow/v1/session", lcu.port);
+    let resp = client.get(&url)
+        .header("Authorization", format!("Basic {}", auth))
+        .send().await
+        .map_err(|e| format!("Gameflow request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Gameflow status {}", resp.status()));
+    }
+
+    let json: serde_json::Value = resp.json().await.map_err(|e| format!("Failed to parse gameflow JSON: {}", e))?;
+    let mut ids: HashSet<String> = HashSet::new();
+
+    if let Some(game_data) = json.get("gameData") {
+        collect_ids_from_json(game_data, &mut ids);
+    }
+
+    if ids.is_empty() {
+        collect_ids_from_json(&json, &mut ids);
+    }
+
+    Ok(ids)
+}
+
+fn collect_ids_from_json(value: &serde_json::Value, acc: &mut HashSet<String>) {
+    match value {
+        serde_json::Value::Array(arr) => {
+            for entry in arr {
+                collect_ids_from_json(entry, acc);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            if let Some(id) = map.get("summonerId") {
+                if let Some(id_num) = id.as_i64() {
+                    acc.insert(id_num.to_string());
+                } else if let Some(id_str) = id.as_str() {
+                    acc.insert(id_str.to_string());
+                }
+            }
+            if let Some(id_list) = map.get("summonerIds").or_else(|| map.get("teamOneSummonerIds")).or_else(|| map.get("teamTwoSummonerIds")) {
+                collect_ids_from_json(id_list, acc);
+            }
+            for value in map.values() {
+                collect_ids_from_json(value, acc);
+            }
+        }
+        serde_json::Value::Number(num) => {
+            if let Some(n) = num.as_i64() {
+                acc.insert(n.to_string());
+            }
+        }
+        serde_json::Value::String(s) => {
+            if s.chars().all(|c| c.is_numeric()) {
+                acc.insert(s.clone());
+            }
+        }
+        _ => {}
+    }
+}
+
+fn prune_stale_received_skins(app: &AppHandle) {
+    let configured_max = get_configured_max_share_age_secs(app);
+    let mut map = RECEIVED_SKINS.lock().unwrap();
+    if map.is_empty() { return; }
+    let now_secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+    let before = map.len();
+    map.retain(|_, skin| {
+        if let Ok(ts) = i64::try_from(skin.received_at) {
+            let age = (now_secs - ts).max(0) as u64;
+            age <= configured_max
+        } else {
+            false
+        }
+    });
+    let after = map.len();
+    if after != before {
+        normal_log!("[Party Mode][CLEANUP] pruned stale received skins {} -> {} (max_age={}s)", before, after, configured_max);
+    }
+}
+
 // Add a function to clear received skins (call this when leaving champ select or starting a new session)
 pub fn clear_received_skins() {
     let mut map = RECEIVED_SKINS.lock().unwrap();
+    let before = map.len();
     map.clear();
+    normal_log!("[Party Mode][STATE] cleared received skins {} -> 0", before);
 }

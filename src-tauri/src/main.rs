@@ -119,6 +119,9 @@ fn main() {
             get_paired_friends,
             get_party_mode_settings,
             update_party_mode_settings,
+            set_party_mode_verbose_logging,
+            get_party_mode_verbose_logging,
+            set_party_mode_max_share_age,
             start_party_mode_chat_monitor,
             print_logs,
 
