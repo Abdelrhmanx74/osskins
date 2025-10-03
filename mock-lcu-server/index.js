@@ -223,7 +223,7 @@ app.post("/lol-chat/v1/conversations/:conversationId/messages", (req, res) => {
       conversationId: conversation.id,
       timestamp: message.timestamp,
     });
-  } catch {}
+  } catch { }
 
   // Process party mode messages
   processPartyModeMessage(body, user.summonerId.toString());
@@ -295,9 +295,8 @@ app.post("/test/toggle-friend-sharing", (req, res) => {
 
   res.json({
     success: true,
-    message: `${friend.displayName} sharing ${
-      friend.isSharing ? "enabled" : "disabled"
-    }`,
+    message: `${friend.displayName} sharing ${friend.isSharing ? "enabled" : "disabled"
+      }`,
     friend: friend,
   });
 });
@@ -499,9 +498,8 @@ app.post("/test/local-player-lock-skin", (req, res) => {
 
   res.json({
     success: true,
-    message: `You locked in ${skin.skinName} and sent to ${
-      friends.filter((f) => f.isSharing).length
-    } friends`,
+    message: `You locked in ${skin.skinName} and sent to ${friends.filter((f) => f.isSharing).length
+      } friends`,
     skin: skin,
   });
 });
@@ -558,8 +556,7 @@ app.post("/test/set-selected-champion", (req, res) => {
     const champion = availableSkins.find((s) => s.championId === championId);
     selectedChampionId = championId;
     console.log(
-      `[TEST] Set selected champion to ${championId} (${
-        champion ? champion.skinName.split(" ")[0] : "Unknown"
+      `[TEST] Set selected champion to ${championId} (${champion ? champion.skinName.split(" ")[0] : "Unknown"
       })`
     );
   }
@@ -644,9 +641,8 @@ app.post("/test/lock-in-champion", (req, res) => {
 
   res.json({
     success: true,
-    message: `You locked in ${skin.skinName} and sent to ${
-      friends.filter((f) => f.isSharing).length
-    } friends`,
+    message: `You locked in ${skin.skinName} and sent to ${friends.filter((f) => f.isSharing).length
+      } friends`,
     championId: championId,
     skin: skin,
   });
@@ -701,11 +697,11 @@ app.get("/lol-gameflow/v1/session", (req, res) => {
       queue: { id: 420 },
       playerChampionSelections: swiftPlaySelections.length
         ? [
-            {
-              summonerId: user.summonerId,
-              championIds: swiftPlaySelections,
-            },
-          ]
+          {
+            summonerId: user.summonerId,
+            championIds: swiftPlaySelections,
+          },
+        ]
         : [],
       selectedChampions: swiftPlaySelections.map((cid) => ({
         championId: cid,
@@ -741,7 +737,7 @@ app.get("/lol-champ-select/v1/session", (req, res) => {
   }
   const skinId = championId
     ? availableSkins.find((s) => s.championId === championId)?.skinId ||
-      championId * 1000
+    championId * 1000
     : 0;
 
   // Determine if the pick is completed based on whether a champion is selected

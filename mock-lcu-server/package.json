@@ -4,7 +4,7 @@
   "description": "Mock LCU server for testing League Client integrations and dashboards.",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js set-Content 'D:\\Mana\\Riot Games\\League of Legends\\lockfile' 'LeagueClientUx:12345:56174:password:https'"
   },
   "dependencies": {
     "body-parser": "^2.2.0",

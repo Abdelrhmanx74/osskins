@@ -10,7 +10,7 @@ use crate::commands::types::{SavedConfig, SkinData};
 use crate::commands::misc_items::get_selected_misc_items;
 use crate::commands::party_mode::{RECEIVED_SKINS, clear_received_skins, clear_sent_shares, PARTY_MODE_VERBOSE};
 use std::sync::atomic::{AtomicU8, AtomicBool, Ordering};
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use std::fs::File;
@@ -53,6 +53,9 @@ static LAST_PARTY_INJECTION_SIGNATURE: Lazy<Mutex<Option<String>>> = Lazy::new(|
 
 // Hard gate: inject at most once per ChampSelect phase (prevents thrash when champion_id flips)
 static PARTY_INJECTION_DONE_THIS_PHASE: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
+
+// Track last champion share time to debounce rapid ARAM rerolls
+static LAST_CHAMPION_SHARE_TIME: Lazy<Mutex<HashMap<u32, std::time::Instant>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 fn compute_party_injection_signature(current_champion_id: u32) -> String {
     // Build a stable signature that includes the local locked champion id plus the
@@ -279,6 +282,9 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                             };
                             
                             if should_cleanup {
+                                // Reset party injection flag when cleaning up (allows new injection on next phase)
+                                PARTY_INJECTION_DONE_THIS_PHASE.store(false, Ordering::Relaxed);
+                                
                                 match crate::injection::needs_injection_cleanup(&app_handle, &league_path_clone) {
                                     Ok(needs_cleanup) => {
                                         if needs_cleanup {
@@ -321,6 +327,8 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                 clear_received_skins();
                                 // Reset outbound share dedup for new phase
                                 clear_sent_shares();
+                                // Clear champion share timestamps (allows sharing in new phase)
+                                if let Ok(mut times) = LAST_CHAMPION_SHARE_TIME.lock() { times.clear(); }
                                 // Allow a single party-mode injection for this phase
                                 PARTY_INJECTION_DONE_THIS_PHASE.store(false, Ordering::Relaxed);
 
@@ -394,26 +402,29 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                     println!("[Party Mode][DEBUG] Previous signature: {:?}", *guard);
                                     println!("[Party Mode][DEBUG] Current signature: {}", current_sig);
                                     println!("[Party Mode] All conditions met - triggering party mode injection");
+                                    
+                                    // Immediately mark as done to prevent rapid re-triggering in ARAM/fast modes
+                                    // This prevents injection loop even if the injection itself fails
+                                    PARTY_INJECTION_DONE_THIS_PHASE.store(true, Ordering::Relaxed);
+                                    
+                                    // Update signature immediately to prevent duplicate attempts
+                                    *guard = Some(current_sig.clone());
+                                    drop(guard); // Release lock before spawning thread
+                                    
                     let app_handle_clone = app_handle.clone();
                     let champ_to_inject = current_champion_id;
                                     // Use std::thread::spawn instead of tokio::spawn to avoid reactor issues
-                                    // Spawn a thread to run the async injection and only update the
-                                    // deduplication signature after the injection completes
-                                    let sig_to_set = current_sig.clone();
                                     std::thread::spawn(move || {
                                         let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
                                         rt.block_on(async move {
                                             match trigger_party_mode_injection(&app_handle_clone, champ_to_inject).await {
                                                 Ok(_) => {
-                                                    // Only mark the signature after successful injection
-                                                    if let Ok(mut g) = LAST_PARTY_INJECTION_SIGNATURE.lock() {
-                                                        *g = Some(sig_to_set.clone());
-                                                    }
-                                                    // Hard gate: mark done for this ChampSelect
-                                                    PARTY_INJECTION_DONE_THIS_PHASE.store(true, Ordering::Relaxed);
+                                                    println!("[Party Mode] Injection completed successfully for champion {}", champ_to_inject);
                                                 }
                                                 Err(e) => {
                                                     eprintln!("[Party Mode] Failed to trigger injection: {}", e);
+                                                    // Note: We don't reset PARTY_INJECTION_DONE_THIS_PHASE here to prevent loop
+                                                    // User can manually retry if needed
                                                 }
                                             }
                                         });
@@ -477,26 +488,32 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                                                 
                                                                 // Send skin share to paired friends (sharing is now controlled per-friend)
                                                                 if !config.party_mode.paired_friends.is_empty() {
-                                                                    let app_handle_clone = app_handle.clone();
-                                                                    let skin_clone = skin.clone();
-                                                                    // Use a Tokio runtime if not already inside one
-                                                                    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                                                                        handle.spawn(async move {
-                                                                            if let Err(e) = crate::commands::party_mode::send_skin_share_to_paired_friends(
-                                                                                &app_handle_clone,
-                                                                                skin_clone.champion_id,
-                                                                                skin_clone.skin_id,
-                                                                                skin_clone.chroma_id,
-                                                                                skin_clone.fantome.clone(),
-                                                                            ).await {
-                                                                                eprintln!("Failed to send skin share: {}", e);
+                                                                    // Debounce rapid champion changes (ARAM rerolls): only share if 2+ seconds since last share for this champion
+                                                                    let should_share = {
+                                                                        let mut last_shares = LAST_CHAMPION_SHARE_TIME.lock().unwrap();
+                                                                        if let Some(last_time) = last_shares.get(&current_champion_id) {
+                                                                            let elapsed = last_time.elapsed();
+                                                                            if elapsed.as_secs() < 2 {
+                                                                                println!("[Party Mode][ChampSelect] Skipping rapid share for champion {} (last shared {}ms ago)", 
+                                                                                         current_champion_id, elapsed.as_millis());
+                                                                                false
+                                                                            } else {
+                                                                                last_shares.insert(current_champion_id, std::time::Instant::now());
+                                                                                true
                                                                             }
-                                                                        });
-                                                                    } else {
-                                                                        // No runtime, so create one just for this task
-                                                                        std::thread::spawn(move || {
-                                                                            let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
-                                                                            rt.block_on(async move {
+                                                                        } else {
+                                                                            // First time sharing this champion
+                                                                            last_shares.insert(current_champion_id, std::time::Instant::now());
+                                                                            true
+                                                                        }
+                                                                    };
+                                                                    
+                                                                    if should_share {
+                                                                        let app_handle_clone = app_handle.clone();
+                                                                        let skin_clone = skin.clone();
+                                                                        // Use a Tokio runtime if not already inside one
+                                                                        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                                                                            handle.spawn(async move {
                                                                                 if let Err(e) = crate::commands::party_mode::send_skin_share_to_paired_friends(
                                                                                     &app_handle_clone,
                                                                                     skin_clone.champion_id,
@@ -507,7 +524,23 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                                                                     eprintln!("Failed to send skin share: {}", e);
                                                                                 }
                                                                             });
-                                                                        });
+                                                                        } else {
+                                                                            // No runtime, so create one just for this task
+                                                                            std::thread::spawn(move || {
+                                                                                let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+                                                                                rt.block_on(async move {
+                                                                                    if let Err(e) = crate::commands::party_mode::send_skin_share_to_paired_friends(
+                                                                                        &app_handle_clone,
+                                                                                        skin_clone.champion_id,
+                                                                                        skin_clone.skin_id,
+                                                                                        skin_clone.chroma_id,
+                                                                                        skin_clone.fantome.clone(),
+                                                                                    ).await {
+                                                                                        eprintln!("Failed to send skin share: {}", e);
+                                                                                    }
+                                                                                });
+                                                                            });
+                                                                        }
                                                                     }
                                                                 }
                                                                 
@@ -574,6 +607,13 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                                     
                                                     // If we're in ChampSelect injection mode, ensure we only inject during ChampSelect
                                                     if injection_mode == InjectionMode::ChampSelect && phase != "ChampSelect" {
+                                                        continue;
+                                                    }
+                                                    
+                                                    // Check if injection was already done this phase (prevents ARAM loops)
+                                                    let already_done = PARTY_INJECTION_DONE_THIS_PHASE.load(Ordering::Relaxed);
+                                                    if already_done {
+                                                        println!("[Party Mode] Injection already completed for this phase; skipping champion {}", champ_id);
                                                         continue;
                                                     }
                                                     
@@ -694,9 +734,17 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                         // session and lobby endpoints and inject, regardless of injection_mode. This makes
                         // instant-assign and similar lobby-selection modes more reliable without needing map codes.
                         if last_phase == "Lobby" && phase == "Matchmaking" {
-                            // Reset outbound send dedup at the start of a new instant-assign phase
-                            clear_sent_shares();
-                            emit_terminal_log(&app_handle, "[LCU Watcher] Lobby->Matchmaking transition detected; resolving lobby-selected champions...");
+                            // Check if we already handled this instant-assign phase to prevent duplicate injections
+                            let already_done = PARTY_INJECTION_DONE_THIS_PHASE.load(Ordering::Relaxed);
+                            if already_done {
+                                println!("[LCU Watcher][instant-assign] Injection already completed for this phase; skipping duplicate Lobby->Matchmaking detection");
+                            } else {
+                                // Mark as done immediately to prevent race conditions with rapid polling
+                                PARTY_INJECTION_DONE_THIS_PHASE.store(true, Ordering::Relaxed);
+                                
+                                // Reset outbound send dedup at the start of a new instant-assign phase
+                                clear_sent_shares();
+                                emit_terminal_log(&app_handle, "[LCU Watcher] Lobby->Matchmaking transition detected; resolving lobby-selected champions...");
 
                             let auth = general_purpose::STANDARD.encode(format!("riot:{}", token));
                             let mut resolved_champions: Vec<i64> = Vec::new();
@@ -836,6 +884,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                             } else {
                                 emit_terminal_log(&app_handle, "[LCU Watcher] Could not resolve any champion selections from lobby/session");
                             }
+                            } // Close the already_done else block
                         }
                         
                         last_phase = phase.to_string();
