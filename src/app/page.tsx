@@ -12,6 +12,7 @@ import { useConfigLoader } from "@/lib/hooks/use-config-loader";
 import { filterAndSortChampions } from "@/lib/utils/champion-utils";
 import { ChampionGrid } from "@/components/ChampionGrid";
 import { SkinGrid } from "@/components/SkinGrid";
+import { ManualSkinGrid } from "@/components/ManualSkinGrid";
 import { CustomSkinList } from "@/components/CustomSkinList";
 import { MiscItemView } from "@/components/MiscItemView";
 import { TopBar } from "@/components/layout/TopBar";
@@ -35,7 +36,13 @@ const ChampionsLoader = () => {
 export default function Home() {
   const { champions, loading, error, hasData } = useChampions();
   const { updateData, isUpdating, progress } = useDataUpdate();
-  const { leaguePath, activeTab, favorites, toggleFavorite } = useGameStore();
+  const {
+    leaguePath,
+    activeTab,
+    favorites,
+    toggleFavorite,
+    manualInjectionMode,
+  } = useGameStore();
   const { showUpdateModal, setShowUpdateModal } = useGameStore();
 
   // If the store requests showing the update modal (e.g., after selecting directory), start the update and show modal
@@ -63,7 +70,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedChampion, setSelectedChampion] = useState<number | null>(null);
   const [selectedMiscItem, setSelectedMiscItem] = useState<MiscItemType | null>(
-    null
+    null,
   );
 
   // Handle misc item selection
@@ -82,12 +89,12 @@ export default function Home() {
   const filteredChampions = filterAndSortChampions(
     champions,
     searchQuery,
-    favorites
+    favorites,
   );
 
   // Currently selected champion data
   const selectedChampionData = champions.find(
-    (champ) => champ.id === selectedChampion
+    (champ) => champ.id === selectedChampion,
   );
 
   const handleUpdateData = async () => {
@@ -198,7 +205,11 @@ export default function Home() {
             {selectedMiscItem ? (
               <MiscItemView type={selectedMiscItem} />
             ) : activeTab === "official" ? (
-              <SkinGrid champion={selectedChampionData ?? null} />
+              manualInjectionMode ? (
+                <ManualSkinGrid champion={selectedChampionData ?? null} />
+              ) : (
+                <SkinGrid champion={selectedChampionData ?? null} />
+              )
             ) : (
               <CustomSkinList championId={selectedChampion} />
             )}

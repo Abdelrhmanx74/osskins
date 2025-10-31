@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { partyModeApi } from "@/lib/api/party-mode";
 import { toast } from "sonner";
 import { usePartyModeStore } from "@/lib/store/party-mode";
+import { useGameStore } from "@/lib/store";
 
 interface SkinSentEvent {
   skin_name: string;
@@ -17,11 +18,34 @@ interface PartyModeProviderProps {
 
 export function PartyModeProvider({ children }: PartyModeProviderProps) {
   const loadPairedFriends = usePartyModeStore((s) => s.loadPairedFriends);
+  const manualInjectionMode = useGameStore((s) => s.manualInjectionMode);
 
   useEffect(() => {
+    // Keep track of unsubscribers so we can clean up when manual mode toggles
     let unsubscribeFunctions: (() => void)[] = [];
 
+    const cleanup = () => {
+      if (unsubscribeFunctions.length > 0) {
+        console.log("[PartyModeProvider] Cleaning up party mode listeners...");
+        unsubscribeFunctions.forEach((unsub) => {
+          try {
+            unsub();
+          } catch (error) {
+            console.error("Error during party mode cleanup:", error);
+          }
+        });
+        unsubscribeFunctions = [];
+      }
+    };
+
     const initializePartyMode = async () => {
+      // If manual injection mode is enabled, don't initialize party mode
+      if (manualInjectionMode) {
+        console.log("[PartyModeProvider] Manual injection mode is active — skipping party mode initialization.");
+        cleanup();
+        return;
+      }
+
       try {
         console.log("[PartyModeProvider] Initializing party mode...");
         await partyModeApi.startChatMonitor();
@@ -54,7 +78,8 @@ export function PartyModeProvider({ children }: PartyModeProviderProps) {
           "party-mode-paired-friends-updated",
           () => {
             // Reload paired friends when they're updated
-            void loadPairedFriends();
+            void loadPairedFriends().catch(() => { });
+            return undefined;
           }
         );
 
@@ -69,20 +94,16 @@ export function PartyModeProvider({ children }: PartyModeProviderProps) {
           "[PartyModeProvider] Failed to initialize party mode:",
           error
         );
+        cleanup();
       }
     };
+
+    // Initialize or cleanup whenever manualInjectionMode changes
     void initializePartyMode();
-    return () => {
-      console.log("[PartyModeProvider] Cleaning up party mode...");
-      unsubscribeFunctions.forEach((unsub) => {
-        try {
-          unsub();
-        } catch (error) {
-          console.error("Error during party mode cleanup:", error);
-        }
-      });
-    };
-  }, []);
+
+    return () => { cleanup(); };
+    // We intentionally re-run when manualInjectionMode changes so we can teardown/init accordingly
+  }, [manualInjectionMode, loadPairedFriends]);
   return <>{children}</>;
 }
 // Store unsubscribe functions

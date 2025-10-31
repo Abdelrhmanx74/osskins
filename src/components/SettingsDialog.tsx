@@ -41,7 +41,12 @@ export function SettingsDialog() {
   const { locale, setLocale, t } = useI18n();
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const { clearAllSelections, selectSkin } = useGameStore();
+  const {
+    clearAllSelections,
+    selectSkin,
+    manualInjectionMode,
+    setManualInjectionMode,
+  } = useGameStore();
 
   // No auto-update toggle in settings UI (commit-based update logic removed)
 
@@ -86,9 +91,9 @@ export function SettingsDialog() {
       const ts = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
       const filename = `skins-export-${ts.getFullYear()}${pad(
-        ts.getMonth() + 1
+        ts.getMonth() + 1,
       )}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(
-        ts.getSeconds()
+        ts.getSeconds(),
       )}.json`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -136,7 +141,8 @@ export function SettingsDialog() {
             typeof it["fantome"] === "string" ? it["fantome"] : undefined,
         }))
         .filter(
-          (it) => Number.isFinite(it.champion_id) && Number.isFinite(it.skin_id)
+          (it) =>
+            Number.isFinite(it.champion_id) && Number.isFinite(it.skin_id),
         );
 
       if (skins.length === 0) throw new Error("Empty or invalid skins array");
@@ -148,7 +154,7 @@ export function SettingsDialog() {
         skins,
         cfg.favorites,
         cfg.theme,
-        cfg.selected_misc_items
+        cfg.selected_misc_items,
       );
 
       // Update local UI selections for immediate feedback
@@ -177,132 +183,162 @@ export function SettingsDialog() {
           {t("settings.title")}
         </DropdownMenuItem>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>{t("settings.title")}</DialogTitle>
           <DialogDescription>{t("settings.description")}</DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-1 gap-2">
-            <Label htmlFor="leaguePath">{t("leaguePath.label")}</Label>
-            <Input
-              id="leaguePath"
-              value={leaguePath ?? ""}
-              readOnly
-              className="flex-1"
-            />
-            <div className="flex gap-2">
-              <Button
-                onClick={() => {
-                  void handleAutoDetect();
-                }}
-                disabled={isLoading}
+        {/* Split horizontally */}
+        <div
+          className="flex flex-row gap-6 py-4"
+          style={{ minHeight: 400, maxHeight: "70vh", overflowY: "auto" }}
+        >
+          {/* Left Side */}
+          <div className="flex-1 min-w-0 flex flex-col gap-4">
+            <div className="grid grid-cols-1 gap-2">
+              <Label htmlFor="leaguePath">{t("leaguePath.label")}</Label>
+              <Input
+                id="leaguePath"
+                value={leaguePath ?? ""}
+                readOnly
                 className="flex-1"
-                variant="secondary"
-              >
-                {isLoading ? t("detecting") : t("detect.button")}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  void handleSelectDirectory();
-                }}
-                disabled={isLoading}
-                className="flex-1"
-              >
-                {t("browse.button")}
-              </Button>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Import / Export skins */}
-          <div className="grid grid-cols-1 gap-3 mt-4">
-            <Label>{t("skins.import_export.title")}</Label>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                className="flex-1"
-                onClick={() => {
-                  void handleExportSkins();
-                }}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                {t("export.skins")}
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json,.json"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void handleImportSkinsFromFile(f);
-                  if (fileInputRef.current) fileInputRef.current.value = "";
-                }}
               />
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                {t("import.skins")}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => {
+                    void handleAutoDetect();
+                  }}
+                  disabled={isLoading}
+                  className="flex-1"
+                  variant="secondary"
+                >
+                  {isLoading ? t("detecting") : t("detect.button")}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    void handleSelectDirectory();
+                  }}
+                  disabled={isLoading}
+                  className="flex-1"
+                >
+                  {t("browse.button")}
+                </Button>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {t("skins.import_export.help")}
-            </p>
+
+            <Separator />
+
+            {/* Import / Export skins */}
+            <div className="grid grid-cols-1 gap-3 mt-4">
+              <Label>{t("skins.import_export.title")}</Label>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => {
+                    void handleExportSkins();
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  {t("export.skins")}
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void handleImportSkinsFromFile(f);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  {t("import.skins")}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t("skins.import_export.help")}
+              </p>
+            </div>
+            {/* Auto-update removed: update flow is manual via TopBar */}
+            <Separator />
+
+            {/* Manual Injection Mode Toggle */}
+            <div className="grid grid-cols-1 gap-2 mt-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="manual-injection-mode">
+                    {t("settings.manual_injection_mode")}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {t("settings.manual_injection_mode_description")}
+                  </p>
+                </div>
+                <Switch
+                  id="manual-injection-mode"
+                  checked={manualInjectionMode}
+                  onCheckedChange={setManualInjectionMode}
+                />
+              </div>
+            </div>
           </div>
-          {/* Auto-update removed: update flow is manual via TopBar */}
-        </div>
 
-        <Separator />
+          <Separator orientation="vertical" className="mx-2" />
 
-        {/* Language selector */}
-        <div className="grid grid-cols-1 gap-2 mt-4">
-          <Label>{t("language.label")}</Label>
-          <Select
-            value={locale}
-            onValueChange={(val) => {
-              const v = val as unknown as Parameters<typeof setLocale>[0];
-              setLocale(v);
-            }}
-          >
-            <SelectTrigger size="sm" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="en">English</SelectItem>
-              <SelectItem value="zh">中文</SelectItem>
-              <SelectItem value="ko">한국어</SelectItem>
-              <SelectItem value="pt-BR">Português (Brasil)</SelectItem>
-              <SelectItem value="es">Español</SelectItem>
-              <SelectItem value="ru">Русский</SelectItem>
-              <SelectItem value="tr">Türkçe</SelectItem>
-              <SelectItem value="de">Deutsch</SelectItem>
-              <SelectItem value="fr">Français</SelectItem>
-              <SelectItem value="vi">Tiếng Việt</SelectItem>
-              <SelectItem value="ar">العربية</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+          {/* Right Side */}
+          <div className="flex-1 min-w-0 flex flex-col gap-4">
+            {/* Language selector */}
+            <div className="grid grid-cols-1 gap-2 mt-4">
+              <Label>{t("language.label")}</Label>
+              <Select
+                value={locale}
+                onValueChange={(val) => {
+                  const v = val as unknown as Parameters<typeof setLocale>[0];
+                  setLocale(v);
+                }}
+              >
+                <SelectTrigger size="sm" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="en">English</SelectItem>
+                  <SelectItem value="zh">中文</SelectItem>
+                  <SelectItem value="ko">한국어</SelectItem>
+                  <SelectItem value="pt-BR">Português (Brasil)</SelectItem>
+                  <SelectItem value="es">Español</SelectItem>
+                  <SelectItem value="ru">Русский</SelectItem>
+                  <SelectItem value="tr">Türkçe</SelectItem>
+                  <SelectItem value="de">Deutsch</SelectItem>
+                  <SelectItem value="fr">Français</SelectItem>
+                  <SelectItem value="vi">Tiếng Việt</SelectItem>
+                  <SelectItem value="ar">العربية</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-        <ThemeToneSelector />
+            <ThemeToneSelector />
 
-        {/* Watermark Notice */}
-        <div className="text-xs text-center mt-2 select-none">
-          {t("watermark")}{" "}
-          <a
-            href="https://discord.gg/tHyHnx5DKX"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline"
-          >
-            https://discord.gg/tHyHnx5DKX
-          </a>
+            {/* Watermark Notice */}
+            <div className="text-xs text-center mt-2 select-none">
+              {t("watermark")}{" "}
+              <a
+                href="https://discord.gg/tHyHnx5DKX"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                https://discord.gg/tHyHnx5DKX
+              </a>
+            </div>
+          </div>
         </div>
 
         <DialogFooter className="w-full flex sm:justify-between items-center">

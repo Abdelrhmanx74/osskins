@@ -41,11 +41,22 @@ interface GameState {
   setLeaguePath: (path: string) => void;
   setLcuStatus: (status: string) => void;
   setInjectionStatus: (status: InjectionStatus) => void; // Add this
+  // Manual injection mode state
+  manualInjectionMode: boolean;
+  setManualInjectionMode: (v: boolean) => void;
+  manualSelectedSkins: Map<number, SelectedSkin>; // championId -> selection
+  selectManualSkin: (
+    championId: number,
+    skinId: number,
+    chromaId?: number,
+    fantome?: string,
+  ) => void;
+  clearManualSelection: (championId: number) => void;
   selectSkin: (
     championId: number,
     skinId: number,
     chromaId?: number,
-    fantome?: string
+    fantome?: string,
   ) => void;
   clearSelection: (championId: number) => void;
   clearAllSelections: () => void;
@@ -85,6 +96,31 @@ export const useGameStore = create<GameState>((set) => ({
   setInjectionStatus: (status) => {
     // Add implementation
     set({ injectionStatus: status });
+  },
+  // Manual injection mode controls
+  manualInjectionMode: false,
+  setManualInjectionMode: (v: boolean) => {
+    set({ manualInjectionMode: v });
+  },
+  manualSelectedSkins: new Map(),
+  selectManualSkin: (championId, skinId, chromaId, fantome) => {
+    set((state) => {
+      const newMap = new Map(state.manualSelectedSkins);
+      newMap.set(championId, {
+        championId,
+        skinId,
+        chromaId,
+        fantome,
+      });
+      return { manualSelectedSkins: newMap };
+    });
+  },
+  clearManualSelection: (championId: number) => {
+    set((state) => {
+      const newMap = new Map(state.manualSelectedSkins);
+      newMap.delete(championId);
+      return { manualSelectedSkins: newMap };
+    });
   },
   selectSkin: (championId, skinId, chromaId, fantome) => {
     set((state) => {
@@ -210,7 +246,7 @@ export const useGameStore = create<GameState>((set) => ({
       for (const [type, items] of newMiscItems.entries()) {
         // Ensure comparison is done using strings (backend may return numbers)
         const updatedItems = items.filter(
-          (item) => String(item.id) !== String(itemId)
+          (item) => String(item.id) !== String(itemId),
         );
         if (updatedItems.length !== items.length) {
           // We found and removed the item
@@ -222,10 +258,10 @@ export const useGameStore = create<GameState>((set) => ({
 
           // If this was a selected item, remove it from the selection
           const currentSelections = (newSelectedMiscItems.get(type) ?? []).map(
-            String
+            String,
           );
           const updatedSelections = currentSelections.filter(
-            (id) => id !== String(itemId)
+            (id) => id !== String(itemId),
           );
           if (updatedSelections.length === 0) {
             newSelectedMiscItems.delete(type);
@@ -359,7 +395,7 @@ export const useGameStore = create<GameState>((set) => ({
       // Normalize stored ids to strings to avoid mismatches between number/string ids
       const normalizedId = String(itemId);
       const currentSelections = (newSelectedMiscItems.get(type) ?? []).map(
-        String
+        String,
       );
       try {
         console.debug("store.toggleMiscItemSelection called", {

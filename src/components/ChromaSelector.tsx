@@ -4,20 +4,21 @@ import { cn } from "@/lib/utils";
 interface ChromaSelectorProps {
   chromas: CachedChroma[];
   onSelect: (chroma: CachedChroma | null) => void;
+  onHover?: (chroma: CachedChroma | null) => void;
   selectedChromaId?: number;
 }
 
 export function ChromaSelector({
   chromas,
   onSelect,
+  onHover,
   selectedChromaId,
 }: ChromaSelectorProps) {
   // Create a multi-color gradient for the dot
   const gradient = `conic-gradient(${chromas
     .map(
       (c, i) =>
-        `${c.colors[0] ?? "#fff"} ${(i * 100) / chromas.length}% ${
-          ((i + 1) * 100) / chromas.length
+        `${c.colors[0] ?? "#fff"} ${(i * 100) / chromas.length}% ${((i + 1) * 100) / chromas.length
         }%`
     )
     .join(", ")})`;
@@ -43,6 +44,9 @@ export function ChromaSelector({
           bottom: 0,
           filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.18))",
         }}
+        onMouseLeave={() => {
+          onHover?.(null);
+        }}
       >
         {chromas.map((chroma) => (
           <button
@@ -61,6 +65,9 @@ export function ChromaSelector({
             onClick={(e) => {
               e.stopPropagation();
               onSelect(chroma);
+            }}
+            onMouseEnter={() => {
+              onHover?.(chroma);
             }}
           />
         ))}

@@ -28,6 +28,7 @@ import type {
   PairedFriend,
   SkinShare,
 } from "@/lib/types/party-mode";
+import { useGameStore } from "@/lib/store";
 
 export default function PartyModeDialog() {
   const [isOpen, setIsOpen] = useState(false);
@@ -42,6 +43,7 @@ export default function PartyModeDialog() {
 
   // Use Zustand store for paired friends
   const pairedFriends = usePartyModeStore((s) => s.pairedFriends);
+  const manualInjectionMode = useGameStore((s) => s.manualInjectionMode);
 
   // Set up global event listeners that work even when dialog is closed
   useEffect(() => {
@@ -190,6 +192,22 @@ export default function PartyModeDialog() {
   };
 
   const filteredFriends = filterFriends(searchTerm);
+
+  // If manual injection mode is enabled, render a disabled menu item instead of the full dialog
+  if (manualInjectionMode) {
+    return (
+      <DropdownMenuItem
+        onSelect={(e) => {
+          e.preventDefault();
+        }}
+        // visually muted and unselectable
+        className="opacity-50 pointer-events-none"
+      >
+        <Users className="h-4 w-4" />
+        {t("party.mode")}
+      </DropdownMenuItem>
+    );
+  }
 
   return (
     <>

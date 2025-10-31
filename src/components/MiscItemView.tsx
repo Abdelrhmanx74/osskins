@@ -46,31 +46,31 @@ export function MiscItemView({ type }: MiscItemViewProps) {
   const builtinFonts =
     type === "font"
       ? [
-          {
-            id: "builtin-font-chinese",
-            name: "Chinese",
-            item_type: "font",
-            fantome_path: "chinese.fantome",
-          },
-          {
-            id: "builtin-font-korean",
-            name: "Korean",
-            item_type: "font",
-            fantome_path: "korean.fantome",
-          },
-          {
-            id: "builtin-font-minecraft",
-            name: "Minecraft",
-            item_type: "font",
-            fantome_path: "minecraft.fantome",
-          },
-          {
-            id: "builtin-font-arcade",
-            name: "Arcade",
-            item_type: "font",
-            fantome_path: "arcade.fantome",
-          },
-        ]
+        {
+          id: "builtin-font-chinese",
+          name: "Chinese",
+          item_type: "font",
+          fantome_path: "chinese.fantome",
+        },
+        {
+          id: "builtin-font-korean",
+          name: "Korean",
+          item_type: "font",
+          fantome_path: "korean.fantome",
+        },
+        {
+          id: "builtin-font-minecraft",
+          name: "Minecraft",
+          item_type: "font",
+          fantome_path: "minecraft.fantome",
+        },
+        {
+          id: "builtin-font-arcade",
+          name: "Arcade",
+          item_type: "font",
+          fantome_path: "arcade.fantome",
+        },
+      ]
       : [];
 
   // Items to display: built-in fonts (if font tab) followed by uploaded items
@@ -171,11 +171,10 @@ export function MiscItemView({ type }: MiscItemViewProps) {
           return (
             <div
               key={id}
-              className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                selectedItemIds.includes(id)
+              className={`p-4 border rounded-lg cursor-pointer transition-colors ${selectedItemIds.includes(id)
                   ? "border-primary bg-primary/10"
                   : "border-border hover:border-primary/50"
-              }`}
+                }`}
               onClick={() => {
                 handleItemSelect(id);
               }}

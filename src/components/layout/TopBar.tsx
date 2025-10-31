@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, Menu, Users, Users2, Users2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { InjectionStatusDot } from "@/components/InjectionStatusDot";
+import { ButtonInjection } from "@/components/button-injection";
 import { TitleBar } from "@/components/ui/titlebar/TitleBar";
 import { ChampionSearch } from "@/components/ChampionSearch";
 import {
@@ -51,7 +52,7 @@ export function TopBar({
   isUpdating = false,
 }: TopBarProps) {
   // Get tab state from the store
-  const { activeTab, setActiveTab } = useGameStore();
+  const { activeTab, setActiveTab, manualInjectionMode } = useGameStore();
   const pairedFriendsCount = usePartyModeStore((s) => s.pairedFriends.length);
 
   // No availability probe: update button is enabled unless updating or on custom tab
@@ -94,7 +95,7 @@ export function TopBar({
         if (
           (e.target as HTMLElement).closest("[data-tauri-drag-region]") &&
           !(e.target as HTMLElement).closest(
-            "button, input, [role='button'], [role='combobox']"
+            "button, input, [role='button'], [role='combobox']",
           )
         ) {
           // Use the WebviewWindow API for window dragging
@@ -135,7 +136,11 @@ export function TopBar({
               <TabsTrigger value="custom">{t("tabs.custom")}</TabsTrigger>
             </TabsList>
           </Tabs>
-          <InjectionStatusDot showLabel bordered />
+          {manualInjectionMode ? (
+            <ButtonInjection />
+          ) : (
+            <InjectionStatusDot showLabel bordered />
+          )}
           {/* Party Mode indicator */}
           {pairedFriendsCount > 0 && (
             <TooltipProvider>
