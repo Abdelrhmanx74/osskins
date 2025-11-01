@@ -324,6 +324,8 @@ export function SettingsDialog() {
               </Select>
             </div>
 
+            <Separator />
+
             <ThemeToneSelector />
 
             {/* Watermark Notice */}
