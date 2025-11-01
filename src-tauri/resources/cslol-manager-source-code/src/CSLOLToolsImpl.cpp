@@ -375,7 +375,7 @@ void CSLOLToolsImpl::installFantomeZip(QString path) {
         auto name = QFileInfo(path)
                         .fileName()
                         .replace(".zip", "")
-                        .replace(".fantome", "")
+                        .replace(".skin_file", "")
                         .replace(".wad", "")
                         .replace(".client", "");
         auto dst = prog_ + "/installed/" + name;

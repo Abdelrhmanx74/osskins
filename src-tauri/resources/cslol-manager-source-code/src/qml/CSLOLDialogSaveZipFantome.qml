@@ -8,6 +8,6 @@ FileDialog {
     visible: false
     title: qsTr("Save Fantome Mod")
     fileMode: FileDialog.SaveFile
-    nameFilters: "Fantome Mod files (*.fantome *.zip)"
-    property string modName: "mod.fantome"
+    nameFilters: "Fantome Mod files (*.skin_file *.zip)"
+    property string modName: "mod.skin_file"
 }

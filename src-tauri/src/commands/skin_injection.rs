@@ -20,9 +20,9 @@ pub fn inject_skins(app: tauri::AppHandle, request: SkinInjectionRequest) -> Res
     .app_data_dir()
     .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
 
-  // Get the path to the champions directory where fantome files are stored
-  let fantome_files_dir = app_data_dir.join("champions");
-  println!("Fantome files directory: {}", fantome_files_dir.display());
+  // Get the path to the champions directory where skin_file files are stored
+  let skin_file_files_dir = app_data_dir.join("champions");
+  println!("Fantome files directory: {}", skin_file_files_dir.display());
 
   // Emit injection started event to update UI
   let _ = app.emit("injection-status", "injecting");
@@ -32,7 +32,7 @@ pub fn inject_skins(app: tauri::AppHandle, request: SkinInjectionRequest) -> Res
     &app,
     &request.league_path,
     &request.skins,
-    &fantome_files_dir,
+    &skin_file_files_dir,
   );
 
   // Handle result with proper error propagation to frontend
@@ -56,12 +56,12 @@ pub async fn inject_game_skins(
   app_handle: AppHandle,
   game_path: String,
   skins: Vec<SkinData>,
-  fantome_files_dir: String,
+  skin_file_files_dir: String,
 ) -> Result<String, String> {
   println!("Starting skin injection process");
   println!("League path: {}", game_path);
   println!("Number of skins to inject: {}", skins.len());
-  println!("Fantome files directory: {}", fantome_files_dir);
+  println!("Fantome files directory: {}", skin_file_files_dir);
 
   // Emit injection started event
   let _ = app_handle.emit("injection-status", true);
@@ -75,14 +75,14 @@ pub async fn inject_game_skins(
     ));
   }
 
-  // Validate fantome directory exists
-  let base_path = Path::new(&fantome_files_dir);
+  // Validate skin_file directory exists
+  let base_path = Path::new(&skin_file_files_dir);
   if !base_path.exists() {
     // Create the directory if it doesn't exist
-    println!("Creating fantome files directory: {}", base_path.display());
+    println!("Creating skin_file files directory: {}", base_path.display());
     fs::create_dir_all(base_path).map_err(|e| {
       let _ = app_handle.emit("injection-status", false);
-      format!("Failed to create fantome directory: {}", e)
+      format!("Failed to create skin_file directory: {}", e)
     })?;
   }
 
@@ -96,7 +96,7 @@ pub async fn inject_game_skins(
       champion_id: s.champion_id,
       skin_id: s.skin_id,
       chroma_id: s.chroma_id,
-      fantome_path: s.fantome.clone(),
+      skin_file_path: s.skin_file.clone(),
     })
     .collect();
 
@@ -125,7 +125,7 @@ pub async fn inject_skins_with_misc(
   game_path: String,
   skins: Vec<SkinData>,
   misc_items: Vec<MiscItem>,
-  fantome_files_dir: String,
+  skin_file_files_dir: String,
 ) -> Result<String, String> {
   println!("Starting enhanced skin injection process");
   println!("League path: {}", game_path);
@@ -144,14 +144,14 @@ pub async fn inject_skins_with_misc(
     ));
   }
 
-  // Validate fantome directory exists
-  let base_path = Path::new(&fantome_files_dir);
+  // Validate skin_file directory exists
+  let base_path = Path::new(&skin_file_files_dir);
   if !base_path.exists() {
     // Create the directory if it doesn't exist
-    println!("Creating fantome files directory: {}", base_path.display());
+    println!("Creating skin_file files directory: {}", base_path.display());
     fs::create_dir_all(base_path).map_err(|e| {
       let _ = app_handle.emit("injection-status", false);
-      format!("Failed to create fantome directory: {}", e)
+      format!("Failed to create skin_file directory: {}", e)
     })?;
   }
 
@@ -165,7 +165,7 @@ pub async fn inject_skins_with_misc(
       champion_id: s.champion_id,
       skin_id: s.skin_id,
       chroma_id: s.chroma_id,
-      fantome_path: s.fantome.clone(),
+      skin_file_path: s.skin_file.clone(),
     })
     .collect();
 
@@ -220,17 +220,17 @@ pub fn get_all_skins_for_injection(config: &SavedConfig) -> Vec<Skin> {
       champion_id: skin_data.champion_id,
       skin_id: skin_data.skin_id,
       chroma_id: skin_data.chroma_id,
-      fantome_path: skin_data.fantome.clone(),
+      skin_file_path: skin_data.skin_file.clone(),
     });
   }
 
-  // Add custom skins (with skin_id = 0 and file path as fantome_path)
+  // Add custom skins (with skin_id = 0 and file path as skin_file_path)
   for custom_skin in &config.custom_skins {
     all_skins.push(Skin {
       champion_id: custom_skin.champion_id,
       skin_id: 0,      // Custom skins use skin_id 0
       chroma_id: None, // Custom skins don't have chromas
-      fantome_path: Some(custom_skin.file_path.clone()),
+      skin_file_path: Some(custom_skin.file_path.clone()),
     });
   }
 
@@ -256,12 +256,12 @@ pub async fn inject_all_selected_skins(app: AppHandle) -> Result<(), String> {
     return Err("No skins selected for injection".to_string());
   }
 
-  // Get the app data directory for fantome files
+  // Get the app data directory for skin_file files
   let app_data_dir = app
     .path()
     .app_data_dir()
     .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
-  let fantome_files_dir = app_data_dir.join("champions");
+  let skin_file_files_dir = app_data_dir.join("champions");
 
   // Get misc items
   let misc_items =
@@ -271,7 +271,7 @@ pub async fn inject_all_selected_skins(app: AppHandle) -> Result<(), String> {
   let _ = app.emit("injection-status", "injecting");
 
   // Perform injection
-  let result = inject_skins_and_misc(&app, &league_path, &skins, &misc_items, &fantome_files_dir);
+  let result = inject_skins_and_misc(&app, &league_path, &skins, &misc_items, &skin_file_files_dir);
 
   match result {
     Ok(_) => {
@@ -335,7 +335,7 @@ pub async fn start_manual_injection(
       champion_id: s.champion_id,
       skin_id: s.skin_id,
       chroma_id: s.chroma_id,
-      fantome_path: s.fantome.clone(),
+      skin_file_path: s.skin_file.clone(),
     })
     .collect();
 
@@ -422,12 +422,12 @@ pub async fn trigger_manual_injection(app: &AppHandle) -> Result<(), String> {
   let config = crate::commands::config::load_config(app.clone()).await?;
   let league_path = config.league_path.ok_or("No League path configured")?;
 
-  // Get fantome files directory
+  // Get skin_file files directory
   let app_data_dir = app
     .path()
     .app_data_dir()
     .map_err(|e| format!("Failed to get app data directory: {}", e))?;
-  let fantome_files_dir = app_data_dir.join("champions");
+  let skin_file_files_dir = app_data_dir.join("champions");
 
   // Emit injection started event
   let _ = app.emit("injection-status", "injecting");
@@ -439,7 +439,7 @@ pub async fn trigger_manual_injection(app: &AppHandle) -> Result<(), String> {
     &league_path,
     &data.skins,
     &data.misc_items,
-    &fantome_files_dir,
+    &skin_file_files_dir,
   );
 
   match result {

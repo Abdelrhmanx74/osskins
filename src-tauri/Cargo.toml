@@ -41,7 +41,7 @@ winapi = { version = "0.3", features = ["processthreadsapi", "memoryapi", "handl
 walkdir = "2.4.0"
 chrono = "0.4.31"
 web-sys = { version = "0.3.67", features = ["Window", "Document"] }
-zip = "0.6" # Added for .fantome file extraction
+zip = "0.6" # Added for .skin_file file extraction
 reqwest = { version = "0.12.15", features = ["blocking", "rustls-tls", "json"] }
 base64 = "0.21"
 once_cell = "1.18.0"      # For lazy initialization

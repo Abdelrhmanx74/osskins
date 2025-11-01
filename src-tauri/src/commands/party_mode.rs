@@ -18,7 +18,7 @@ pub struct InMemoryReceivedSkin {
     pub champion_id: u32,
     pub skin_id: u32,
     pub chroma_id: Option<u32>,
-    pub fantome_path: Option<String>,
+    pub skin_file_path: Option<String>,
     pub received_at: u64,
 }
 
@@ -954,13 +954,13 @@ pub async fn handle_party_mode_message(
                 normal_log!("[Party Mode] Received skin share from {} while not in ChampSelect; storing for later", skin_share.from_summoner_name);
             }
 
-            verbose_log!("[Party Mode][INBOUND][STORE] {}({}) champ={} skin={} chroma={:?} fantome={:?} age={}s",
+            verbose_log!("[Party Mode][INBOUND][STORE] {}({}) champ={} skin={} chroma={:?} skin_file={:?} age={}s",
                 skin_share.from_summoner_name,
                 skin_share.from_summoner_id,
                 skin_share.champion_id,
                 skin_share.skin_id,
                 skin_share.chroma_id,
-                skin_share.fantome_path,
+                skin_share.skin_file_path,
                 age_secs);
 
             let key = received_skin_key(&skin_share.from_summoner_id, skin_share.champion_id);
@@ -972,7 +972,7 @@ pub async fn handle_party_mode_message(
                 champion_id: skin_share.champion_id,
                 skin_id: skin_share.skin_id,
                 chroma_id: skin_share.chroma_id,
-                fantome_path: skin_share.fantome_path.clone(),
+                skin_file_path: skin_share.skin_file_path.clone(),
                 received_at: skin_share.timestamp,
             });
             verbose_log!("[Party Mode][INBOUND][STORE] cache size {} -> {}", before, map.len());
@@ -987,7 +987,7 @@ pub async fn handle_party_mode_message(
                 "skin_id": skin_share.skin_id,
                 "skin_name": skin_share.skin_name,
                 "chroma_id": skin_share.chroma_id,
-                "fantome_path": skin_share.fantome_path,
+                "skin_file_path": skin_share.skin_file_path,
                 "timestamp": skin_share.timestamp,
             }));
 
@@ -1007,7 +1007,7 @@ pub async fn send_skin_share_to_paired_friends(
     champion_id: u32,
     skin_id: u32,
     chroma_id: Option<u32>,
-    fantome_path: Option<String>,
+    skin_file_path: Option<String>,
 ) -> Result<(), String> {
     let config_dir = app.path().app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
@@ -1033,8 +1033,8 @@ pub async fn send_skin_share_to_paired_friends(
         return Ok(());
     }
 
-    verbose_log!("[Party Mode][OUTBOUND] Preparing share payload champ={} skin={} chroma={:?} fantome={:?} to {} friends",
-        champion_id, skin_id, chroma_id, fantome_path, sharing_friends.len());
+    verbose_log!("[Party Mode][OUTBOUND] Preparing share payload champ={} skin={} chroma={:?} skin_file={:?} to {} friends",
+        champion_id, skin_id, chroma_id, skin_file_path, sharing_friends.len());
 
     let lcu_conn = match get_lcu_connection(app).await {
         Ok(conn) => conn,
@@ -1108,7 +1108,7 @@ pub async fn send_skin_share_to_paired_friends(
         skin_id,
         skin_name: skin_name.clone(),
         chroma_id,
-        fantome_path: fantome_path.clone(),
+        skin_file_path: skin_file_path.clone(),
         timestamp: chrono::Utc::now().timestamp_millis() as u64,
     };
 
@@ -1153,7 +1153,7 @@ pub async fn send_skin_share_to_paired_friends(
             "skin_id": skin_id,
             "skin_name": skin_name,
             "chroma_id": chroma_id,
-            "fantome_path": fantome_path.clone(),
+            "skin_file_path": skin_file_path.clone(),
             "timestamp": skin_share.timestamp,
         }));
     }
@@ -1174,9 +1174,9 @@ pub fn get_skin_name_from_config(app: &AppHandle, champion_id: u32, skin_id: u32
             // Look for this specific skin in the user's selected skins
             for skin in &config.skins {
                 if skin.champion_id == champion_id && skin.skin_id == skin_id {
-                    // Try to extract skin name from fantome path if available
-                    if let Some(ref fantome_path) = skin.fantome {
-                        if let Some(file_name) = std::path::Path::new(fantome_path).file_stem() {
+                    // Try to extract skin name from skin_file path if available
+                    if let Some(ref skin_file_path) = skin.skin_file {
+                        if let Some(file_name) = std::path::Path::new(skin_file_path).file_stem() {
                             if let Some(name_str) = file_name.to_str() {
                                 return Some(name_str.to_string());
                             }

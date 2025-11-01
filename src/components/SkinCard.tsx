@@ -59,7 +59,7 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
         championId,
         skin.id,
         selectedChroma?.id,
-        selectedChroma?.fantome ?? skin.fantome
+        selectedChroma?.skin_file ?? skin.skin_file
       );
     }
   };
@@ -69,14 +69,14 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
     if (selectedChroma && chroma && selectedChroma.id === chroma.id) {
       // If clicking the already-selected chroma, reset to base skin
       setSelectedChroma(null);
-      selectSkin(championId, skin.id, undefined, skin.fantome);
+      selectSkin(championId, skin.id, undefined, skin.skin_file);
     } else {
       setSelectedChroma(chroma);
       selectSkin(
         championId,
         skin.id,
         chroma?.id,
-        chroma?.fantome ?? skin.fantome
+        chroma?.skin_file ?? skin.skin_file
       );
     }
   };

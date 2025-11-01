@@ -626,7 +626,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                   champion_id: skin.champion_id,
                                   skin_id: skin.skin_id,
                                   chroma_id: skin.chroma_id,
-                                  fantome_path: skin.fantome.clone(),
+                                  skin_file_path: skin.skin_file.clone(),
                                 });
 
                                 // Send skin share to paired friends (sharing is now controlled per-friend)
@@ -664,7 +664,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                                                                     skin_clone.champion_id,
                                                                                     skin_clone.skin_id,
                                                                                     skin_clone.chroma_id,
-                                                                                    skin_clone.fantome.clone(),
+                                                                                    skin_clone.skin_file.clone(),
                                                                                 ).await {
                                                                                     eprintln!("Failed to send skin share: {}", e);
                                                                                 }
@@ -680,7 +680,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                                                                         skin_clone.champion_id,
                                                                                         skin_clone.skin_id,
                                                                                         skin_clone.chroma_id,
-                                                                                        skin_clone.fantome.clone(),
+                                                                                        skin_clone.skin_file.clone(),
                                                                                     ).await {
                                                                                         eprintln!("Failed to send skin share: {}", e);
                                                                                     }
@@ -728,14 +728,14 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                             || last_selected_skins.get(&champ_id).map_or(true, |old_skin| {
                               old_skin.skin_id != skin.skin_id
                                 || old_skin.chroma_id != skin.chroma_id
-                                || old_skin.fantome != skin.fantome
+                                || old_skin.skin_file != skin.skin_file
                             })
                           {
                             let mut skins_to_inject = vec![Skin {
                               champion_id: skin.champion_id,
                               skin_id: skin.skin_id,
                               chroma_id: skin.chroma_id,
-                              fantome_path: skin.fantome.clone(),
+                              skin_file_path: skin.skin_file.clone(),
                             }];
 
                             // Add received skins for this champion
@@ -745,7 +745,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                   champion_id: received_skin.champion_id,
                                   skin_id: received_skin.skin_id,
                                   chroma_id: received_skin.chroma_id,
-                                  fantome_path: received_skin.fantome_path.clone(),
+                                  skin_file_path: received_skin.skin_file_path.clone(),
                                 });
                               }
                             }
@@ -797,14 +797,14 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                               continue;
                             }
 
-                            // Filter out skins whose fantome files can't be found locally
+                            // Filter out skins whose skin_file files can't be found locally
                             let assets_skins_dir =
                               PathBuf::from(&league_path_clone).join("ASSETS/Skins");
                             let original_len = skins_to_inject.len();
                             let filtered_skins: Vec<Skin> = skins_to_inject
                                                         .into_iter()
                                                         .filter(|s| {
-                                                            if let Some(ref fp_str) = s.fantome_path {
+                                                            if let Some(ref fp_str) = s.skin_file_path {
                                                                 let fp = PathBuf::from(fp_str);
                                                                 let absolute_exists = fp.is_absolute() && fp.exists();
                                                                 let exists_in_champions_rel = if fp.is_absolute() { false } else { champions_dir.join(&fp).exists() };
@@ -818,19 +818,19 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                                                 if absolute_exists || exists_in_champions_rel || exists_in_champions_name || exists_in_assets_rel || exists_in_assets_name {
                                                                     true
                                                                 } else {
-                                                                    println!("[Party Mode] Skipping skin (missing fantome): champ={} skin={} path={}", s.champion_id, s.skin_id, fp_str);
+                                                                    println!("[Party Mode] Skipping skin (missing skin_file): champ={} skin={} path={}", s.champion_id, s.skin_id, fp_str);
                                                                     false
                                                                 }
                                                             } else {
                                                                 // If no path at all, skip to avoid aborting the whole injection
-                                                                println!("[Party Mode] Skipping skin (no fantome path): champ={} skin={} ", s.champion_id, s.skin_id);
+                                                                println!("[Party Mode] Skipping skin (no skin_file path): champ={} skin={} ", s.champion_id, s.skin_id);
                                                                 false
                                                             }
                                                         })
                                                         .collect();
                             if filtered_skins.len() < original_len {
                               println!(
-                              "[Party Mode] Filtered out {} skins without available fantome files",
+                              "[Party Mode] Filtered out {} skins without available skin_file files",
                               original_len - filtered_skins.len()
                             );
                             }
@@ -1055,7 +1055,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                                             skin.champion_id,
                                                             skin.skin_id,
                                                             skin.chroma_id,
-                                                            skin.fantome.clone(),
+                                                            skin.skin_file.clone(),
                                                         ).await.map(|_| { sent_share = true; () });
                                                     } else if let Some(custom) = config.custom_skins.iter().find(|s| s.champion_id == *cid) {
                                                         let _ = crate::commands::party_mode::send_skin_share_to_paired_friends(
@@ -1552,7 +1552,7 @@ fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_ids: 
             champion_id: skin.champion_id,
             skin_id: skin.skin_id,
             chroma_id: skin.chroma_id,
-            fantome_path: skin.fantome.clone(),
+            skin_file_path: skin.skin_file.clone(),
           });
         }
         // If no official skin, check for custom skin
@@ -1561,12 +1561,12 @@ fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_ids: 
           .iter()
           .find(|s| s.champion_id == champ_id_u32)
         {
-          // For custom skins, use skin_id = 0 and the custom file path as fantome_path
+          // For custom skins, use skin_id = 0 and the custom file path as skin_file_path
           skins_to_inject.push(Skin {
             champion_id: custom_skin.champion_id,
             skin_id: 0,      // Custom skins use skin_id 0
             chroma_id: None, // Custom skins don't have chromas
-            fantome_path: Some(custom_skin.file_path.clone()),
+            skin_file_path: Some(custom_skin.file_path.clone()),
           });
         }
       }
@@ -1869,7 +1869,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
     .as_ref()
     .ok_or("League path not configured".to_string())?;
 
-  // Prefer the app data champions directory as the canonical source of fantome files
+  // Prefer the app data champions directory as the canonical source of skin_file files
   let champions_dir = app
     .path()
     .app_data_dir()
@@ -1896,7 +1896,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
           champion_id: local_skin.champion_id,
           skin_id: local_skin.skin_id,
           chroma_id: local_skin.chroma_id,
-          fantome_path: local_skin.fantome.clone(),
+          skin_file_path: local_skin.skin_file.clone(),
         },
         None,
       ));
@@ -1914,15 +1914,15 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
   }
 
   for received_skin in received_skins_map.values() {
-    if let Some(fantome_path) = &received_skin.fantome_path {
+    if let Some(skin_file_path) = &received_skin.skin_file_path {
       // Debug: show what we received from friend
       println!(
-        "[Party Mode][DEBUG] Received fantome_path='{}' from {}",
-        fantome_path, received_skin.from_summoner_name
+        "[Party Mode][DEBUG] Received skin_file_path='{}' from {}",
+        skin_file_path, received_skin.from_summoner_name
       );
 
       // Normalize the path string for easier matching (use forward slashes)
-      let fp_raw = fantome_path.clone();
+      let fp_raw = skin_file_path.clone();
       let fp_norm = fp_raw.replace('\\', "/");
       // Create a PathBuf for the original string and a "relative-friendly" one without leading slash
       let fp = PathBuf::from(&fp_raw);
@@ -1933,7 +1933,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
       // 1) Direct absolute exists
       if fp.is_absolute() && fp.exists() {
         println!(
-          "[Party Mode][DEBUG] Using absolute fantome from friend: {}",
+          "[Party Mode][DEBUG] Using absolute skin_file from friend: {}",
           fp.display()
         );
         found_path = Some(fp.clone());
@@ -1998,7 +1998,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
             return Some(by_name);
           }
           if let Some(stem) = PathBuf::from(name).file_stem().and_then(|s| s.to_str()) {
-            for ext in ["zip", "fantome"] {
+            for ext in ["zip", "skin_file"] {
               let cand = dir.join(format!("{}.{}", stem, ext));
               if cand.exists() {
                 return Some(cand);
@@ -2103,7 +2103,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
         if let Some(local_skin) = config.skins.iter().find(|s| {
           s.champion_id == received_skin.champion_id && s.skin_id == received_skin.skin_id
         }) {
-          if let Some(ref f) = local_skin.fantome {
+          if let Some(ref f) = local_skin.skin_file {
             let cand_abs = PathBuf::from(f);
             let mut candidates: Vec<PathBuf> = Vec::new();
             if cand_abs.is_absolute() {
@@ -2114,7 +2114,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
               candidates.push(champions_dir.join(name));
               if let Some(stem) = PathBuf::from(name).file_stem().and_then(|s| s.to_str()) {
                 candidates.push(champions_dir.join(format!("{}.zip", stem)));
-                candidates.push(champions_dir.join(format!("{}.fantome", stem)));
+                candidates.push(champions_dir.join(format!("{}.skin_file", stem)));
               }
             }
             candidates.push(assets_skins_dir.join(&cand_abs));
@@ -2122,7 +2122,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
               candidates.push(assets_skins_dir.join(name));
               if let Some(stem) = PathBuf::from(name).file_stem().and_then(|s| s.to_str()) {
                 candidates.push(assets_skins_dir.join(format!("{}.zip", stem)));
-                candidates.push(assets_skins_dir.join(format!("{}.fantome", stem)));
+                candidates.push(assets_skins_dir.join(format!("{}.skin_file", stem)));
               }
             }
             if let Some(found) = candidates.into_iter().find(|p| p.exists()) {
@@ -2145,7 +2145,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
           .iter()
           .find(|s| s.champion_id == received_skin.champion_id)
         {
-          if let Some(ref f) = local_skin_any.fantome {
+          if let Some(ref f) = local_skin_any.skin_file {
             let cand_abs = PathBuf::from(f);
             let mut candidates: Vec<PathBuf> = Vec::new();
             if cand_abs.is_absolute() {
@@ -2156,7 +2156,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
               candidates.push(champions_dir.join(name));
               if let Some(stem) = PathBuf::from(name).file_stem().and_then(|s| s.to_str()) {
                 candidates.push(champions_dir.join(format!("{}.zip", stem)));
-                candidates.push(champions_dir.join(format!("{}.fantome", stem)));
+                candidates.push(champions_dir.join(format!("{}.skin_file", stem)));
               }
             }
             candidates.push(assets_skins_dir.join(&cand_abs));
@@ -2164,7 +2164,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
               candidates.push(assets_skins_dir.join(name));
               if let Some(stem) = PathBuf::from(name).file_stem().and_then(|s| s.to_str()) {
                 candidates.push(assets_skins_dir.join(format!("{}.zip", stem)));
-                candidates.push(assets_skins_dir.join(format!("{}.fantome", stem)));
+                candidates.push(assets_skins_dir.join(format!("{}.skin_file", stem)));
               }
             }
             if let Some(found) = candidates.into_iter().find(|p| p.exists()) {
@@ -2205,7 +2205,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
             skin_id: received_skin.skin_id,
             chroma_id: received_skin.chroma_id,
             // Use resolved local path for reliability
-            fantome_path: Some(resolved.to_string_lossy().to_string()),
+            skin_file_path: Some(resolved.to_string_lossy().to_string()),
           },
           Some(received_skin.from_summoner_id.clone()),
         ));
@@ -2215,8 +2215,8 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
         );
       } else {
         println!(
-          "[Party Mode] Skipping friend skin from {} (missing fantome: {})",
-          received_skin.from_summoner_name, fantome_path
+          "[Party Mode] Skipping friend skin from {} (missing skin_file: {})",
+          received_skin.from_summoner_name, skin_file_path
         );
         println!(
           "[Party Mode][DEBUG] Champions dir: {}",
@@ -2250,7 +2250,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
       s.champion_id,
       s.skin_id,
       s.chroma_id,
-      s.fantome_path.clone(),
+      s.skin_file_path.clone(),
       friend_id_opt.clone(),
     );
     if seen.insert(key) {
@@ -2364,7 +2364,7 @@ pub async fn trigger_party_mode_injection_for_champions(
           champion_id: local_skin.champion_id,
           skin_id: local_skin.skin_id,
           chroma_id: local_skin.chroma_id,
-          fantome_path: local_skin.fantome.clone(),
+          skin_file_path: local_skin.skin_file.clone(),
         },
         None,
       ));
@@ -2375,7 +2375,7 @@ pub async fn trigger_party_mode_injection_for_champions(
           champion_id: custom.champion_id,
           skin_id: 0,
           chroma_id: None,
-          fantome_path: Some(custom.file_path.clone()),
+          skin_file_path: Some(custom.file_path.clone()),
         },
         None,
       ));
@@ -2383,11 +2383,11 @@ pub async fn trigger_party_mode_injection_for_champions(
     }
   }
 
-  // Add friend skins collected so far (resolve fantome paths like in single-champion flow)
+  // Add friend skins collected so far (resolve skin_file paths like in single-champion flow)
   let received_skins_map = RECEIVED_SKINS.lock().unwrap();
   for received_skin in received_skins_map.values() {
-    if let Some(fantome_path) = &received_skin.fantome_path {
-      let fp_raw = fantome_path.clone();
+    if let Some(skin_file_path) = &received_skin.skin_file_path {
+      let fp_raw = skin_file_path.clone();
       let fp_norm = fp_raw.replace('\\', "/");
       let fp = PathBuf::from(&fp_raw);
       let fp_rel = PathBuf::from(fp_norm.trim_start_matches('/'));
@@ -2435,7 +2435,7 @@ pub async fn trigger_party_mode_injection_for_champions(
             return Some(by_name);
           }
           if let Some(stem) = PathBuf::from(name).file_stem().and_then(|s| s.to_str()) {
-            for ext in ["zip", "fantome"] {
+            for ext in ["zip", "skin_file"] {
               let cand = dir.join(format!("{}.{}", stem, ext));
               if cand.exists() {
                 return Some(cand);
@@ -2471,7 +2471,7 @@ pub async fn trigger_party_mode_injection_for_champions(
         if let Some(local_skin) = config.skins.iter().find(|s| {
           s.champion_id == received_skin.champion_id && s.skin_id == received_skin.skin_id
         }) {
-          if let Some(ref f) = local_skin.fantome {
+          if let Some(ref f) = local_skin.skin_file {
             let cand = PathBuf::from(f);
             let mut cands = vec![];
             if cand.is_absolute() {
@@ -2482,7 +2482,7 @@ pub async fn trigger_party_mode_injection_for_champions(
               cands.push(champions_dir.join(name));
               if let Some(stem) = PathBuf::from(name).file_stem().and_then(|s| s.to_str()) {
                 cands.push(champions_dir.join(format!("{}.zip", stem)));
-                cands.push(champions_dir.join(format!("{}.fantome", stem)));
+                cands.push(champions_dir.join(format!("{}.skin_file", stem)));
               }
             }
             cands.push(assets_skins_dir.join(&cand));
@@ -2490,7 +2490,7 @@ pub async fn trigger_party_mode_injection_for_champions(
               cands.push(assets_skins_dir.join(name));
               if let Some(stem) = PathBuf::from(name).file_stem().and_then(|s| s.to_str()) {
                 cands.push(assets_skins_dir.join(format!("{}.zip", stem)));
-                cands.push(assets_skins_dir.join(format!("{}.fantome", stem)));
+                cands.push(assets_skins_dir.join(format!("{}.skin_file", stem)));
               }
             }
             if let Some(found) = cands.into_iter().find(|p| p.exists()) {
@@ -2507,7 +2507,7 @@ pub async fn trigger_party_mode_injection_for_champions(
           .iter()
           .find(|s| s.champion_id == received_skin.champion_id)
         {
-          if let Some(ref f) = local_any.fantome {
+          if let Some(ref f) = local_any.skin_file {
             let cand = PathBuf::from(f);
             let mut cands = vec![];
             if cand.is_absolute() {
@@ -2518,7 +2518,7 @@ pub async fn trigger_party_mode_injection_for_champions(
               cands.push(champions_dir.join(name));
               if let Some(stem) = PathBuf::from(name).file_stem().and_then(|s| s.to_str()) {
                 cands.push(champions_dir.join(format!("{}.zip", stem)));
-                cands.push(champions_dir.join(format!("{}.fantome", stem)));
+                cands.push(champions_dir.join(format!("{}.skin_file", stem)));
               }
             }
             cands.push(assets_skins_dir.join(&cand));
@@ -2526,7 +2526,7 @@ pub async fn trigger_party_mode_injection_for_champions(
               cands.push(assets_skins_dir.join(name));
               if let Some(stem) = PathBuf::from(name).file_stem().and_then(|s| s.to_str()) {
                 cands.push(assets_skins_dir.join(format!("{}.zip", stem)));
-                cands.push(assets_skins_dir.join(format!("{}.fantome", stem)));
+                cands.push(assets_skins_dir.join(format!("{}.skin_file", stem)));
               }
             }
             if let Some(found) = cands.into_iter().find(|p| p.exists()) {
@@ -2556,14 +2556,14 @@ pub async fn trigger_party_mode_injection_for_champions(
             champion_id: received_skin.champion_id,
             skin_id: received_skin.skin_id,
             chroma_id: received_skin.chroma_id,
-            fantome_path: Some(resolved.to_string_lossy().to_string()),
+            skin_file_path: Some(resolved.to_string_lossy().to_string()),
           },
           Some(received_skin.from_summoner_id.clone()),
         ));
       } else {
         println!(
-          "[Party Mode] Skipping friend skin from {} (missing fantome: {})",
-          received_skin.from_summoner_name, fantome_path
+          "[Party Mode] Skipping friend skin from {} (missing skin_file: {})",
+          received_skin.from_summoner_name, skin_file_path
         );
       }
     }
@@ -2581,7 +2581,7 @@ pub async fn trigger_party_mode_injection_for_champions(
       s.champion_id,
       s.skin_id,
       s.chroma_id,
-      s.fantome_path.clone(),
+      s.skin_file_path.clone(),
       friend_id_opt.clone(),
     );
     if seen.insert(key) {

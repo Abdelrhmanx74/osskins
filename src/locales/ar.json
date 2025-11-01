@@ -77,7 +77,7 @@
     "skins.import_export.title": "استيراد/تصدير الاسكينات",
     "import.skins": "استيراد الاسكينات",
     "export.skins": "تصدير الاسكينات",
-    "skins.import_export.help": "يتم تصدير الاسكينات الرسمية فقط. الاستيراد يتوقع مصفوفة JSON من { champion_id, skin_id, chroma_id?, fantome? }.",
+    "skins.import_export.help": "يتم تصدير الاسكينات الرسمية فقط. الاستيراد يتوقع مصفوفة JSON من { champion_id, skin_id, chroma_id?, skin_file? }.",
     "export.skins.success": "تم تصدير الاسكينات",
     "export.skins.failed": "فشل في تصدير الاسكينات",
     "import.skins.success": "تم استيراد {count} شكل",

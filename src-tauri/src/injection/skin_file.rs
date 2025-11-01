@@ -10,15 +10,15 @@ use crate::injection::error::{InjectionError, Skin};
 // Fantome file processing operations
 
 impl crate::injection::core::SkinInjector {
-    // Extract .fantome file (similar to utility::unzip in CSLOL Manager)
-    pub(crate) fn extract_fantome(&mut self, fantome_path: &Path, output_dir: &Path) -> Result<(), InjectionError> {
-        self.log(&format!("Extracting fantome file: {}", fantome_path.display()));
+    // Extract .skin_file file (similar to utility::unzip in CSLOL Manager)
+    pub(crate) fn extract_skin_file(&mut self, skin_file_path: &Path, output_dir: &Path) -> Result<(), InjectionError> {
+        self.log(&format!("Extracting skin_file file: {}", skin_file_path.display()));
         
         // Create output directory if it doesn't exist
         fs::create_dir_all(output_dir)?;
         
         // Open and extract the zip file
-        let file = fs::File::open(fantome_path)?;
+        let file = fs::File::open(skin_file_path)?;
         let mut archive = ZipArchive::new(file)?;
         
         for i in 0..archive.len() {
@@ -45,14 +45,14 @@ impl crate::injection::core::SkinInjector {
     }
 
     // Add this memory-optimized extraction function
-    pub(crate) fn extract_fantome_mmap(&mut self, fantome_path: &Path, output_dir: &Path) -> Result<(), InjectionError> {
-        self.log(&format!("Extracting fantome file with memory mapping: {}", fantome_path.display()));
+    pub(crate) fn  extract_skin_file_mmap(&mut self, skin_file_path: &Path, output_dir: &Path) -> Result<(), InjectionError> {
+        self.log(&format!("Extracting skin_file file with memory mapping: {}", skin_file_path.display()));
         
         // Create output directory if it doesn't exist
         fs::create_dir_all(output_dir)?;
         
         // Open the file for memory mapping
-        let file = fs::File::open(fantome_path)?;
+        let file = fs::File::open(skin_file_path)?;
         let file_size = file.metadata()?.len();
         
         // Only use memory mapping for larger files (>1MB)
@@ -118,23 +118,23 @@ impl crate::injection::core::SkinInjector {
         dir_path.join("META").join("info.json").exists()
     }
     
-    // Find appropriate .fantome file for a skin - simplified without fallback
-    pub(crate) fn find_fantome_for_skin(&mut self, skin: &Skin, fantome_files_dir: &Path) -> Result<Option<PathBuf>, InjectionError> {
-        self.log(&format!("[DEBUG] find_fantome_for_skin: skin_id={}, champion_id={}, chroma_id={:?}, fantome_path={:?}", skin.skin_id, skin.champion_id, skin.chroma_id, skin.fantome_path));
+    // Find appropriate .skin_file file for a skin - simplified without fallback
+    pub(crate) fn find_skin_file_for_skin(&mut self, skin: &Skin, skin_file_files_dir: &Path) -> Result<Option<PathBuf>, InjectionError> {
+        self.log(&format!("[DEBUG] find_skin_file_for_skin: skin_id={}, champion_id={}, chroma_id={:?}, skin_file_path={:?}", skin.skin_id, skin.champion_id, skin.chroma_id, skin.skin_file_path));
         // Only use direct path from JSON - no fallback searching
-        if let Some(fantome_path) = &skin.fantome_path {
-            self.log(&format!("Using fantome path from JSON: {}", fantome_path));
+        if let Some(skin_file_path) = &skin.skin_file_path {
+            self.log(&format!("Using skin_file path from JSON: {}", skin_file_path));
             
             // Check if this is an absolute path (friend's skin) vs relative path (our skin)
-            let path = std::path::Path::new(fantome_path);
+            let path = std::path::Path::new(skin_file_path);
             if path.is_absolute() {
                 // This is likely a friend's skin with absolute path - check if file exists as-is
                 self.log(&format!("[DEBUG] Checking absolute path (friend skin): {}", path.display()));
                 if path.exists() {
-                    self.log(&format!("✅ Found friend's fantome file at absolute path: {}", path.display()));
+                    self.log(&format!("✅ Found friend's skin_file file at absolute path: {}", path.display()));
                     return Ok(Some(path.to_path_buf()));
                 } else {
-                    self.log(&format!("❌ Friend's fantome file not found at absolute path: {}", path.display()));
+                    self.log(&format!("❌ Friend's skin_file file not found at absolute path: {}", path.display()));
                     // For friend skins, try to map portable prefixes to local directories and search
                     // Known portable prefix: /ezrea/ -> app champions dir (primary) or ASSETS/Skins (fallback)
                     let app_champions = self.app_dir.join("champions");
@@ -152,59 +152,59 @@ impl crate::injection::core::SkinInjector {
                             // Try alt extensions under champions
                             if let Some(stem) = Path::new(filename).file_stem().and_then(|s| s.to_str()) {
                                 let zip_candidate = app_champions.join(format!("{}.zip", stem));
-                                let fantome_candidate = app_champions.join(format!("{}.fantome", stem));
+                                let skin_file_candidate = app_champions.join(format!("{}.skin_file", stem));
                                 if zip_candidate.exists() { return Ok(Some(zip_candidate)); }
-                                if fantome_candidate.exists() { return Ok(Some(fantome_candidate)); }
+                                if skin_file_candidate.exists() { return Ok(Some(skin_file_candidate)); }
                             }
                         }
                     }
-                    // Fallback to filename/alt-extension search in provided fantome_files_dir
+                    // Fallback to filename/alt-extension search in provided skin_file_files_dir
                     // For friend skins, try to find a similar file in our local directory by filename,
-                    // accepting either .zip or .fantome extensions
+                    // accepting either .zip or .skin_file extensions
                     if let Some(filename) = path.file_name() {
                         // Try exact filename
-                        let local_path = fantome_files_dir.join(filename);
+                        let local_path = skin_file_files_dir.join(filename);
                         self.log(&format!("[DEBUG] Trying to find similar file locally: {}", local_path.display()));
                         if local_path.exists() {
                             self.log(&format!("✅ Found similar local archive: {}", local_path.display()));
                             return Ok(Some(local_path));
                         }
 
-                        // Try swapping extensions between .zip <-> .fantome
+                        // Try swapping extensions between .zip <-> .skin_file
                         if let Some(stem) = Path::new(filename).file_stem().and_then(|s| s.to_str()) {
-                            let zip_candidate = fantome_files_dir.join(format!("{}.zip", stem));
-                            let fantome_candidate = fantome_files_dir.join(format!("{}.fantome", stem));
-                            self.log(&format!("[DEBUG] Trying alt extensions: {} | {}", zip_candidate.display(), fantome_candidate.display()));
+                            let zip_candidate = skin_file_files_dir.join(format!("{}.zip", stem));
+                            let skin_file_candidate = skin_file_files_dir.join(format!("{}.skin_file", stem));
+                            self.log(&format!("[DEBUG] Trying alt extensions: {} | {}", zip_candidate.display(), skin_file_candidate.display()));
                             if zip_candidate.exists() {
                                 self.log(&format!("✅ Found local .zip for shared skin: {}", zip_candidate.display()));
                                 return Ok(Some(zip_candidate));
                             }
-                            if fantome_candidate.exists() {
-                                self.log(&format!("✅ Found local .fantome for shared skin: {}", fantome_candidate.display()));
-                                return Ok(Some(fantome_candidate));
+                            if skin_file_candidate.exists() {
+                                self.log(&format!("✅ Found local .skin_file for shared skin: {}", skin_file_candidate.display()));
+                                return Ok(Some(skin_file_candidate));
                             }
                         }
                     }
                 }
             } else {
-                // This is a relative path (our own skin) - check in fantome_files_dir
-                let direct_path = fantome_files_dir.join(fantome_path);
+                // This is a relative path (our own skin) - check in skin_file_files_dir
+                let direct_path = skin_file_files_dir.join(skin_file_path);
                 self.log(&format!("[DEBUG] Checking relative path (our skin): {}", direct_path.display()));
                 if direct_path.exists() {
-                    self.log(&format!("✅ Found our fantome file at relative path: {}", direct_path.display()));
+                    self.log(&format!("✅ Found our skin_file file at relative path: {}", direct_path.display()));
                     return Ok(Some(direct_path));
                 }
             }
             
             self.log(&format!("❌ Fantome file not found for skin (champion: {}, skin: {})", skin.champion_id, skin.skin_id));
         } else {
-            self.log("❌ No fantome path provided in skin data");
+            self.log("❌ No skin_file path provided in skin data");
         }
         Ok(None)
     }
     
     
-    // Create a mod directory structure from extracted fantome files
+    // Create a mod directory structure from extracted skin_file files
     pub(crate)  fn create_mod_from_extracted(&mut self, extract_dir: &Path, mod_dir: &Path) -> Result<(), InjectionError> {
         self.log(&format!("Creating mod from extracted files at: {}", extract_dir.display()));
         
@@ -225,7 +225,7 @@ impl crate::injection::core::SkinInjector {
                 "Name": "ExtractedMod",
                 "Version": "1.0.0",
                 "Author": "osskins",
-                "Description": "Extracted from fantome file at {}"
+                "Description": "Extracted from skin_file file at {}"
             }}"#, chrono::Local::now().to_rfc3339());
             
             fs::write(&mod_info_json, info_json)?;
@@ -279,13 +279,13 @@ impl crate::injection::core::SkinInjector {
         Ok(())
     }
     
-    // Process .fantome files to create proper mod structure with memory optimization
-    pub(crate) fn process_fantome_file(&mut self, fantome_path: &Path) -> Result<PathBuf, InjectionError> {
-        self.log(&format!("Processing fantome file: {}", fantome_path.display()));
+    // Process .skin_file files to create proper mod structure with memory optimization
+    pub(crate) fn process_skin_file(&mut self, skin_file_path: &Path) -> Result<PathBuf, InjectionError> {
+        self.log(&format!("Processing skin_file file: {}", skin_file_path.display()));
         
     // Create a unique temp extraction directory to avoid collisions when
-    // processing multiple fantome files with the same name or concurrent runs.
-    let file_stem = fantome_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    // processing multiple skin_file files with the same name or concurrent runs.
+    let file_stem = skin_file_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
         // Use timestamp_nanos_opt when available; fall back to timestamp_nanos() for older chrono
         let unique_suffix = chrono::Local::now()
             .timestamp_nanos_opt()
@@ -299,7 +299,7 @@ impl crate::injection::core::SkinInjector {
         }
 
         // Determine file size to pick extraction strategy
-        let file_size = match fs::metadata(fantome_path) {
+        let file_size = match fs::metadata(skin_file_path) {
             Ok(metadata) => metadata.len(),
             Err(_) => 0,
         };
@@ -315,9 +315,9 @@ impl crate::injection::core::SkinInjector {
 
             // Use memory-mapped extraction for larger files
             if file_size > 1_048_576 {
-                self.extract_fantome_mmap(fantome_path, &extract_dir)?;
+                self. extract_skin_file_mmap(skin_file_path, &extract_dir)?;
             } else {
-                self.extract_fantome(fantome_path, &extract_dir)?;
+                self.extract_skin_file(skin_file_path, &extract_dir)?;
             }
 
             // Create mod structure from the extracted content

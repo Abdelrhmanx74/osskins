@@ -77,7 +77,7 @@
     "skins.import_export.title": "Importar/Exportar skins",
     "import.skins": "Importar skins",
     "export.skins": "Exportar skins",
-    "skins.import_export.help": "Exporta apenas os skins oficiais selecionados. A importação espera um array JSON de { champion_id, skin_id, chroma_id?, fantome? }.",
+    "skins.import_export.help": "Exporta apenas os skins oficiais selecionados. A importação espera um array JSON de { champion_id, skin_id, chroma_id?, skin_file? }.",
     "export.skins.success": "Skins exportados",
     "export.skins.failed": "Falha ao exportar skins",
     "import.skins.success": "{count} skins importados",

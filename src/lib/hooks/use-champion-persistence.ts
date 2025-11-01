@@ -18,7 +18,7 @@ export function useChampionPersistence() {
       champion_id: s.championId,
       skin_id: s.skinId,
       chroma_id: s.chromaId,
-      fantome: s.fantome,
+      skin_file: s.skin_file,
     }));
 
     // prepare misc items selections object from Map

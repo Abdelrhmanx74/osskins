@@ -5,7 +5,7 @@ use std::path::{Path};
 use std::os::windows::process::CommandExt;
 use walkdir::WalkDir;
 use crate::injection::error::{InjectionError, ModState};
-use crate::injection::fantome::copy_default_overlay;
+use crate::injection::skin_file::copy_default_overlay;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;

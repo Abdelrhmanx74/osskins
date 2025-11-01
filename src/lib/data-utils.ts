@@ -67,7 +67,7 @@ export async function fetchFantomeFile(
 ): Promise<Uint8Array> {
   try {
     const response = await fetch(
-      `${FANTOME_BASE_URL}/${championId}/${skinId}.fantome`
+      `${FANTOME_BASE_URL}/${championId}/${skinId}.skin_file`
     );
     if (!response.ok) {
       console.warn(`Fantome not found: champion ${championId}, skin ${skinId}`);
@@ -77,7 +77,7 @@ export async function fetchFantomeFile(
     return new Uint8Array(arrayBuffer);
   } catch (err) {
     console.warn(
-      `Error fetching fantome for champion ${championId}, skin ${skinId}:`,
+      `Error fetching skin_file for champion ${championId}, skin ${skinId}:`,
       err
     );
     return new Uint8Array();
@@ -165,7 +165,7 @@ export async function fetchSkinZip(
     // ignore fetch errors
   }
 
-  // Silently return empty buffer (will fall back to fantome)
+  // Silently return empty buffer (will fall back to skin_file)
   return new Uint8Array();
 }
 
@@ -182,7 +182,7 @@ export function sanitizeForFileName(str: string): string {
 export function transformChampionData(
   summary: ChampionSummary,
   details: ChampionDetails,
-  fantomeFiles: Map<number, Uint8Array>
+  skinFiles: Map<number, Uint8Array>
 ): Champion {
   const baseDir = sanitizeForFileName(summary.name);
   const skins: Skin[] = details.skins.map((skin) => {
@@ -196,9 +196,8 @@ export function transformChampionData(
         colors: chroma.colors,
         description: chroma.description,
         rarity: chroma.rarity,
-        fantome: `${baseDir}/${sanitizeForFileName(skin.name)}_chroma_${
-          chroma.id
-        }.zip`,
+        skin_file: `${baseDir}/${sanitizeForFileName(skin.name)}_chroma_${chroma.id
+          }.zip`,
       };
     });
 
@@ -210,7 +209,7 @@ export function transformChampionData(
       skinType: skin.skinType,
       rarity: skin.rarity || "kNoRarity",
       featuresText: skin.featuresText ?? null,
-      fantome: `${baseDir}/${sanitizeForFileName(skin.name)}.zip`,
+      skin_file: `${baseDir}/${sanitizeForFileName(skin.name)}.zip`,
       chromas,
     };
   });

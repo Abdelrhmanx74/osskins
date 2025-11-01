@@ -64,7 +64,7 @@ export function ButtonInjection() {
           champion_id: skin.championId,
           skin_id: skin.skinId,
           chroma_id: skin.chromaId,
-          fantome: skin.fantome,
+          skin_file: skin.skin_file,
         }),
       );
 
@@ -73,7 +73,7 @@ export function ButtonInjection() {
         id: string;
         name: string;
         item_type: string;
-        fantome_path: string;
+        skin_file_path: string;
       }> = [];
 
       // Get all selected misc items from the store

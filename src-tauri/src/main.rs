@@ -79,7 +79,7 @@ fn main() {
       check_data_updates,
       get_champion_data,
       update_champion_data,
-      save_fantome_file,
+      save_skin_file,
       save_zip_file,
       select_league_directory,
       inject_skins,

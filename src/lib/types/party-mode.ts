@@ -35,7 +35,7 @@ export interface SkinShare {
   skin_id: number;
   skin_name: string; // Add skin name field
   chroma_id?: number;
-  fantome_path?: string;
+  skin_file_path?: string;
   timestamp: number;
 }
 

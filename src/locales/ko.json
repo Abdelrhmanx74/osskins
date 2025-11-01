@@ -56,7 +56,7 @@
     "skins.import_export.title": "스킨 가져오기/내보내기",
     "import.skins": "스킨 가져오기",
     "export.skins": "스킨 내보내기",
-    "skins.import_export.help": "선택한 공식 스킨만 내보냅니다. 가져오기는 { champion_id, skin_id, chroma_id?, fantome? } 형태의 JSON 배열을 기대합니다.",
+    "skins.import_export.help": "선택한 공식 스킨만 내보냅니다. 가져오기는 { champion_id, skin_id, chroma_id?, skin_file? } 형태의 JSON 배열을 기대합니다.",
     "export.skins.success": "스킨 내보내기 완료",
     "export.skins.failed": "스킨 내보내기 실패",
     "import.skins.success": "{count}개의 스킨 가져옴",

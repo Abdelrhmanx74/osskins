@@ -77,7 +77,7 @@
     "skins.import_export.title": "导入/导出皮肤",
     "import.skins": "导入皮肤",
     "export.skins": "导出皮肤",
-    "skins.import_export.help": "仅导出你选择的官方皮肤。导入需要一个包含 { champion_id, skin_id, chroma_id?, fantome? } 的 JSON 数组。",
+    "skins.import_export.help": "仅导出你选择的官方皮肤。导入需要一个包含 { champion_id, skin_id, chroma_id?, skin_file? } 的 JSON 数组。",
     "export.skins.success": "皮肤已导出",
     "export.skins.failed": "导出皮肤失败",
     "import.skins.success": "已导入 {count} 个皮肤",

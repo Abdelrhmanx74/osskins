@@ -6,7 +6,7 @@ interface SelectedSkin {
   championId: number;
   skinId: number;
   chromaId?: number;
-  fantome?: string; // Add fantome path
+  skin_file?: string; // Add skin_file path
 }
 
 // Define the possible injection statuses
@@ -22,7 +22,7 @@ export interface MiscItem {
   id: string;
   name: string;
   item_type: string; // "map", "font", "blocks", "settings"
-  fantome_path: string;
+  skin_file_path: string;
 }
 
 interface GameState {
@@ -49,14 +49,14 @@ interface GameState {
     championId: number,
     skinId: number,
     chromaId?: number,
-    fantome?: string,
+    skin_file?: string,
   ) => void;
   clearManualSelection: (championId: number) => void;
   selectSkin: (
     championId: number,
     skinId: number,
     chromaId?: number,
-    fantome?: string,
+    skin_file?: string,
   ) => void;
   clearSelection: (championId: number) => void;
   clearAllSelections: () => void;
@@ -100,17 +100,18 @@ export const useGameStore = create<GameState>((set) => ({
   // Manual injection mode controls
   manualInjectionMode: false,
   setManualInjectionMode: (v: boolean) => {
+    localStorage.setItem("manualInjectionMode", v ? "true" : "false");
     set({ manualInjectionMode: v });
   },
   manualSelectedSkins: new Map(),
-  selectManualSkin: (championId, skinId, chromaId, fantome) => {
+  selectManualSkin: (championId, skinId, chromaId, skin_file) => {
     set((state) => {
       const newMap = new Map(state.manualSelectedSkins);
       newMap.set(championId, {
         championId,
         skinId,
         chromaId,
-        fantome,
+        skin_file,
       });
       return { manualSelectedSkins: newMap };
     });
@@ -122,14 +123,14 @@ export const useGameStore = create<GameState>((set) => ({
       return { manualSelectedSkins: newMap };
     });
   },
-  selectSkin: (championId, skinId, chromaId, fantome) => {
+  selectSkin: (championId, skinId, chromaId, skin_file) => {
     set((state) => {
       const newSelectedSkins = new Map(state.selectedSkins);
       newSelectedSkins.set(championId, {
         championId,
         skinId,
         chromaId,
-        fantome,
+        skin_file,
       });
       return { selectedSkins: newSelectedSkins };
     });

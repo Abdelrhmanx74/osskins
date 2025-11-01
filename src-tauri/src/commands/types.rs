@@ -33,7 +33,7 @@ pub struct SkinData {
     pub champion_id: u32,
     pub skin_id: u32,
     pub chroma_id: Option<u32>,
-    pub fantome: Option<String>, // Add fantome path from the JSON
+    pub skin_file: Option<String>, // Add skin_file path from the JSON
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,7 +141,7 @@ pub struct SkinShare {
     pub skin_id: u32,
     pub skin_name: String, // Add skin name field
     pub chroma_id: Option<u32>,
-    pub fantome_path: Option<String>,
+    pub skin_file_path: Option<String>,
     pub timestamp: u64,
 }
 

@@ -7,7 +7,6 @@ use std::collections::HashMap;
 use std::os::windows::process::CommandExt;
 use tauri::{AppHandle, Emitter, Manager};
 use crate::injection::error::{InjectionError, ModState, Skin, MiscItem};
-use std::process::Child;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -177,11 +176,11 @@ impl SkinInjector {
             format!("🧹 {}", message)
         } else if message.contains("Processing skin") {
             format!("⚙️ {}", message)
-        } else if message.contains("Found fantome file") {
+        } else if message.contains("Found skin_file file") {
             format!("📂 {}", message)
-        } else if message.contains("Processing fantome file") {
+        } else if message.contains("Processing skin_file file") {
             format!("📦 {}", message)
-        } else if message.contains("Extracting fantome file") {
+        } else if message.contains("Extracting skin_file file") {
             format!("📤 {}", message)
         } else if message.contains("Creating mod") {
             format!("🛠️ {}", message)
@@ -235,16 +234,16 @@ impl SkinInjector {
     }
     
     // Functions split across modular files:
-    // - fantome.rs: extract_fantome, extract_fantome_mmap, find_fantome_for_skin, create_mod_from_extracted, process_fantome_file
+    // - skin_file.rs: extract_skin_file,  extract_skin_file_mmap, find_skin_file_for_skin, create_mod_from_extracted, process_skin_file
     // - mod_tools.rs: copy_mod_to_game, run_overlay
     // - game_config.rs: enable_mods_in_game_cfg
     
     #[allow(dead_code)]
-    pub fn inject_skins(&mut self, skins: &[Skin], fantome_files_dir: &Path) -> Result<(), InjectionError> {
-        self.inject_skins_and_misc(skins, &[], fantome_files_dir)
+    pub fn inject_skins(&mut self, skins: &[Skin], skin_file_files_dir: &Path) -> Result<(), InjectionError> {
+        self.inject_skins_and_misc(skins, &[], skin_file_files_dir)
     }
 
-    pub fn inject_skins_and_misc(&mut self, skins: &[Skin], misc_items: &[MiscItem], fantome_files_dir: &Path) -> Result<(), InjectionError> {
+    pub fn inject_skins_and_misc(&mut self, skins: &[Skin], misc_items: &[MiscItem], skin_file_files_dir: &Path) -> Result<(), InjectionError> {
         // Emit start event to frontend
         if let Some(app) = &self.app_handle {
             let _ = app.emit("injection-status", "injecting");
@@ -269,15 +268,15 @@ impl SkinInjector {
         for (i, skin) in skins.iter().enumerate() {
             self.log(&format!("🔄 Processing skin {}/{}: champion_id={}, skin_id={}, chroma_id={:?}", 
                 i + 1, skins.len(), skin.champion_id, skin.skin_id, skin.chroma_id));
-            self.log(&format!("📁 Skin fantome path: {:?}", skin.fantome_path));
+            self.log(&format!("📁 Skin skin_file path: {:?}", skin.skin_file_path));
                 
-            // Find the fantome file
-            let fantome_path = self.find_fantome_for_skin(skin, fantome_files_dir)?;
-            if let Some(fantome_path) = fantome_path {
-                self.log(&format!("✅ Found fantome file: {}", fantome_path.display()));
+            // Find the skin_file file
+            let skin_file_path = self.find_skin_file_for_skin(skin, skin_file_files_dir)?;
+            if let Some(skin_file_path) = skin_file_path {
+                self.log(&format!("✅ Found skin_file file: {}", skin_file_path.display()));
                 
-                // Process the fantome file to create a proper mod structure
-                let mod_dir = self.process_fantome_file(&fantome_path)?;
+                // Process the skin_file file to create a proper mod structure
+                let mod_dir = self.process_skin_file(&skin_file_path)?;
                 
                 // Copy the processed mod to the game
                 if self.is_valid_mod_dir(&mod_dir) {
@@ -287,11 +286,11 @@ impl SkinInjector {
                     // If processing failed, return error
                     self.log("ERROR: Processing failed, mod structure is invalid");
                     self.set_state(ModState::Idle);
-                    return Err(InjectionError::ProcessError("Failed to process fantome file".into()));
+                    return Err(InjectionError::ProcessError("Failed to process skin_file file".into()));
                 }
             } else {
                 let msg = format!(
-                    "No fantome file found for skin: champion_id={}, skin_id={}, chroma_id={:?}",
+                    "No skin_file file found for skin: champion_id={}, skin_id={}, chroma_id={:?}",
                     skin.champion_id, skin.skin_id, skin.chroma_id
                 );
                 self.log(&format!("ERROR: {}", msg));
@@ -305,7 +304,7 @@ impl SkinInjector {
             self.log(&format!("Processing misc item {}/{}: type={}, name={}", 
                 i + 1, misc_items.len(), misc_item.item_type, misc_item.name));
                 
-            // Find the fantome file for the misc item in the misc_items directory
+            // Find the skin_file file for the misc item in the misc_items directory
             let misc_items_dir = if let Some(app_handle) = &self.app_handle {
                 app_handle.path().app_data_dir()
                     .unwrap_or_else(|_| PathBuf::from("."))
@@ -313,15 +312,15 @@ impl SkinInjector {
             } else {
                 PathBuf::from(".").join("misc_items")
             };
-            let fantome_path = misc_items_dir.join(&misc_item.fantome_path);
+            let skin_file_path = misc_items_dir.join(&misc_item.skin_file_path);
             
-            self.log(&format!("[DEBUG] Looking for misc item fantome at: {}", fantome_path.display()));
+            self.log(&format!("[DEBUG] Looking for misc item skin_file at: {}", skin_file_path.display()));
             
-            if fantome_path.exists() {
-                self.log(&format!("Found misc item fantome file: {}", fantome_path.display()));
+            if skin_file_path.exists() {
+                self.log(&format!("Found misc item skin_file file: {}", skin_file_path.display()));
                 
-                // Process the fantome file to create a proper mod structure
-                let mod_dir = self.process_fantome_file(&fantome_path)?;
+                // Process the skin_file file to create a proper mod structure
+                let mod_dir = self.process_skin_file(&skin_file_path)?;
                 
                 // Copy the processed mod to the game
                 if self.is_valid_mod_dir(&mod_dir) {
@@ -330,11 +329,11 @@ impl SkinInjector {
                 } else {
                     self.log("ERROR: Misc item processing failed, mod structure is invalid");
                     self.set_state(ModState::Idle);
-                    return Err(InjectionError::ProcessError("Failed to process misc item fantome file".into()));
+                    return Err(InjectionError::ProcessError("Failed to process misc item skin_file file".into()));
                 }
             } else {
-                let msg = format!("No fantome file found for misc item: {} (looked in {})", 
-                    misc_item.fantome_path, fantome_path.display());
+                let msg = format!("No skin_file file found for misc item: {} (looked in {})", 
+                    misc_item.skin_file_path, skin_file_path.display());
                 self.log(&format!("WARNING: {}", msg));
                 // Continue processing other items even if one is missing
             }
@@ -531,9 +530,9 @@ pub fn inject_skins(
     app_handle: &AppHandle, 
     game_path: &str, 
     skins: &[Skin], 
-    fantome_files_dir: &Path
+    skin_file_files_dir: &Path
 ) -> Result<(), String> {
-    inject_skins_and_misc(app_handle, game_path, skins, &[], fantome_files_dir)
+    inject_skins_and_misc(app_handle, game_path, skins, &[], skin_file_files_dir)
 }
 
 // Enhanced wrapper function that supports both skins and misc items
@@ -542,7 +541,7 @@ pub fn inject_skins_and_misc(
     game_path: &str, 
     skins: &[Skin], 
     misc_items: &[MiscItem],
-    fantome_files_dir: &Path
+    skin_file_files_dir: &Path
 ) -> Result<(), String> {
     // Create injector
     let mut injector = SkinInjector::new(app_handle, game_path)
@@ -553,7 +552,7 @@ pub fn inject_skins_and_misc(
         .map_err(|e| format!("Failed to initialize: {}", e))?;
     
     // Inject skins and misc items
-    injector.inject_skins_and_misc(skins, misc_items, fantome_files_dir)
+    injector.inject_skins_and_misc(skins, misc_items, skin_file_files_dir)
         .map_err(|e| format!("Failed to inject: {}", e))
 }
 

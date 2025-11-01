@@ -29,7 +29,7 @@ pub async fn upload_custom_skin(
             "-Command",
             r#"Add-Type -AssemblyName System.Windows.Forms; 
             $dialog = New-Object System.Windows.Forms.OpenFileDialog;
-            $dialog.Filter = 'Skin files (*.fantome;*.wad;*.client;*.zip)|*.fantome;*.wad;*.client;*.zip';
+            $dialog.Filter = 'Skin files (*.skin_file;*.wad;*.client;*.zip)|*.skin_file;*.wad;*.client;*.zip';
             $dialog.Title = 'Select Custom Skin File';
             if($dialog.ShowDialog() -eq 'OK') { $dialog.FileName }"#,
         ]);
@@ -89,7 +89,7 @@ pub async fn upload_custom_skin(
     let source_path = std::path::Path::new(&file_path);
     let file_ext = source_path.extension()
         .map(|ext| ext.to_string_lossy().to_string())
-        .unwrap_or_else(|| "fantome".to_string());
+        .unwrap_or_else(|| "skin_file".to_string());
     
     // Create filename: champion_name_skinid.extension
     let dest_filename = format!("{}_{}.{}", champion_name, skin_id, file_ext);
@@ -212,7 +212,7 @@ pub async fn upload_multiple_custom_skins(
     
     // Show file dialog for multiple file selection
     let files = rfd::FileDialog::new()
-        .add_filter("Skin files", &["fantome", "wad", "client", "zip"])
+        .add_filter("Skin files", &["skin_file", "wad", "client", "zip"])
         .set_title("Select Custom Skin Files")
         .pick_files()
         .ok_or("No files selected")?;
@@ -251,7 +251,7 @@ pub async fn upload_multiple_custom_skins(
         // Get file extension
         let file_extension = file_path.extension()
             .and_then(|s| s.to_str())
-            .unwrap_or("fantome");
+            .unwrap_or("skin_file");
 
         // Create safe filename
         let safe_name = file_name.chars()

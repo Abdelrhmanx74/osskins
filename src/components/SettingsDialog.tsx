@@ -127,7 +127,7 @@ export function SettingsDialog() {
         champion_id: number;
         skin_id: number;
         chroma_id?: number;
-        fantome?: string;
+        skin_file?: string;
       }> = (parsed as unknown[])
         .filter(isRecord)
         .map((it) => ({
@@ -137,8 +137,8 @@ export function SettingsDialog() {
             (it["chroma_id"] as number | string | undefined | null) != null
               ? Number(it["chroma_id"] as number | string)
               : undefined,
-          fantome:
-            typeof it["fantome"] === "string" ? it["fantome"] : undefined,
+          skin_file:
+            typeof it["skin_file"] === "string" ? it["skin_file"] : undefined,
         }))
         .filter(
           (it) =>
@@ -160,7 +160,7 @@ export function SettingsDialog() {
       // Update local UI selections for immediate feedback
       clearAllSelections();
       for (const s of skins) {
-        selectSkin(s.champion_id, s.skin_id, s.chroma_id, s.fantome);
+        selectSkin(s.champion_id, s.skin_id, s.chroma_id, s.skin_file);
       }
 
       toast.success(t("import.skins.success", { count: skins.length }));

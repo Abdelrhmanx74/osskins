@@ -43,9 +43,9 @@ pub async fn upload_misc_item(
     let mut misc_items: Vec<MiscItem> = serde_json::from_str(&existing_content)
         .map_err(|e| format!("Failed to parse misc items: {}", e))?;
 
-    // Open file dialog to select fantome file
+    // Open file dialog to select skin_file file
     let file_dialog = rfd::FileDialog::new()
-        .add_filter("Fantome Files", &["fantome"])
+        .add_filter("Fantome Files", &["skin_file"])
         .set_title("Select Misc Item Fantome File");
 
     let selected_file = file_dialog.pick_file()
@@ -58,7 +58,7 @@ pub async fn upload_misc_item(
     let safe_name = request.name.chars()
         .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
         .collect::<String>();
-    let filename = format!("{}_{}.fantome", request.item_type, safe_name);
+    let filename = format!("{}_{}.skin_file", request.item_type, safe_name);
     let dest_path = misc_items_dir.join(&filename);
 
     // Copy the selected file to the misc items directory
@@ -70,7 +70,7 @@ pub async fn upload_misc_item(
         id: item_id,
         name: request.name.clone(),
         item_type: request.item_type.clone(),
-        fantome_path: filename,
+        skin_file_path: filename,
     };
 
     // Add to the list
@@ -133,11 +133,11 @@ pub async fn delete_misc_item(app: AppHandle, item_id: String) -> Result<(), Str
         .cloned()
         .ok_or_else(|| "Misc item not found".to_string())?;
 
-    // Remove the fantome file
-    let fantome_path = misc_items_dir.join(&item_to_remove.fantome_path);
-    if fantome_path.exists() {
-        fs::remove_file(&fantome_path)
-            .map_err(|e| format!("Failed to delete fantome file: {}", e))?;
+    // Remove the skin_file file
+    let skin_file_path = misc_items_dir.join(&item_to_remove.skin_file_path);
+    if skin_file_path.exists() {
+        fs::remove_file(&skin_file_path)
+            .map_err(|e| format!("Failed to delete skin_file file: {}", e))?;
     }
 
     // Remove from the list
@@ -157,7 +157,7 @@ pub async fn delete_misc_item(app: AppHandle, item_id: String) -> Result<(), Str
 pub async fn upload_multiple_misc_items(app: AppHandle, item_type: String) -> Result<Vec<MiscItem>, String> {
     // Show file dialog for multiple file selection
     let files = rfd::FileDialog::new()
-        .add_filter("Fantome Files", &["fantome"])
+        .add_filter("Fantome Files", &["skin_file"])
         .set_title(&format!("Select {} files", item_type))
         .pick_files()
         .ok_or("No files selected")?;
@@ -206,7 +206,7 @@ pub async fn upload_multiple_misc_items(app: AppHandle, item_type: String) -> Re
         let safe_name = file_name.chars()
             .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == ' ')
             .collect::<String>();
-        let filename = format!("{}_{}.fantome", item_type, safe_name);
+        let filename = format!("{}_{}.skin_file", item_type, safe_name);
         let dest_path = misc_items_dir.join(&filename);
 
         // Copy the selected file to the misc items directory
@@ -218,7 +218,7 @@ pub async fn upload_multiple_misc_items(app: AppHandle, item_type: String) -> Re
             id: item_id,
             name: safe_name,
             item_type: item_type.clone(),
-            fantome_path: filename,
+            skin_file_path: filename,
         };
 
         // Add to the list
@@ -292,12 +292,12 @@ pub fn get_selected_misc_items(app: &AppHandle) -> Result<Vec<MiscItem>, String>
                     if let Ok(resource_dir) = app.path().resource_dir() {
                         // Build a list of candidate font paths to check (dev vs packaged layouts)
                         let mut candidates: Vec<std::path::PathBuf> = Vec::new();
-                        candidates.push(resource_dir.join("fonts").join(format!("{}.fantome", suffix)));
-                        candidates.push(resource_dir.join("resources").join("fonts").join(format!("{}.fantome", suffix)));
-                        candidates.push(resource_dir.join("..").join("resources").join("fonts").join(format!("{}.fantome", suffix)));
+                        candidates.push(resource_dir.join("fonts").join(format!("{}.skin_file", suffix)));
+                        candidates.push(resource_dir.join("resources").join("fonts").join(format!("{}.skin_file", suffix)));
+                        candidates.push(resource_dir.join("..").join("resources").join("fonts").join(format!("{}.skin_file", suffix)));
 
                         // Also check the crate's resources folder (useful during cargo run from workspace)
-                        let manifest_fonts = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources").join("fonts").join(format!("{}.fantome", suffix));
+                        let manifest_fonts = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources").join("fonts").join(format!("{}.skin_file", suffix));
                         candidates.push(manifest_fonts);
 
                         // Find first existing candidate
@@ -314,7 +314,7 @@ pub fn get_selected_misc_items(app: &AppHandle) -> Result<Vec<MiscItem>, String>
                             let _ = std::fs::create_dir_all(&misc_items_dir);
 
                             // Destination filename in misc_items dir
-                            let dest_filename = format!("font_builtin_{}.fantome", suffix);
+                            let dest_filename = format!("font_builtin_{}.skin_file", suffix);
                             let dest_path = misc_items_dir.join(&dest_filename);
 
                             // Copy if not already present
@@ -333,14 +333,14 @@ pub fn get_selected_misc_items(app: &AppHandle) -> Result<Vec<MiscItem>, String>
                                 id: selected_id.clone(),
                                 name: suffix.to_string(),
                                 item_type: item_type.clone(),
-                                fantome_path: dest_filename,
+                                skin_file_path: dest_filename,
                             };
                             println!("DEBUG: Adding builtin selected item: {} ({})", builtin_misc.name, builtin_misc.id);
                             selected_items.push(builtin_misc);
                             continue;
                         } else {
                             // Log the primary candidate path for debugging
-                            let primary = resource_dir.join("fonts").join(format!("{}.fantome", suffix));
+                            let primary = resource_dir.join("fonts").join(format!("{}.skin_file", suffix));
                             println!("DEBUG: Builtin font resource not found in known locations, primary checked: {}", primary.display());
                         }
                     } else {

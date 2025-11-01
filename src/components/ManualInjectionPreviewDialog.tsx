@@ -40,25 +40,25 @@ export function ManualInjectionPreviewDialog({
             id: "builtin-font-chinese",
             name: "Chinese",
             item_type: "font",
-            fantome_path: "chinese.fantome",
+            skin_file_path: "chinese.skin_file",
         },
         {
             id: "builtin-font-korean",
             name: "Korean",
             item_type: "font",
-            fantome_path: "korean.fantome",
+            skin_file_path: "korean.skin_file",
         },
         {
             id: "builtin-font-minecraft",
             name: "Minecraft",
             item_type: "font",
-            fantome_path: "minecraft.fantome",
+            skin_file_path: "minecraft.skin_file",
         },
         {
             id: "builtin-font-arcade",
             name: "Arcade",
             item_type: "font",
-            fantome_path: "arcade.fantome",
+            skin_file_path: "arcade.skin_file",
         },
     ], []);
 

@@ -233,7 +233,7 @@ pub async fn update_champion_data(
 }
 
 #[tauri::command]
-pub async fn save_fantome_file(
+pub async fn save_skin_file(
     app: tauri::AppHandle,
     champion_name: String,
     skin_name: String,
@@ -254,20 +254,20 @@ pub async fn save_fantome_file(
     fs::create_dir_all(&champion_dir)
         .map_err(|e| format!("Failed to create champion directory: {}", e))?;
     
-    let fantome_file = if is_chroma {
-        champion_dir.join(format!("{}_chroma_{}.fantome", skin_name, chroma_id.unwrap_or(0)))
+    let skin_file = if is_chroma {
+        champion_dir.join(format!("{}_chroma_{}.skin_file", skin_name, chroma_id.unwrap_or(0)))
     } else {
-        champion_dir.join(format!("{}.fantome", skin_name))
+        champion_dir.join(format!("{}.skin_file", skin_name))
     };
     
     // Ensure parent directory exists
-    if let Some(parent) = fantome_file.parent() {
+    if let Some(parent) = skin_file.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create parent directory: {}", e))?;
     }
     
-    fs::write(&fantome_file, content)
-        .map_err(|e| format!("Failed to write fantome file: {}", e))?;
+    fs::write(&skin_file, content)
+        .map_err(|e| format!("Failed to write skin_file file: {}", e))?;
 
     Ok(())
 }

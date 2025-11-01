@@ -70,13 +70,13 @@ export function useInitialization() {
                 champion_id: number;
                 skin_id: number;
                 chroma_id?: number;
-                fantome?: string;
+                skin_file?: string;
               };
               selectSkin(
                 skinObj.champion_id,
                 skinObj.skin_id,
                 skinObj.chroma_id,
-                skinObj.fantome
+                skinObj.skin_file
               );
             }
           });

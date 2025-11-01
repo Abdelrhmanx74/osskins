@@ -8,5 +8,5 @@ FileDialog {
     visible: false
     title: qsTr("Select Mod File")
     fileMode: FileDialog.OpenFile
-    nameFilters: "Fantome Mod files (*.fantome *.zip)"
+    nameFilters: "Fantome Mod files (*.skin_file *.zip)"
 }

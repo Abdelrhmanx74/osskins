@@ -95,8 +95,7 @@ export function useDataUpdate() {
       for (let i = 0; i < targetSummaries.length; i += BATCH_SIZE) {
         const batch = targetSummaries.slice(i, i + BATCH_SIZE);
         console.log(
-          `[Update] Processing batch ${i / BATCH_SIZE + 1} (${
-            batch.length
+          `[Update] Processing batch ${i / BATCH_SIZE + 1} (${batch.length
           } champions)`
         );
 
@@ -170,7 +169,7 @@ export function useDataUpdate() {
                   }
                 } catch (err) {
                   console.error(
-                    `Failed to process fantome file for ${summary.name} ${skin.name}:`,
+                    `Failed to process skin file for ${summary.name} ${skin.name}:`,
                     err
                   );
                 }

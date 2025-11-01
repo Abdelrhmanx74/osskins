@@ -160,7 +160,7 @@ static auto mod_import(fs::path src, fs::path dst, fs::path game, bool noTFT) ->
         info.write(0, info_json.data(), info_json.size());
         mod_addwad(src, tmp.path, game, noTFT, false);
     } else if (auto filename = src.filename().generic_string();
-               filename.ends_with(".zip") || filename.ends_with(".fantome")) {
+               filename.ends_with(".zip") || filename.ends_with(".skin_file")) {
         logi("Unzipping mod");
         utility::unzip(src, tmp.path);
 

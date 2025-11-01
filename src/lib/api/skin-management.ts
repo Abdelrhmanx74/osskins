@@ -5,7 +5,7 @@ export interface SkinData {
   champion_id: number;
   skin_id: number;
   chroma_id?: number;
-  fantome?: string;
+  skin_file?: string;
 }
 
 export interface CustomSkinData {

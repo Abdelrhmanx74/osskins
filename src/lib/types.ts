@@ -12,7 +12,7 @@ export interface Chroma {
   colors: string[];
   description?: string;
   rarity?: string;
-  fantome?: string;
+  skin_file?: string;
 }
 
 export interface Skin {
@@ -24,7 +24,7 @@ export interface Skin {
   rarity: string;
   featuresText: string | null;
   chromas: Chroma[];
-  fantome?: string;
+  skin_file?: string;
 }
 
 export interface Champion {

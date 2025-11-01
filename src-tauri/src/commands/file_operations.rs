@@ -1,6 +1,6 @@
 use tauri::{Manager};
 
-// File operations for fantome and ZIP files
+// File operations for skin_file and ZIP files
 
 #[tauri::command]
 /// Save a skin ZIP file to the champions directory

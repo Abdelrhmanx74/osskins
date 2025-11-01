@@ -77,7 +77,7 @@
     "skins.import_export.title": "Skinleri İçe/Dışa Aktar",
     "import.skins": "Skinleri içe aktar",
     "export.skins": "Skinleri dışa aktar",
-    "skins.import_export.help": "Yalnızca seçili resmi skinler dışa aktarılır. İçe aktarma, { champion_id, skin_id, chroma_id?, fantome? } içeren bir JSON dizisi bekler.",
+    "skins.import_export.help": "Yalnızca seçili resmi skinler dışa aktarılır. İçe aktarma, { champion_id, skin_id, chroma_id?, skin_file? } içeren bir JSON dizisi bekler.",
     "export.skins.success": "Skinler dışa aktarıldı",
     "export.skins.failed": "Skinler dışa aktarılamadı",
     "import.skins.success": "{count} skin içe aktarıldı",

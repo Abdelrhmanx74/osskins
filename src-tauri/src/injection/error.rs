@@ -26,7 +26,7 @@ impl std::fmt::Display for InjectionError {
         match self {
             Self::IoError(err) => write!(f, "IO Error: {}", err),
             Self::InvalidGamePath(msg) => write!(f, "Invalid game path: {}", msg),
-            Self::MissingFantomeFile(msg) => write!(f, "Missing fantome file: {}", msg),
+            Self::MissingFantomeFile(msg) => write!(f, "Missing skin_file file: {}", msg),
             Self::ProcessError(msg) => write!(f, "Process error: {}", msg),
             Self::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
             Self::Timeout(msg) => write!(f, "Timeout: {}", msg),
@@ -63,7 +63,7 @@ pub struct Skin {
     pub champion_id: u32,
     pub skin_id: u32,
     pub chroma_id: Option<u32>,
-    pub fantome_path: Option<String>, // Add fantome path from the JSON
+    pub skin_file_path: Option<String>, // Add skin_file path from the JSON
 }
 
 // Misc item for injection alongside skins
@@ -72,7 +72,8 @@ pub struct MiscItem {
     pub id: String,
     pub name: String,
     pub item_type: String, // "map", "font", "hud", "misc"
-    pub fantome_path: String,
+    #[serde(alias = "fantome_path")]
+    pub skin_file_path: String,
 }
 
 // Injection request that includes both skins and misc items

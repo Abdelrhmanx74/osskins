@@ -40,9 +40,9 @@ export function MiscItemView({ type }: MiscItemViewProps) {
   const typeItems = miscItems.get(type) ?? [];
 
   // Built-in base fonts (static). Files are located in src-tauri/resources/fonts.
-  // NOTE: The attachments contain 4 .fantome files; user requested 5 base fonts so
-  // we add a sensible default 'default.fantome' as the fifth. If you want a
-  // different filename for the fifth built-in, update the id/name/fantome_path below.
+  // NOTE: The attachments contain 4 .skin_file files; user requested 5 base fonts so
+  // we add a sensible default 'default.skin_file' as the fifth. If you want a
+  // different filename for the fifth built-in, update the id/name/skin_file_path below.
   const builtinFonts =
     type === "font"
       ? [
@@ -50,25 +50,25 @@ export function MiscItemView({ type }: MiscItemViewProps) {
           id: "builtin-font-chinese",
           name: "Chinese",
           item_type: "font",
-          fantome_path: "chinese.fantome",
+          skin_file_path: "chinese.skin_file",
         },
         {
           id: "builtin-font-korean",
           name: "Korean",
           item_type: "font",
-          fantome_path: "korean.fantome",
+          skin_file_path: "korean.skin_file",
         },
         {
           id: "builtin-font-minecraft",
           name: "Minecraft",
           item_type: "font",
-          fantome_path: "minecraft.fantome",
+          skin_file_path: "minecraft.skin_file",
         },
         {
           id: "builtin-font-arcade",
           name: "Arcade",
           item_type: "font",
-          fantome_path: "arcade.fantome",
+          skin_file_path: "arcade.skin_file",
         },
       ]
       : [];
@@ -172,8 +172,8 @@ export function MiscItemView({ type }: MiscItemViewProps) {
             <div
               key={id}
               className={`p-4 border rounded-lg cursor-pointer transition-colors ${selectedItemIds.includes(id)
-                  ? "border-primary bg-primary/10"
-                  : "border-border hover:border-primary/50"
+                ? "border-primary bg-primary/10"
+                : "border-border hover:border-primary/50"
                 }`}
               onClick={() => {
                 handleItemSelect(id);

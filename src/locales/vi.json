@@ -77,7 +77,7 @@
     "skins.import_export.title": "Nhập/Xuất skin",
     "import.skins": "Nhập skin",
     "export.skins": "Xuất skin",
-    "skins.import_export.help": "Chỉ xuất các skin chính thức đã chọn. Nhập yêu cầu một mảng JSON gồm { champion_id, skin_id, chroma_id?, fantome? }.",
+    "skins.import_export.help": "Chỉ xuất các skin chính thức đã chọn. Nhập yêu cầu một mảng JSON gồm { champion_id, skin_id, chroma_id?, skin_file? }.",
     "export.skins.success": "Đã xuất skin",
     "export.skins.failed": "Xuất skin thất bại",
     "import.skins.success": "Đã nhập {count} skin",

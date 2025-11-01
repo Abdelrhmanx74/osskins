@@ -4,14 +4,14 @@ export interface ManualInjectionSkin {
   champion_id: number;
   skin_id: number;
   chroma_id?: number;
-  fantome?: string;
+  skin_file?: string;
 }
 
 export interface ManualInjectionMiscItem {
   id: string;
   name: string;
   item_type: string;
-  fantome_path: string;
+  skin_file_path: string;
 }
 
 export const manualInjectionApi = {

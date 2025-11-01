@@ -204,7 +204,7 @@ ApplicationWindow {
         onModExport: function(fileName) {
             if (checkGamePath()) {
                 cslolDialogSaveZipFantome.modName = fileName
-                cslolDialogSaveZipFantome.currentFiles = [ "file:///" + fileName + ".fantome" ]
+                cslolDialogSaveZipFantome.currentFiles = [ "file:///" + fileName + ".skin_file" ]
                 cslolDialogSaveZipFantome.open()
             }
         }

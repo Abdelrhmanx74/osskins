@@ -357,7 +357,7 @@ app.post("/test/friend-lock-skin", (req, res) => {
   const conversationId = getConversationId(friend.pid);
 
   // Create the skin share message (exactly like a real friend would send)
-  // Use fantome_path that maps to files the app likely has to avoid skips during tests
+  // Use skin_file_path that maps to files the app likely has to avoid skips during tests
   const normalized = skin.skinName.toLowerCase().replace(/[^a-z0-9]/g, "_");
   const friendFantomeCandidates = [
     `/${skin.champName}/${normalized}.zip`,
@@ -371,7 +371,7 @@ app.post("/test/friend-lock-skin", (req, res) => {
     skin_id: skin.skinId,
     skin_name: skin.skinName,
     chroma_id: null, // Mock friends don't use chromas for simplicity
-    fantome_path: friendFantomeCandidates[0],
+    skin_file_path: friendFantomeCandidates[0],
     timestamp: Date.now(),
   };
 
@@ -449,9 +449,9 @@ app.post("/test/local-player-lock-skin", (req, res) => {
       skin_id: skin.skinId,
       skin_name: skin.skinName,
       chroma_id: null, // Mock user doesn't use chromas for simplicity
-      fantome_path: `mock_local_skins/${skin.skinName
+      skin_file_path: `mock_local_skins/${skin.skinName
         .toLowerCase()
-        .replace(/[^a-z0-9]/g, "_")}.fantome`, // Mock fantome path
+        .replace(/[^a-z0-9]/g, "_")}.skin_file`, // Mock skin_file path
       timestamp: Date.now(),
     };
 
@@ -603,9 +603,9 @@ app.post("/test/lock-in-champion", (req, res) => {
       skin_id: skin.skinId,
       skin_name: skin.skinName,
       chroma_id: null, // Mock user doesn't use chromas for simplicity
-      fantome_path: `mock_local_skins/${skin.skinName
+      skin_file_path: `mock_local_skins/${skin.skinName
         .toLowerCase()
-        .replace(/[^a-z0-9]/g, "_")}.fantome`, // Mock fantome path
+        .replace(/[^a-z0-9]/g, "_")}.skin_file`, // Mock skin_file path
       timestamp: Date.now(),
     };
 
@@ -778,7 +778,7 @@ app.get("/lol-champ-select/v1/session", (req, res) => {
             skin_id: randomSkin.skinId,
             skin_name: randomSkin.skinName,
             chroma_id: null,
-            fantome_path: `/${randomSkin.champName}/${randomSkin.skinName
+            skin_file_path: `/${randomSkin.champName}/${randomSkin.skinName
               .toLowerCase()
               .replace(/[^a-z0-9]/g, "_")}.zip`,
             timestamp: Date.now(),

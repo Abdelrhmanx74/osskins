@@ -77,7 +77,7 @@
     "skins.import_export.title": "Импорт/Экспорт скинов",
     "import.skins": "Импорт скинов",
     "export.skins": "Экспорт скинов",
-    "skins.import_export.help": "Экспортируются только выбранные официальные скины. Импорт ожидает JSON-массив из { champion_id, skin_id, chroma_id?, fantome? }.",
+    "skins.import_export.help": "Экспортируются только выбранные официальные скины. Импорт ожидает JSON-массив из { champion_id, skin_id, chroma_id?, skin_file? }.",
     "export.skins.success": "Скины экспортированы",
     "export.skins.failed": "Не удалось экспортировать скины",
     "import.skins.success": "Импортировано {count} скинов",
