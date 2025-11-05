@@ -905,10 +905,42 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
               // Keep existing in-game phase behavior
             }
 
+            // Manual mode: also handle Lobby -> Matchmaking transition (no champ select modes)
+            if last_phase == "Lobby"
+              && phase == "Matchmaking"
+              && crate::commands::skin_injection::is_manual_injection_active()
+            {
+              // Trigger manual injection using stored selections
+              emit_terminal_log(&app_handle, "[LCU Watcher] Lobby->Matchmaking transition detected; manual injection mode active - triggering manual injection");
+              let app_clone = app_handle.clone();
+              std::thread::spawn(move || {
+                let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+                rt.block_on(async move {
+                  match crate::commands::skin_injection::trigger_manual_injection(&app_clone).await
+                  {
+                    Ok(_) => {
+                      println!(
+                        "[LCU Watcher] Manual injection (instant-assign) completed successfully"
+                      );
+                    }
+                    Err(e) => {
+                      eprintln!(
+                        "[LCU Watcher] Manual injection (instant-assign) failed: {}",
+                        e
+                      );
+                    }
+                  }
+                });
+              });
+            }
+
             // Handle Lobby -> Matchmaking transition: try to resolve champion selections from
             // session and lobby endpoints and inject, regardless of injection_mode. This makes
+
             // instant-assign and similar lobby-selection modes more reliable without needing map codes.
+
             // Skip instant-assign injection if manual injection mode is active
+
             if last_phase == "Lobby"
               && phase == "Matchmaking"
               && !crate::commands::skin_injection::is_manual_injection_active()
