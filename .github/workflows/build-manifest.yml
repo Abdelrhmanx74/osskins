@@ -1,0 +1,76 @@
+name: Build and publish lol-skins manifest
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *" # every 6 hours
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout osskins (this repo)
+        uses: actions/checkout@v4
+        with:
+          path: app
+          fetch-depth: 0
+          submodules: 'false'    # important: do NOT init submodules here
+
+      - name: Checkout upstream lol-skins
+        uses: actions/checkout@v4
+        with:
+          repository: darkseal-org/lol-skins
+          ref: main
+          path: upstream
+          fetch-depth: 1
+          submodules: 'false'    # not needed for upstream either
+
+      - name: Generate manifest.json
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq coreutils
+          cd upstream
+
+          SRC_SHA=$(git rev-parse HEAD)
+          SRC_BRANCH="main"
+
+          # Find all assets we care about
+          mapfile -t files < <(git ls-files | grep -E '\.(zip|fantome)$' || true)
+
+          items=()
+          for f in "${files[@]}"; do
+            size=$(stat -c%s "$f")
+            sha256=$(sha256sum "$f" | cut -d' ' -f1)
+            last_commit=$(git log -1 --format=%H -- "$f")
+            url="https://raw.githubusercontent.com/darkseal-org/lol-skins/${SRC_BRANCH}/${f}"
+            items+=( "$(jq -n --arg path "$f" --arg url "$url" --arg size "$size" --arg sha "$sha256" --arg commit "$last_commit" \
+              '{path:$path, url:$url, size: ($size|tonumber), sha256:$sha, commit:$commit}')" )
+          done
+
+          cd ../app
+          mkdir -p docs
+          jq -n \
+            --arg gen "$(date -u +%FT%TZ)" \
+            --arg repo "darkseal-org/lol-skins@$SRC_SHA" \
+            --arg branch "main" \
+            --arg license_url "https://github.com/darkseal-org/lol-skins/blob/main/LICENSE" \
+            --arg source_url "https://github.com/darkseal-org/lol-skins" \
+            --arg attribution "Skins © their respective creators. DSCL license applies. Not affiliated with or endorsed by Dark Seal or Riot Games." \
+            --argjson items "[${items[*]}]" \
+            '{schema:1, generated_at:$gen, source_repo:$repo, branch:$branch, license:$license_url, source:$source_url, attribution:$attribution, items:$items}' \
+            > docs/manifest.json
+
+      - name: Commit and push manifest (if changed)
+        working-directory: app
+        run: |
+          if ! git diff --quiet -- docs/manifest.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add docs/manifest.json
+            git commit -m "chore: update lol-skins manifest"
+            git push
+          else
+            echo "No changes to commit."
+          fi
