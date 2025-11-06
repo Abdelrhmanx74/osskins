@@ -12,31 +12,33 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout osskins (this repo)
-        uses: actions/checkout@v4
-        with:
-          path: app
-          fetch-depth: 0
-          submodules: 'false'    # important: do NOT init submodules here
+      - name: Prepare environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq coreutils git
 
-      - name: Checkout upstream lol-skins
-        uses: actions/checkout@v4
-        with:
-          repository: darkseal-org/lol-skins
-          ref: main
-          path: upstream
-          fetch-depth: 1
-          submodules: 'false'    # not needed for upstream either
+      - name: Configure git user
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Clone this repository (app)
+        run: |
+          # clone own repo into app dir (no actions/checkout used)
+          git clone --depth=1 "https://github.com/${{ github.repository }}.git" app
+
+      - name: Clone upstream lol-skins
+        run: |
+          # shallow clone upstream; no submodules
+          git clone --depth=1 --no-single-branch https://github.com/darkseal-org/lol-skins.git upstream
 
       - name: Generate manifest.json
         run: |
-          sudo apt-get update && sudo apt-get install -y jq coreutils
           cd upstream
-
           SRC_SHA=$(git rev-parse HEAD)
           SRC_BRANCH="main"
 
-          # Find all assets we care about
+          # Find .zip and .fantome files
           mapfile -t files < <(git ls-files | grep -E '\.(zip|fantome)$' || true)
 
           items=()
@@ -49,12 +51,14 @@ jobs:
               '{path:$path, url:$url, size: ($size|tonumber), sha256:$sha, commit:$commit}')" )
           done
 
+          # ensure app/docs exists
           cd ../app
           mkdir -p docs
+
           jq -n \
             --arg gen "$(date -u +%FT%TZ)" \
             --arg repo "darkseal-org/lol-skins@$SRC_SHA" \
-            --arg branch "main" \
+            --arg branch "$SRC_BRANCH" \
             --arg license_url "https://github.com/darkseal-org/lol-skins/blob/main/LICENSE" \
             --arg source_url "https://github.com/darkseal-org/lol-skins" \
             --arg attribution "Skins © their respective creators. DSCL license applies. Not affiliated with or endorsed by Dark Seal or Riot Games." \
@@ -63,14 +67,16 @@ jobs:
             > docs/manifest.json
 
       - name: Commit and push manifest (if changed)
-        working-directory: app
+        env:
+          GHTOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if ! git diff --quiet -- docs/manifest.json; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add docs/manifest.json
-            git commit -m "chore: update lol-skins manifest"
-            git push
+          cd app
+          # use token auth to push changes back to repo
+          git remote set-url origin "https://x-access-token:${GHTOKEN}@github.com/${{ github.repository }}.git"
+          git add docs/manifest.json || true
+          if git diff --staged --quiet; then
+            echo "No changes to manifest.json"
           else
-            echo "No changes to commit."
+            git commit -m "chore: update lol-skins manifest"
+            git push origin HEAD:main
           fi
