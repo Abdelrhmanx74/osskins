@@ -1,24 +1,23 @@
 "use client";
 
-import { useState, Suspense, useCallback, useEffect } from "react";
-import { useDataUpdate } from "@/lib/hooks/use-data-update";
-import { useChampions } from "@/lib/hooks/use-champions";
-import { GameDirectorySelector } from "@/components/game-directory/GameDirectorySelector";
-import { useGameStore, MiscItemType } from "@/lib/store";
-import { Loader2 } from "lucide-react";
-import { useInitialization } from "@/lib/hooks/use-initialization";
-import { useChampionPersistence } from "@/lib/hooks/use-champion-persistence";
-import { useConfigLoader } from "@/lib/hooks/use-config-loader";
-import { filterAndSortChampions } from "@/lib/utils/champion-utils";
 import { ChampionGrid } from "@/components/ChampionGrid";
-import { SkinGrid } from "@/components/SkinGrid";
-import { ManualSkinGrid } from "@/components/ManualSkinGrid";
 import { CustomSkinList } from "@/components/CustomSkinList";
-import { MiscItemView } from "@/components/MiscItemView";
-import { TopBar } from "@/components/layout/TopBar";
-import { toast } from "sonner";
-import { useI18n } from "@/lib/i18n";
 import { DataUpdateModal } from "@/components/DataUpdateModal";
+import { ManualSkinGrid } from "@/components/ManualSkinGrid";
+import { MiscItemView } from "@/components/MiscItemView";
+import { SkinGrid } from "@/components/SkinGrid";
+import { GameDirectorySelector } from "@/components/game-directory/GameDirectorySelector";
+import { TopBar } from "@/components/layout/TopBar";
+import { useChampionPersistence } from "@/lib/hooks/use-champion-persistence";
+import { useChampions } from "@/lib/hooks/use-champions";
+import { useDataUpdate } from "@/lib/hooks/use-data-update";
+import { useI18n } from "@/lib/i18n";
+import { type MiscItemType, useGameStore } from "@/lib/store";
+import { filterAndSortChampions } from "@/lib/utils/champion-utils";
+import { invoke } from "@tauri-apps/api/core";
+import { Loader2 } from "lucide-react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 // Loading component using React 19 suspense
 const ChampionsLoader = () => {
@@ -34,7 +33,7 @@ const ChampionsLoader = () => {
 };
 
 export default function Home() {
-  const { champions, loading, error, hasData } = useChampions();
+  const { champions, error, hasData, refreshChampions } = useChampions();
   const { updateData, isUpdating, progress } = useDataUpdate();
   const {
     leaguePath,
@@ -44,22 +43,6 @@ export default function Home() {
     manualInjectionMode,
   } = useGameStore();
   const { showUpdateModal, setShowUpdateModal } = useGameStore();
-
-  // If the store requests showing the update modal (e.g., after selecting directory), start the update and show modal
-  // We start the update when the flag is set; modal UI is driven by `isUpdating` and `progress`.
-  useEffect(() => {
-    if (showUpdateModal) {
-      // clear the flag and start update
-      setShowUpdateModal(false);
-      void (async () => {
-        try {
-          await updateData();
-        } catch (e) {
-          console.error("Failed to update data from modal trigger:", e);
-        }
-      })();
-    }
-  }, [showUpdateModal, setShowUpdateModal, updateData]);
 
   // Initialize app (load league path, etc)
   // Initialization and config loading are handled globally by AppInitializer
@@ -72,6 +55,7 @@ export default function Home() {
   const [selectedMiscItem, setSelectedMiscItem] = useState<MiscItemType | null>(
     null,
   );
+  const [initialUpdateTriggered, setInitialUpdateTriggered] = useState(false);
 
   // Handle misc item selection
   const handleMiscItemClick = useCallback((type: MiscItemType) => {
@@ -97,15 +81,61 @@ export default function Home() {
     (champ) => champ.id === selectedChampion,
   );
 
-  const handleUpdateData = async () => {
+  const handleUpdateData = useCallback(async () => {
     try {
-      // Incremental update without clearing cache
       await updateData();
+      await refreshChampions();
     } catch (error) {
       console.error("Failed to update data:", error);
       toast.error("Failed to update data");
+      throw error instanceof Error ? error : new Error(String(error));
     }
-  };
+  }, [refreshChampions, updateData]);
+
+  const handleReinstallData = useCallback(async () => {
+    await invoke("delete_champions_cache");
+    await handleUpdateData();
+  }, [handleUpdateData]);
+
+  // If the store requests showing the update modal (e.g., after selecting directory), start the update and show modal
+  // We start the update when the flag is set; modal UI is driven by `isUpdating` and `progress`.
+  useEffect(() => {
+    if (showUpdateModal) {
+      // clear the flag and start update
+      setShowUpdateModal(false);
+      void (async () => {
+        try {
+          await handleUpdateData();
+        } catch (e) {
+          console.error("Failed to update data from modal trigger:", e);
+        }
+      })();
+    }
+  }, [handleUpdateData, showUpdateModal, setShowUpdateModal]);
+
+  useEffect(() => {
+    if (!leaguePath) {
+      setInitialUpdateTriggered(false);
+      return;
+    }
+
+    if (hasData === false && !isUpdating && !initialUpdateTriggered) {
+      setInitialUpdateTriggered(true);
+      void (async () => {
+        try {
+          await handleUpdateData();
+        } catch (error) {
+          console.error("Initial data update failed:", error);
+        }
+      })();
+    }
+  }, [
+    handleUpdateData,
+    hasData,
+    initialUpdateTriggered,
+    isUpdating,
+    leaguePath,
+  ]);
 
   // If no League path is selected, show directory selector
   const { t } = useI18n();
@@ -134,25 +164,6 @@ export default function Home() {
     );
   }
 
-  if (hasData === false) {
-    return (
-      <main className="flex min-h-full flex-col items-center justify-center p-24">
-        <div className="flex flex-col items-center gap-8">
-          <h1 className="text-2xl font-bold">{t("welcome.title")}</h1>
-          <p className="text-muted-foreground">{t("loading.champions_data")}</p>
-          <button
-            onClick={() => {
-              void handleUpdateData();
-            }}
-            className="bg-primary text-white px-4 py-2 rounded"
-          >
-            {t("update.action")}
-          </button>
-        </div>
-      </main>
-    );
-  }
-
   if (isUpdating) {
     return (
       <Suspense fallback={<ChampionsLoader />}>
@@ -169,6 +180,10 @@ export default function Home() {
     );
   }
 
+  if (hasData === false) {
+    return <ChampionsLoader />;
+  }
+
   return (
     <Suspense fallback={<ChampionsLoader />}>
       <div className="flex flex-col h-full w-full">
@@ -178,11 +193,11 @@ export default function Home() {
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onChampionSelect={handleChampionSelect}
-          onUpdateData={() => {
-            void updateData();
-          }}
+          onUpdateData={handleUpdateData}
+          onReinstallData={handleReinstallData}
           // Disable button while updating handled inside TopBar via props below
           isUpdating={isUpdating}
+          progress={progress}
         />
 
         {/* Main content */}

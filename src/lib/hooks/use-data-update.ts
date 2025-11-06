@@ -1,18 +1,160 @@
-import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
-import { DataUpdateProgress, DataUpdateResult } from "../types";
 import {
-  fetchChampionSummaries,
   fetchChampionDetails,
-  fetchFantomeFile,
+  fetchChampionSummaries,
   fetchSkinZip,
-  transformChampionData,
+  getLolSkinsManifest,
+  getLolSkinsManifestCommit,
+  resetLolSkinsManifestCache,
   sanitizeForFileName,
+  transformChampionData,
 } from "../data-utils";
+import type { LolSkinsManifestItem } from "../data-utils";
+import type { DataUpdateProgress } from "../types";
 
 // Helper function to delay execution
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+interface ManifestCollections {
+  skins: Map<string, LolSkinsManifestItem>;
+  chromas: Map<string, LolSkinsManifestItem>;
+}
+
+interface UpdateTuning {
+  championConcurrency: number;
+  skinConcurrency: number;
+  perSkinDelayMs: number;
+  perChampionDelayMs: number;
+}
+
+type BinaryBuffer = Uint8Array;
+
+const normalizeManifestKey = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/['’`]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
+const stripZipExtension = (value: string): string =>
+  value.toLowerCase().endsWith(".zip") ? value.slice(0, -4) : value;
+
+const createManifestIndex = (
+  items: LolSkinsManifestItem[],
+): Map<string, ManifestCollections> => {
+  const index = new Map<string, ManifestCollections>();
+
+  for (const item of items) {
+    const segments = item.path.split("/");
+    if (segments.length < 3) {
+      continue;
+    }
+
+    if (normalizeManifestKey(segments[0]) !== "skins") {
+      continue;
+    }
+
+    const championKey = normalizeManifestKey(segments[1]);
+    if (!index.has(championKey)) {
+      index.set(championKey, {
+        skins: new Map<string, LolSkinsManifestItem>(),
+        chromas: new Map<string, LolSkinsManifestItem>(),
+      });
+    }
+
+    const manifestEntry = index.get(championKey);
+    if (!manifestEntry) {
+      continue;
+    }
+
+    const lastSegment = stripZipExtension(segments[segments.length - 1]);
+    const targetKey = normalizeManifestKey(lastSegment);
+
+    if (segments.length >= 4 && normalizeManifestKey(segments[2]) === "chromas") {
+      if (!manifestEntry.chromas.has(targetKey)) {
+        manifestEntry.chromas.set(targetKey, item);
+      }
+    } else if (!manifestEntry.skins.has(targetKey)) {
+      manifestEntry.skins.set(targetKey, item);
+    }
+  }
+
+  return index;
+};
+
+const getHardwareConcurrency = (): number => {
+  if (
+    typeof navigator !== "undefined" &&
+    typeof navigator.hardwareConcurrency === "number" &&
+    Number.isFinite(navigator.hardwareConcurrency)
+  ) {
+    return navigator.hardwareConcurrency;
+  }
+  return 6;
+};
+
+const deriveUpdateTuning = (): UpdateTuning => {
+  const threads = Math.min(Math.max(Math.floor(getHardwareConcurrency()), 2), 16);
+
+  if (threads <= 4) {
+    return {
+      championConcurrency: 1,
+      skinConcurrency: 2,
+      perSkinDelayMs: 12,
+      perChampionDelayMs: 60,
+    };
+  }
+
+  if (threads <= 8) {
+    return {
+      championConcurrency: 2,
+      skinConcurrency: 3,
+      perSkinDelayMs: 6,
+      perChampionDelayMs: 35,
+    };
+  }
+
+  return {
+    championConcurrency: 3,
+    skinConcurrency: 4,
+    perSkinDelayMs: 0,
+    perChampionDelayMs: 15,
+  };
+};
+
+const runWithConcurrency = async <T>(
+  items: T[],
+  requestedConcurrency: number,
+  worker: (item: T, index: number) => Promise<void>,
+): Promise<void> => {
+  const effectiveConcurrency = Math.max(1, Math.min(items.length, Math.floor(requestedConcurrency)));
+
+  if (effectiveConcurrency === 1) {
+    for (let index = 0; index < items.length; index += 1) {
+      await worker(items[index], index);
+    }
+    return;
+  }
+
+  let cursor = 0;
+  const getNextIndex = (): number | null => {
+    if (cursor >= items.length) {
+      return null;
+    }
+    const currentIndex = cursor;
+    cursor += 1;
+    return currentIndex;
+  };
+
+  const workers = Array.from({ length: effectiveConcurrency }, async () => {
+    for (let index = getNextIndex(); index !== null; index = getNextIndex()) {
+      await worker(items[index], index);
+    }
+  });
+
+  await Promise.all(workers);
+};
 
 export function useDataUpdate() {
   const [isUpdating, setIsUpdating] = useState(false);
@@ -28,6 +170,7 @@ export function useDataUpdate() {
     try {
       console.log("[Update] Starting data update flow");
       setIsUpdating(true);
+      resetLolSkinsManifestCache();
       setProgress({
         currentChampion: "",
         totalChampions: 0,
@@ -35,6 +178,24 @@ export function useDataUpdate() {
         status: "checking",
         progress: 0,
       });
+
+      const manifest = await getLolSkinsManifest();
+      const manifestIndex = manifest
+        ? createManifestIndex(manifest.items)
+        : null;
+      const manifestCommit = manifest
+        ? getLolSkinsManifestCommit(manifest)
+        : null;
+
+      if (manifest) {
+        console.log(
+          `[Update] Using lol-skins manifest generated at ${manifest.generated_at} (commit ${manifestCommit ?? "unknown"})`,
+        );
+      } else {
+        console.warn(
+          "[Update] Manifest unavailable; falling back to legacy GitHub file resolution",
+        );
+      }
 
       // Proceed with update unconditionally when triggered (commit-based gating removed)
       // Fetch champion summaries
@@ -82,149 +243,202 @@ export function useDataUpdate() {
 
       const totalChampions = targetSummaries.length;
 
-      setProgress((prev) => ({
-        ...prev!,
-        totalChampions,
-        status: "downloading",
-      }));
+      setProgress((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          totalChampions,
+          status: "downloading",
+        };
+      });
 
       // No toasts here; the UI will show the DataUpdateModal when `isUpdating` is true
 
-      // Process champions in larger batches
-      const BATCH_SIZE = 10;
-      const DELAY_BETWEEN_BATCHES = 500;
-
       let processedCount = 0;
-      for (let i = 0; i < targetSummaries.length; i += BATCH_SIZE) {
-        const batch = targetSummaries.slice(i, i + BATCH_SIZE);
-        console.log(
-          `[Update] Processing batch ${i / BATCH_SIZE + 1} (${
-            batch.length
-          } champions)`,
-        );
+      const tuning = deriveUpdateTuning();
+      console.log("[Update] Concurrency profile", tuning);
 
-        // Process each champion in the batch
-        const batchPromises = batch.map(async (summary) => {
-          try {
-            setProgress((prev) => ({
-              ...prev!,
-              currentChampion: summary.name,
-              processedChampions: processedCount,
-              status: "processing",
-              progress: (processedCount / totalChampions) * 100,
-            }));
+      const championManifestCache = manifestIndex ?? null;
 
-            // Fetch champion details
-            const details = await fetchChampionDetails(summary.id);
+      const processChampion = async (summary: (typeof targetSummaries)[number]) => {
+        setProgress((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            currentChampion: summary.name,
+            status: "processing",
+          };
+        });
 
-            // Process skins in parallel
-            const skinPromises = details.skins
-              .filter((_, index) => index > 0) // Skip base skin
-              .map(async (skin) => {
+        try {
+          const details = await fetchChampionDetails(summary.id);
+
+          const localChampionKey = sanitizeForFileName(summary.name);
+          const championKey = normalizeManifestKey(summary.name);
+          const manifestEntry = championManifestCache?.get(championKey) ?? null;
+
+          const skins = details.skins.filter((_, index) => index > 0);
+
+          const processSkin = async (skin: (typeof skins)[number]) => {
+            const localSkinKey = sanitizeForFileName(skin.name);
+            const skinKey = normalizeManifestKey(skin.name);
+            const skinManifestEntry = manifestEntry?.skins.get(skinKey) ?? null;
+
+            let zipContent: BinaryBuffer = new Uint8Array();
+            let hasZipContent = false;
+            if (skinManifestEntry) {
+              const response = await fetch(skinManifestEntry.url);
+              if (response.ok) {
+                const buffer = await response.arrayBuffer();
+                zipContent = new Uint8Array(buffer) as BinaryBuffer;
+                hasZipContent = zipContent.byteLength > 0;
+              } else {
+                console.warn(
+                  `[Manifest] Download failed for ${skinManifestEntry.url} (status ${response.status})`,
+                );
+              }
+            }
+
+            if (!hasZipContent) {
+              zipContent = (await fetchSkinZip(summary.name, skin.name)) as BinaryBuffer;
+              hasZipContent = zipContent.byteLength > 0;
+            }
+
+            if (hasZipContent) {
+              await invoke("save_zip_file", {
+                championName: localChampionKey,
+                fileName: `${localSkinKey}.zip`,
+                content: Array.from(zipContent),
+              });
+            }
+
+            if (skin.chromas && skin.chromas.length > 0) {
+              for (const chroma of skin.chromas) {
                 try {
-                  // Prepare local vs repo names
-                  const localChampionKey = sanitizeForFileName(summary.name);
-                  const downloadName = skin.name
-                    .replace(/:/g, "")
-                    .replace(/\//g, "");
-                  const localSkinKey = sanitizeForFileName(downloadName);
-                  const repoChampionName = summary.name;
-                  const repoSkinName = downloadName;
+                  const chromaKey = normalizeManifestKey(`${skin.name} ${chroma.id}`);
+                  const fallbackChromaKey = normalizeManifestKey(chroma.name);
+                  const chromaManifestEntry =
+                    manifestEntry?.chromas.get(chromaKey) ??
+                    manifestEntry?.chromas.get(fallbackChromaKey) ??
+                    null;
 
-                  // Attempt to download and save regular skin ZIP
-                  const baseSkinId = skin.id % 1000;
-                  const zipContent = await fetchSkinZip(
-                    repoChampionName,
-                    [],
-                    repoSkinName,
-                  );
-                  if (zipContent.byteLength > 0) {
-                    await invoke("save_zip_file", {
-                      championName: localChampionKey,
-                      fileName: `${localSkinKey}.zip`,
-                      content: Array.from(zipContent),
-                    });
+                  let chromaContent: BinaryBuffer = new Uint8Array();
+                  let hasChromaContent = false;
+                  if (chromaManifestEntry) {
+                    const response = await fetch(chromaManifestEntry.url);
+                    if (response.ok) {
+                      const buffer = await response.arrayBuffer();
+                      chromaContent = new Uint8Array(buffer) as BinaryBuffer;
+                      hasChromaContent = chromaContent.byteLength > 0;
+                    } else {
+                      console.warn(
+                        `[Manifest] Download failed for ${chromaManifestEntry.url} (status ${response.status})`,
+                      );
+                    }
                   }
 
-                  // Download and save chroma ZIPs if present
-                  if (skin.chromas && skin.chromas.length > 0) {
-                    await Promise.all(
-                      skin.chromas.map(async (chroma) => {
-                        const chromaId = chroma.id;
-                        const chromaFileName = `${repoSkinName} ${chromaId}`;
-                        const chromaPath = ["chromas", repoSkinName];
+                  if (!hasChromaContent) {
+                    chromaContent = (await fetchSkinZip(
+                      summary.name,
+                      `${skin.name} ${chroma.id}`,
+                      ["chromas", skin.name],
+                    )) as BinaryBuffer;
+                    hasChromaContent = chromaContent.byteLength > 0;
+                  }
 
-                        const chromaContent = await fetchSkinZip(
-                          repoChampionName,
-                          chromaPath,
-                          chromaFileName,
-                        );
-
-                        if (chromaContent.byteLength > 0) {
-                          const chromaFileName = `${localSkinKey}_chroma_${chroma.id}.zip`;
-                          await invoke("save_zip_file", {
-                            championName: localChampionKey,
-                            fileName: chromaFileName,
-                            content: Array.from(chromaContent),
-                          });
-                        }
-                      }),
-                    );
+                  if (hasChromaContent) {
+                    const chromaFileName = `${localSkinKey}_chroma_${chroma.id}.zip`;
+                    await invoke("save_zip_file", {
+                      championName: localChampionKey,
+                      fileName: chromaFileName,
+                      content: Array.from(chromaContent),
+                    });
                   }
                 } catch (err) {
                   console.error(
-                    `Failed to process skin file for ${summary.name} ${skin.name}:`,
+                    `Failed to process chroma file for ${summary.name} ${skin.name} (${chroma.id}):`,
                     err,
                   );
                 }
-              });
 
-            await Promise.all(skinPromises);
-
-            // Save champion data
-            const championData = transformChampionData(
-              summary,
-              details,
-              new Map(),
-            );
-
-            if (championData.id <= 0) {
-              throw new Error(`Invalid champion ID: ${championData.id}`);
+                if (tuning.perSkinDelayMs > 0) {
+                  await delay(tuning.perSkinDelayMs);
+                }
+              }
             }
 
-            await invoke("update_champion_data", {
-              championName: sanitizeForFileName(championData.name),
-              data: JSON.stringify(championData),
-            });
+            if (tuning.perSkinDelayMs > 0) {
+              await delay(tuning.perSkinDelayMs);
+            }
+          };
 
-            processedCount++;
-            setProgress((prev) => ({
-              ...prev!,
-              currentChampion: summary.name,
-              processedChampions: processedCount,
-              status: "processing",
-              progress: (processedCount / totalChampions) * 100,
-            }));
+          await runWithConcurrency(skins, tuning.skinConcurrency, processSkin);
 
-            // progress shown in modal; no toast updates
-          } catch (err) {
-            console.error(`Failed to process ${summary.name}:`, err);
-            toast.error(`Failed to process ${summary.name}`);
+          const championData = transformChampionData(
+            summary,
+            details,
+            new Map(),
+          );
+
+          if (championData.id <= 0) {
+            throw new Error(`Invalid champion ID: ${championData.id}`);
           }
-        });
 
-        await Promise.all(batchPromises);
+          await invoke("update_champion_data", {
+            championName: sanitizeForFileName(championData.name),
+            data: JSON.stringify(championData),
+          });
+        } catch (err) {
+          console.error(`Failed to process ${summary.name}:`, err);
+          toast.error(`Failed to process ${summary.name}`);
+        } finally {
+          processedCount += 1;
+          setProgress((prev) => {
+            if (!prev) return null;
+            const processedChampions = Math.min(
+              prev.totalChampions,
+              prev.processedChampions + 1,
+            );
+            const progressValue =
+              prev.totalChampions === 0
+                ? 0
+                : (processedChampions / prev.totalChampions) * 100;
+            return {
+              ...prev,
+              currentChampion: summary.name,
+              processedChampions,
+              status: "processing",
+              progress: progressValue,
+            };
+          });
 
-        // Add small delay between batches
-        if (i + BATCH_SIZE < validSummaries.length) {
-          await delay(DELAY_BETWEEN_BATCHES);
+          if (tuning.perChampionDelayMs > 0 && processedCount < totalChampions) {
+            await delay(tuning.perChampionDelayMs);
+          }
         }
-      }
+      };
+
+      await runWithConcurrency(
+        targetSummaries,
+        tuning.championConcurrency,
+        processChampion,
+      );
 
       if (processedCount !== totalChampions) {
         console.warn(
           `Processed ${processedCount} out of ${totalChampions} champions`,
         );
+      }
+
+      if (manifest && manifestCommit) {
+        try {
+          await invoke("set_last_data_commit", {
+            sha: manifestCommit,
+            manifest_json: JSON.stringify(manifest),
+          });
+        } catch (err) {
+          console.warn("[Update] Failed to persist manifest state", err);
+        }
       }
 
       // Data update finished successfully; modal will close via isUpdating state

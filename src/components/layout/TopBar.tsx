@@ -1,36 +1,34 @@
 "use client";
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { Button } from "@/components/ui/button";
-import { RefreshCw, Menu, Users, Users2, Users2Icon } from "lucide-react";
-import { toast } from "sonner";
-import { InjectionStatusDot } from "@/components/InjectionStatusDot";
-import { ButtonInjection } from "@/components/button-injection";
-import { TitleBar } from "@/components/ui/titlebar/TitleBar";
 import { ChampionSearch } from "@/components/ChampionSearch";
+import { DownloadingModal } from "@/components/DownloadingModal";
+import { InjectionStatusDot } from "@/components/InjectionStatusDot";
+import PartyModeDialog from "@/components/PartyModeDialog";
+// Print logs moved into Settings dialog
+import { SettingsDialog } from "@/components/SettingsDialog";
+import { ButtonInjection } from "@/components/button-injection";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TitleBar } from "@/components/ui/titlebar/TitleBar";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-// Print logs moved into Settings dialog
-import { SettingsDialog } from "@/components/SettingsDialog";
-import PartyModeDialog from "@/components/PartyModeDialog";
-import { useGameStore, SkinTab } from "@/lib/store";
-import { usePartyModeStore } from "@/lib/store/party-mode";
-import { useEffect, useMemo, useState } from "react";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Champion } from "@/lib/types";
-import { Badge } from "../ui/badge";
 import { useI18n } from "@/lib/i18n";
+import { type SkinTab, useGameStore } from "@/lib/store";
+import { usePartyModeStore } from "@/lib/store/party-mode";
+import type { Champion, DataUpdateProgress } from "@/lib/types";
+import { Menu, RefreshCw, Users2Icon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Badge } from "../ui/badge";
 
 interface TopBarProps {
   champions: Champion[];
@@ -38,8 +36,10 @@ interface TopBarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onChampionSelect: (id: number) => void;
-  onUpdateData: () => void | Promise<void>;
+  onUpdateData: () => Promise<void>;
+  onReinstallData: () => Promise<void>;
   isUpdating?: boolean;
+  progress: DataUpdateProgress | null;
 }
 
 export function TopBar({
@@ -49,15 +49,14 @@ export function TopBar({
   onSearchChange,
   onChampionSelect,
   onUpdateData,
+  onReinstallData,
   isUpdating = false,
+  progress,
 }: TopBarProps) {
+  const [showDownloadingModal, setShowDownloadingModal] = useState(false);
   // Get tab state from the store
   const { activeTab, setActiveTab, manualInjectionMode } = useGameStore();
   const pairedFriendsCount = usePartyModeStore((s) => s.pairedFriends.length);
-
-  // No availability probe: update button is enabled unless updating or on custom tab
-  const isChecking = false;
-  const isUpToDate: boolean | null = null;
 
   // Load saved tab preference from localStorage
   useEffect(() => {
@@ -74,18 +73,7 @@ export function TopBar({
     // Party mode is now handled by the provider, no need for manual loading
   }, []);
 
-  // Manual update without clearing cache
-  async function handleManualUpdate() {
-    try {
-      await onUpdateData();
-      // no availability probe
-    } catch (error) {
-      console.error("Error during manual update:", error);
-      toast.error(t("update.processing_unknown"));
-    }
-  }
-
-  const updateDisabled = activeTab === "custom" || isUpdating;
+  const updateDisabled = isUpdating;
   const { t } = useI18n();
 
   return (
@@ -173,18 +161,15 @@ export function TopBar({
             </DropdownMenuTrigger>
             <DropdownMenuContent className="min-w-50" align="end">
               <PartyModeDialog />
-              {/* Manual Update Data (incremental) */}
               <DropdownMenuItem
-                onClick={() => {
-                  void handleManualUpdate();
-                }}
-                onSelect={(e) => {
-                  e.preventDefault();
+                onSelect={(event: Event) => {
+                  event.preventDefault();
+                  setShowDownloadingModal(true);
                 }}
                 disabled={updateDisabled}
               >
                 <RefreshCw className="h-4 w-4" />
-                {isUpdating ? t("update.downloading") : t("update.action")}
+                Check updates
               </DropdownMenuItem>
               <SettingsDialog />
             </DropdownMenuContent>
@@ -192,6 +177,16 @@ export function TopBar({
           <TitleBar />
         </div>
       </div>
+      <DownloadingModal
+        isOpen={showDownloadingModal}
+        onClose={() => {
+          setShowDownloadingModal(false);
+        }}
+        progress={progress}
+        onUpdateData={onUpdateData}
+        onReinstallData={onReinstallData}
+        isUpdating={isUpdating}
+      />
     </div>
   );
 }
