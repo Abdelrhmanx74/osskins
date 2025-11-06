@@ -79,7 +79,10 @@ pub async fn inject_game_skins(
   let base_path = Path::new(&skin_file_files_dir);
   if !base_path.exists() {
     // Create the directory if it doesn't exist
-    println!("Creating skin_file files directory: {}", base_path.display());
+    println!(
+      "Creating skin_file files directory: {}",
+      base_path.display()
+    );
     fs::create_dir_all(base_path).map_err(|e| {
       let _ = app_handle.emit("injection-status", false);
       format!("Failed to create skin_file directory: {}", e)
@@ -148,7 +151,10 @@ pub async fn inject_skins_with_misc(
   let base_path = Path::new(&skin_file_files_dir);
   if !base_path.exists() {
     // Create the directory if it doesn't exist
-    println!("Creating skin_file files directory: {}", base_path.display());
+    println!(
+      "Creating skin_file files directory: {}",
+      base_path.display()
+    );
     fs::create_dir_all(base_path).map_err(|e| {
       let _ = app_handle.emit("injection-status", false);
       format!("Failed to create skin_file directory: {}", e)
@@ -271,7 +277,13 @@ pub async fn inject_all_selected_skins(app: AppHandle) -> Result<(), String> {
   let _ = app.emit("injection-status", "injecting");
 
   // Perform injection
-  let result = inject_skins_and_misc(&app, &league_path, &skins, &misc_items, &skin_file_files_dir);
+  let result = inject_skins_and_misc(
+    &app,
+    &league_path,
+    &skins,
+    &misc_items,
+    &skin_file_files_dir,
+  );
 
   match result {
     Ok(_) => {

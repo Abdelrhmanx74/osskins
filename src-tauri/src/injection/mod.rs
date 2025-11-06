@@ -1,10 +1,10 @@
 // Injection module - Re-exports all injection functionalities
-pub mod error;
 pub mod core;
-pub mod skin_file;
-pub mod mod_tools;
+pub mod error;
 pub mod game_config;
+pub mod mod_tools;
+pub mod skin_file;
 
 // Re-export all public types and functions
-pub use error::*;
 pub use core::*;
+pub use error::*;
