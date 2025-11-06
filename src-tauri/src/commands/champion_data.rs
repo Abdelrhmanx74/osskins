@@ -340,18 +340,18 @@ pub async fn get_champion_data(app: tauri::AppHandle, champion_id: u32) -> Resul
       let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
       let path = entry.path();
       if path.is_dir() {
-        // Look for JSON files in the champion directory
-        for champion_file in
-          fs::read_dir(path).map_err(|e| format!("Failed to read champion directory: {}", e))?
-        {
-          let champion_file =
-            champion_file.map_err(|e| format!("Failed to read champion file: {}", e))?;
-          let file_path = champion_file.path();
-          if file_path.extension().and_then(|s| s.to_str()) == Some("json") {
-            let data = fs::read_to_string(&file_path)
-              .map_err(|e| format!("Failed to read champion file: {}", e))?;
-            all_champions.push(data);
-          }
+        // Get the champion directory name
+        let champion_name = path
+          .file_name()
+          .and_then(|n| n.to_str())
+          .ok_or_else(|| format!("Invalid champion directory name"))?;
+
+        // Read only the specific champion JSON file: {champion_name}/{champion_name}.json
+        let champion_file = path.join(format!("{}.json", champion_name));
+        if champion_file.exists() {
+          let data = fs::read_to_string(&champion_file)
+            .map_err(|e| format!("Failed to read champion file: {}", e))?;
+          all_champions.push(data);
         }
       }
     }

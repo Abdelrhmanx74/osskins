@@ -39,7 +39,7 @@ function constructAssetUrl(path: string): string {
 
 export async function fetchChampionSummaries(): Promise<ChampionSummary[]> {
   const response = await fetch(
-    `${COMMUNITY_DRAGON_BASE_URL}/v1/champion-summary.json`
+    `${COMMUNITY_DRAGON_BASE_URL}/v1/champion-summary.json`,
   );
   if (!response.ok) {
     throw new Error("Failed to fetch champion summaries");
@@ -49,10 +49,10 @@ export async function fetchChampionSummaries(): Promise<ChampionSummary[]> {
 }
 
 export async function fetchChampionDetails(
-  id: number
+  id: number,
 ): Promise<ChampionDetails> {
   const response = await fetch(
-    `${COMMUNITY_DRAGON_BASE_URL}/v1/champions/${id}.json`
+    `${COMMUNITY_DRAGON_BASE_URL}/v1/champions/${id}.json`,
   );
   if (!response.ok) {
     throw new Error(`Failed to fetch details for champion ${id}`);
@@ -63,11 +63,11 @@ export async function fetchChampionDetails(
 
 export async function fetchFantomeFile(
   championId: number,
-  skinId: number
+  skinId: number,
 ): Promise<Uint8Array> {
   try {
     const response = await fetch(
-      `${FANTOME_BASE_URL}/${championId}/${skinId}.skin_file`
+      `${FANTOME_BASE_URL}/${championId}/${skinId}.skin_file`,
     );
     if (!response.ok) {
       console.warn(`Fantome not found: champion ${championId}, skin ${skinId}`);
@@ -78,7 +78,7 @@ export async function fetchFantomeFile(
   } catch (err) {
     console.warn(
       `Error fetching skin_file for champion ${championId}, skin ${skinId}:`,
-      err
+      err,
     );
     return new Uint8Array();
   }
@@ -88,14 +88,14 @@ export async function fetchFantomeFile(
 export async function fetchSkinZip(
   championName: string,
   subPath: string[] = [],
-  fileName: string
+  fileName: string,
 ): Promise<Uint8Array> {
   // Special handling for K/DA skins - replace KDA with K DA for repo URLs
   const normalizedChampion = championName.replace(/KDA/g, "K DA");
 
   // Handle folder paths with special cases
   const normalizedSubPath = subPath.map((segment) =>
-    segment.replace(/KDA/g, "K DA").replace(/\bM\.D(?!\.)(?=\s|$)/g, "M.D.")
+    segment.replace(/KDA/g, "K DA").replace(/\bM\.D(?!\.)(?=\s|$)/g, "M.D."),
   );
 
   // Handle both KDA and M.D. naming conventions in file names
@@ -104,7 +104,7 @@ export async function fetchSkinZip(
   // Add period after M.D if missing, but don't double up periods
   normalizedFileName = normalizedFileName.replace(
     /\bM\.D(?!\.)(?=\s|$)/g,
-    "M.D."
+    "M.D.",
   );
 
   // Construct URL with proper encoding for each path segment
@@ -182,7 +182,7 @@ export function sanitizeForFileName(str: string): string {
 export function transformChampionData(
   summary: ChampionSummary,
   details: ChampionDetails,
-  skinFiles: Map<number, Uint8Array>
+  skinFiles: Map<number, Uint8Array>,
 ): Champion {
   const baseDir = sanitizeForFileName(summary.name);
   const skins: Skin[] = details.skins.map((skin) => {
@@ -196,8 +196,9 @@ export function transformChampionData(
         colors: chroma.colors,
         description: chroma.description,
         rarity: chroma.rarity,
-        skin_file: `${baseDir}/${sanitizeForFileName(skin.name)}_chroma_${chroma.id
-          }.zip`,
+        skin_file: `${baseDir}/${sanitizeForFileName(skin.name)}_chroma_${
+          chroma.id
+        }.zip`,
       };
     });
 
@@ -228,7 +229,7 @@ export function calculateProgress(
   currentChampion: string,
   totalChampions: number,
   processedChampions: number,
-  status: "checking" | "downloading" | "processing"
+  status: "checking" | "downloading" | "processing",
 ) {
   return {
     currentChampion,

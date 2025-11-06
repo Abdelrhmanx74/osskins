@@ -39,28 +39,31 @@ export function useDataUpdate() {
       // Proceed with update unconditionally when triggered (commit-based gating removed)
       // Fetch champion summaries
       const summaries = await fetchChampionSummaries();
-      const validSummaries = summaries.filter((summary) => summary.id > 0);
+      // Filter out invalid IDs (<=0) and test/PBE champions (Doom Bots with IDs >= 66600)
+      const validSummaries = summaries.filter(
+        (summary) => summary.id > 0 && summary.id < 66600,
+      );
       console.log(
-        `[Update] Loaded ${validSummaries.length} champions from CommunityDragon`
+        `[Update] Loaded ${validSummaries.length} champions from CommunityDragon`,
       );
 
       // If we have last commit, get changed champions to narrow updates
       let targetSummaries = validSummaries;
       try {
         const changed = await invoke<string[]>(
-          "get_changed_champions_from_config"
+          "get_changed_champions_from_config",
         );
         console.log("[Update] Changed champions from config:", changed);
         if (changed.length > 0) {
           const changedSet = new Set(
-            changed.map((n) => n.toLowerCase().replace(/%20/g, " "))
+            changed.map((n) => n.toLowerCase().replace(/%20/g, " ")),
           );
           targetSummaries = validSummaries.filter((s) =>
-            changedSet.has(s.name.toLowerCase())
+            changedSet.has(s.name.toLowerCase()),
           );
           if (targetSummaries.length === 0) {
             console.warn(
-              "[Update] Mapping changed champions to summaries yielded 0; falling back to full update"
+              "[Update] Mapping changed champions to summaries yielded 0; falling back to full update",
             );
             targetSummaries = validSummaries;
           }
@@ -68,13 +71,13 @@ export function useDataUpdate() {
       } catch (e) {
         console.warn(
           "[Update] Failed to get changed champions from config; defaulting to full update",
-          e
+          e,
         );
       }
 
       console.log(
         `[Update] Targeting ${targetSummaries.length}/${validSummaries.length} champions`,
-        targetSummaries.slice(0, 15).map((s) => s.name)
+        targetSummaries.slice(0, 15).map((s) => s.name),
       );
 
       const totalChampions = targetSummaries.length;
@@ -95,8 +98,9 @@ export function useDataUpdate() {
       for (let i = 0; i < targetSummaries.length; i += BATCH_SIZE) {
         const batch = targetSummaries.slice(i, i + BATCH_SIZE);
         console.log(
-          `[Update] Processing batch ${i / BATCH_SIZE + 1} (${batch.length
-          } champions)`
+          `[Update] Processing batch ${i / BATCH_SIZE + 1} (${
+            batch.length
+          } champions)`,
         );
 
         // Process each champion in the batch
@@ -132,7 +136,7 @@ export function useDataUpdate() {
                   const zipContent = await fetchSkinZip(
                     repoChampionName,
                     [],
-                    repoSkinName
+                    repoSkinName,
                   );
                   if (zipContent.byteLength > 0) {
                     await invoke("save_zip_file", {
@@ -153,7 +157,7 @@ export function useDataUpdate() {
                         const chromaContent = await fetchSkinZip(
                           repoChampionName,
                           chromaPath,
-                          chromaFileName
+                          chromaFileName,
                         );
 
                         if (chromaContent.byteLength > 0) {
@@ -164,13 +168,13 @@ export function useDataUpdate() {
                             content: Array.from(chromaContent),
                           });
                         }
-                      })
+                      }),
                     );
                   }
                 } catch (err) {
                   console.error(
                     `Failed to process skin file for ${summary.name} ${skin.name}:`,
-                    err
+                    err,
                   );
                 }
               });
@@ -181,7 +185,7 @@ export function useDataUpdate() {
             const championData = transformChampionData(
               summary,
               details,
-              new Map()
+              new Map(),
             );
 
             if (championData.id <= 0) {
@@ -219,7 +223,7 @@ export function useDataUpdate() {
 
       if (processedCount !== totalChampions) {
         console.warn(
-          `Processed ${processedCount} out of ${totalChampions} champions`
+          `Processed ${processedCount} out of ${totalChampions} champions`,
         );
       }
 
