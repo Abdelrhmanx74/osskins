@@ -32,39 +32,57 @@ jobs:
           # shallow clone upstream; no submodules
           git clone --depth=1 --no-single-branch https://github.com/darkseal-org/lol-skins.git upstream
 
-      - name: Generate manifest.json
+      - name: Generate manifest.json (stream items to temp file)
         run: |
+          set -euo pipefail
           cd upstream
           SRC_SHA=$(git rev-parse HEAD)
           SRC_BRANCH="main"
 
-          # Find .zip and .fantome files
-          mapfile -t files < <(git ls-files | grep -E '\.(zip|fantome)$' || true)
+          # create a temp file for the items array
+          TMP_ITEMS="$(mktemp)"
+          echo "[" > "${TMP_ITEMS}"
+          first=true
 
-          items=()
-          for f in "${files[@]}"; do
+          # Find .zip and .fantome files and append JSON objects to TMP_ITEMS
+          while IFS= read -r f; do
             size=$(stat -c%s "$f")
             sha256=$(sha256sum "$f" | cut -d' ' -f1)
             last_commit=$(git log -1 --format=%H -- "$f")
             url="https://raw.githubusercontent.com/darkseal-org/lol-skins/${SRC_BRANCH}/${f}"
-            items+=( "$(jq -n --arg path "$f" --arg url "$url" --arg size "$size" --arg sha "$sha256" --arg commit "$last_commit" \
-              '{path:$path, url:$url, size: ($size|tonumber), sha256:$sha, commit:$commit}')" )
-          done
+            obj=$(jq -n \
+              --arg path "$f" \
+              --arg url "$url" \
+              --arg size "$size" \
+              --arg sha "$sha256" \
+              --arg commit "$last_commit" \
+              '{path:$path, url:$url, size: ($size|tonumber), sha256:$sha, commit:$commit}')
+            if [ "$first" = true ]; then
+              echo "$obj" >> "${TMP_ITEMS}"
+              first=false
+            else
+              echo ",$obj" >> "${TMP_ITEMS}"
+            fi
+          done < <(git ls-files | grep -E '\.(zip|fantome)$' || true)
+
+          echo "]" >> "${TMP_ITEMS}"
 
           # ensure app/docs exists
           cd ../app
           mkdir -p docs
 
-          jq -n \
+          # Build final manifest using --slurpfile to include the items array safely
+          jq -n --slurpfile items "${TMP_ITEMS}" \
             --arg gen "$(date -u +%FT%TZ)" \
-            --arg repo "darkseal-org/lol-skins@$SRC_SHA" \
-            --arg branch "$SRC_BRANCH" \
+            --arg repo "darkseal-org/lol-skins@${SRC_SHA}" \
+            --arg branch "${SRC_BRANCH}" \
             --arg license_url "https://github.com/darkseal-org/lol-skins/blob/main/LICENSE" \
             --arg source_url "https://github.com/darkseal-org/lol-skins" \
             --arg attribution "Skins © their respective creators. DSCL license applies. Not affiliated with or endorsed by Dark Seal or Riot Games." \
-            --argjson items "[${items[*]}]" \
-            '{schema:1, generated_at:$gen, source_repo:$repo, branch:$branch, license:$license_url, source:$source_url, attribution:$attribution, items:$items}' \
+            '{schema:1, generated_at:$gen, source_repo:$repo, branch:$branch, license:$license_url, source:$source_url, attribution:$attribution, items: $items[0]}' \
             > docs/manifest.json
+
+          rm -f "${TMP_ITEMS}"
 
       - name: Commit and push manifest (if changed)
         env:
