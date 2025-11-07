@@ -221,9 +221,9 @@ export default function Home() {
               <MiscItemView type={selectedMiscItem} />
             ) : activeTab === "official" ? (
               manualInjectionMode ? (
-                <ManualSkinGrid champion={selectedChampionData ?? null} />
+                <ManualSkinGrid champion={selectedChampionData ?? null} searchQuery={searchQuery} />
               ) : (
-                <SkinGrid champion={selectedChampionData ?? null} />
+                <SkinGrid champion={selectedChampionData ?? null} searchQuery={searchQuery} />
               )
             ) : (
               <CustomSkinList championId={selectedChampion} />

@@ -1,43 +1,21 @@
 import { Champion } from "@/lib/types";
+import { filterAndSortChampionsWithSearch } from "./smart-search";
 
 /**
  * Filter and sort champions based on search query and favorites
+ * Now uses smart search that searches both champions and skins
  */
 export function filterAndSortChampions(
   champions: Champion[],
   searchQuery: string,
   favorites: Set<number>
 ): Champion[] {
-  return champions
-    .filter((champion) =>
-      champion.name.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-    .sort((a, b) => {
-      // First sort by favorite status
-      const aFav = favorites.has(a.id);
-      const bFav = favorites.has(b.id);
-      if (aFav && !bFav) return -1;
-      if (!aFav && bFav) return 1;
-
-      // Then by search relevance
-      if (searchQuery) {
-        const aStarts = a.name
-          .toLowerCase()
-          .startsWith(searchQuery.toLowerCase());
-        const bStarts = b.name
-          .toLowerCase()
-          .startsWith(searchQuery.toLowerCase());
-        if (aStarts && !bStarts) return -1;
-        if (!aStarts && bStarts) return 1;
-      }
-
-      // Finally alphabetically
-      return a.name.localeCompare(b.name);
-    });
+  return filterAndSortChampionsWithSearch(champions, searchQuery, favorites);
 }
 
 /**
  * Get champion match score for search relevance
+ * @deprecated Use smart search instead
  */
 export function getMatchScore(championName: string, query: string): number {
   const normalizedName = championName.toLowerCase();
