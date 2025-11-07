@@ -53,8 +53,10 @@
       "open": true
     },
     "updater": {
-      "pubkey": "asd22asd",
-      "endpoints": [],
+      "endpoints": [
+        "https://github.com/Abdelrhmanx74/osskins/releases/download/{version}/updates.json"
+      ],
+      "pubkey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAJRgdxivqxKxZtiRD3uwtITr7T3mGr2MvQ262d5OyPzM=\n-----END PUBLIC KEY-----\n",
       "windows": {
         "installMode": "passive"
       }
