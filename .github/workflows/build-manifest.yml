@@ -18,17 +18,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq coreutils git curl
-
       - name: Configure git user
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
       - name: Clone this repository (app)
         run: |
           # clone own repo into app dir (no actions/checkout used)
           git clone --depth=1 "https://github.com/${{ github.repository }}.git" app
-
       - name: Pre-check upstream commit (skip if unchanged)
         run: |
           set -euo pipefail
@@ -37,23 +34,18 @@ jobs:
           if [ -f app/docs/manifest.json ]; then
             current_commit=$(jq -r '.source_repo' app/docs/manifest.json 2>/dev/null | sed -E 's/.*@(.+)$/\1/' || true)
           fi
-
           # Fetch remote main commit (cheap network call)
           remote_commit=$(git ls-remote https://github.com/darkseal-org/lol-skins.git refs/heads/main | cut -f1 || true)
-
           echo "current_commit=${current_commit} remote_commit=${remote_commit}"
-
           if [ -n "$current_commit" ] && [ -n "$remote_commit" ] && [ "$current_commit" = "$remote_commit" ]; then
             echo "No upstream changes (manifest already at ${current_commit}). Skipping heavy manifest build."
             exit 0
           fi
           echo "Upstream changed or no manifest found — proceeding to build manifest."
-
       - name: Clone upstream lol-skins
         run: |
           # shallow clone upstream; no submodules
           git clone --depth=1 --no-single-branch https://github.com/darkseal-org/lol-skins.git upstream
-
       - name: Generate manifest.json (stream items to temp file + external releases)
         env:
           GHTOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -62,12 +54,10 @@ jobs:
           cd upstream
           SRC_SHA=$(git rev-parse HEAD)
           SRC_BRANCH="main"
-
           # create a temp file for the items array
           TMP_ITEMS="$(mktemp)"
           echo "[" > "${TMP_ITEMS}"
           first=true
-
           # Find .zip and .fantome files and append JSON objects to TMP_ITEMS
           while IFS= read -r f; do
             size=$(stat -c%s "$f")
@@ -88,52 +78,41 @@ jobs:
               echo ",$obj" >> "${TMP_ITEMS}"
             fi
           done < <(git ls-files | grep -E '\.(zip|fantome)$' || true)
-
           echo "]" >> "${TMP_ITEMS}"
-
           # Build a small external_releases JSON with latest release for LeagueToolkit/cslol-manager
           TMP_RELEASES="$(mktemp)"
           echo "[]" > "${TMP_RELEASES}"
-
           REPO="LeagueToolkit/cslol-manager"
           API_URL="https://api.github.com/repos/${REPO}/releases/latest"
-
           # Use GHTOKEN if provided to increase rate limit: call curl explicitly with or without header
           if [ -n "${GHTOKEN:-}" ]; then
             release_json=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token ${GHTOKEN}" "$API_URL" || true)
           else
             release_json=$(curl -s -H "Accept: application/vnd.github+json" "$API_URL" || true)
           fi
-
           tag=$(echo "$release_json" | jq -r '.tag_name // empty')
           asset_name=$(echo "$release_json" | jq -r '.assets[0].name // empty')
           asset_url=$(echo "$release_json" | jq -r '.assets[0].browser_download_url // empty')
           asset_size=$(echo "$release_json" | jq -r '.assets[0].size // 0')
-
           if [ -n "$tag" ] && [ -n "$asset_url" ]; then
             # Do NOT compute sha256 by default (this downloads the asset). Leave empty to avoid extra runner time.
             sha256sum_val=""
-
-            cat > "${TMP_RELEASES}" <<'EOF'
-[
-  {
-    "repo": "'"${REPO}"'",
-    "tag_name": "'"${tag}"'",
-    "asset_name": "'"${asset_name}"'",
-    "browser_download_url": "'"${asset_url}"'",
-    "size": '"${asset_size}"',
-    "sha256": "'"${sha256sum_val}"'"
-  }
-]
-EOF
+            # Safely build JSON using jq to avoid here-doc quoting issues
+            jq -n \
+              --arg repo "$REPO" \
+              --arg tag "$tag" \
+              --arg asset_name "$asset_name" \
+              --arg asset_url "$asset_url" \
+              --arg sha "$sha256sum_val" \
+              --arg size "$asset_size" \
+              '[{repo:$repo, tag_name:$tag, asset_name:$asset_name, browser_download_url:$asset_url, size: ($size|tonumber), sha256:$sha}]' \
+              > "${TMP_RELEASES}"
           else
             echo "Could not obtain release info for ${REPO}; leaving external_releases empty"
           fi
-
           # ensure app/docs exists
           cd ../app
           mkdir -p docs
-
           # Build final manifest using --slurpfile to include the items array and external releases safely
           jq -n --slurpfile items "${TMP_ITEMS}" --slurpfile releases "${TMP_RELEASES}" \
             --arg gen "$(date -u +%FT%TZ)" \
@@ -144,9 +123,7 @@ EOF
             --arg attribution "Skins © their respective creators. DSCL license applies. Not affiliated with or endorsed by Dark Seal or Riot Games." \
             '{schema:1, generated_at:$gen, source_repo:$repo, branch:$branch, license:$license_url, source:$source_url, attribution:$attribution, items: $items[0], external_releases: ($releases[0] // []) }' \
             > docs/manifest.json
-
           rm -f "${TMP_ITEMS}" "${TMP_RELEASES}"
-
       - name: Commit and push manifest (if changed)
         env:
           GHTOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -160,4 +137,3 @@ EOF
           else
             git commit -m "chore: update lol-skins manifest"
             git push origin HEAD:main
-          fi
