@@ -98,13 +98,12 @@ jobs:
           REPO="LeagueToolkit/cslol-manager"
           API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
-          # Use GHTOKEN if provided to increase rate limit
-          AUTH_HEADER=""
+          # Use GHTOKEN if provided to increase rate limit: call curl explicitly with or without header
           if [ -n "${GHTOKEN:-}" ]; then
-            AUTH_HEADER="-H Authorization: token ${GHTOKEN}"
+            release_json=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token ${GHTOKEN}" "$API_URL" || true)
+          else
+            release_json=$(curl -s -H "Accept: application/vnd.github+json" "$API_URL" || true)
           fi
-
-          release_json=$(curl -s -H "Accept: application/vnd.github+json" ${AUTH_HEADER} "$API_URL" || true)
 
           tag=$(echo "$release_json" | jq -r '.tag_name // empty')
           asset_name=$(echo "$release_json" | jq -r '.assets[0].name // empty')
