@@ -45,10 +45,10 @@ pub async fn upload_misc_item(
   let mut misc_items: Vec<MiscItem> = serde_json::from_str(&existing_content)
     .map_err(|e| format!("Failed to parse misc items: {}", e))?;
 
-  // Open file dialog to select skin_file file
+  // Open file dialog to select either a Fantome (.skin_file) or ZIP (.zip) file
   let file_dialog = rfd::FileDialog::new()
-    .add_filter("Fantome Files", &["skin_file"])
-    .set_title("Select Misc Item Fantome File");
+    .add_filter("Fantome/ZIP Files", &["skin_file", "zip"])
+    .set_title("Select Misc Item Fantome/ZIP File");
 
   let selected_file = file_dialog
     .pick_file()
@@ -73,7 +73,14 @@ pub async fn upload_misc_item(
       }
     })
     .collect::<String>();
-  let filename = format!("{}_{}.skin_file", request.item_type, safe_name);
+  // Preserve original file extension when saving (support .skin_file and .zip)
+  let ext = selected_file
+    .extension()
+    .and_then(|e| e.to_str())
+    .map(|s| s.to_lowercase())
+    .unwrap_or_else(|| "skin_file".to_string());
+
+  let filename = format!("{}_{}.{}", request.item_type, safe_name, ext);
   let dest_path = misc_items_dir.join(&filename);
 
   // Copy the selected file to the misc items directory
@@ -179,8 +186,9 @@ pub async fn upload_multiple_misc_items(
   item_type: String,
 ) -> Result<Vec<MiscItem>, String> {
   // Show file dialog for multiple file selection
+  // Allow selecting Fantome (.skin_file) or ZIP (.zip) files
   let files = rfd::FileDialog::new()
-    .add_filter("Fantome Files", &["skin_file"])
+    .add_filter("Fantome/ZIP Files", &["skin_file", "zip"])
     .set_title(&format!("Select {} files", item_type))
     .pick_files()
     .ok_or("No files selected")?;
@@ -237,7 +245,14 @@ pub async fn upload_multiple_misc_items(
       .chars()
       .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == ' ')
       .collect::<String>();
-    let filename = format!("{}_{}.skin_file", item_type, safe_name);
+    // Preserve original extension for each uploaded file
+    let ext = file_path
+      .extension()
+      .and_then(|e| e.to_str())
+      .map(|s| s.to_lowercase())
+      .unwrap_or_else(|| "skin_file".to_string());
+
+    let filename = format!("{}_{}.{}", item_type, safe_name, ext);
     let dest_path = misc_items_dir.join(&filename);
 
     // Copy the selected file to the misc items directory
