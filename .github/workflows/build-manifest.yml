@@ -114,15 +114,15 @@ jobs:
             # Do NOT compute sha256 by default (this downloads the asset). Leave empty to avoid extra runner time.
             sha256sum_val=""
 
-            cat > "${TMP_RELEASES}" <<EOF
+            cat > "${TMP_RELEASES}" <<'EOF'
 [
   {
-    "repo": "${REPO}",
-    "tag_name": "${tag}",
-    "asset_name": "${asset_name}",
-    "browser_download_url": "${asset_url}",
-    "size": ${asset_size},
-    "sha256": "${sha256sum_val}"
+    "repo": "'"${REPO}"'",
+    "tag_name": "'"${tag}"'",
+    "asset_name": "'"${asset_name}"'",
+    "browser_download_url": "'"${asset_url}"'",
+    "size": '"${asset_size}"',
+    "sha256": "'"${sha256sum_val}"'"
   }
 ]
 EOF
