@@ -130,10 +130,8 @@ pub async fn command_name(
 
 ### Testing & Quality
 
-- Write code that is easily testable
-- Use TypeScript for compile-time error catching
-- Follow ESLint and Biome configuration
-- Ensure code passes all linting rules
+- Write code correctly the first time so no errors happen but warning are fine
+- you dont need to build the app if its failing ill send you the errors you should run commands to build and test the app but you dont need to build it yourself
 
 ## Task Execution Standards
 
