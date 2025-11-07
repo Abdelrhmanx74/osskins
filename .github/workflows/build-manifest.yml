@@ -27,12 +27,37 @@ jobs:
           # clone own repo into app dir (no actions/checkout used)
           git clone --depth=1 "https://github.com/${{ github.repository }}.git" app
 
+      - name: Check upstream commit and skip build if unchanged
+        id: check_upstream
+        run: |
+          set -euo pipefail
+
+          current_commit=""
+          if [ -f app/docs/manifest.json ]; then
+            # extract SHA after the @ in source_repo (e.g. owner/repo@<sha>)
+            current_commit=$(jq -r '.source_repo' app/docs/manifest.json 2>/dev/null | sed -E 's/.*@(.+)$/\1/' || true)
+          fi
+
+          # cheap remote check
+          remote_commit=$(git ls-remote https://github.com/darkseal-org/lol-skins.git refs/heads/main | cut -f1)
+
+          echo "current_commit=$current_commit remote_commit=$remote_commit"
+
+          if [ -n "$current_commit" ] && [ "$current_commit" = "$remote_commit" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No upstream changes (manifest already at $current_commit). Skipping heavy manifest build."
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Clone upstream lol-skins
+        if: steps.check_upstream.outputs.changed == 'true'
         run: |
           # shallow clone upstream; no submodules
           git clone --depth=1 --no-single-branch https://github.com/darkseal-org/lol-skins.git upstream
 
       - name: Generate manifest.json (stream items to temp file)
+        if: steps.check_upstream.outputs.changed == 'true'
         run: |
           set -euo pipefail
           cd upstream
@@ -85,6 +110,7 @@ jobs:
           rm -f "${TMP_ITEMS}"
 
       - name: Commit and push manifest (if changed)
+        if: steps.check_upstream.outputs.changed == 'true'
         env:
           GHTOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
