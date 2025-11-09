@@ -59241,5 +59241,15 @@
       "sha256": "d3fcd321a0ea994bf112257f6b13b3c3124d809f98671afe871f4d8db5de0c2c",
       "commit": "2fb6ba94312d8415bfa15c32fd35687d3ab6366e"
     }
+  ],
+  "external_releases": [
+    {
+      "repo": "LeagueToolkit/cslol-manager",
+      "tag_name": "2025-11-02-4d6f7f2",
+      "asset_name": "cslol-manager.zip",
+      "browser_download_url": "https://github.com/LeagueToolkit/cslol-manager/releases/download/2025-11-02-4d6f7f2/cslol-manager.zip",
+      "size": 42397837,
+      "sha256": ""
+    }
   ]
 }
