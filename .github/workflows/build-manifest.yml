@@ -15,7 +15,7 @@ jobs:
       - name: Prepare environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq coreutils git
+          sudo apt-get install -y jq coreutils git curl
 
       - name: Configure git user
         run: |
@@ -26,6 +26,47 @@ jobs:
         run: |
           # clone own repo into app dir (no actions/checkout used)
           git clone --depth=1 "https://github.com/${{ github.repository }}.git" app
+          mkdir -p app/tmp
+
+      - name: Fetch external releases info (always)
+        id: fetch_releases
+        run: |
+          set -euo pipefail
+          TMP_RELEASES="app/tmp/external_releases.json"
+          REPO="LeagueToolkit/cslol-manager"
+          API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+
+          AUTH_HEADER=""
+          if [ -n "${GITHUB_TOKEN:-}" ]; then
+            AUTH_HEADER="-H \"Authorization: token ${GITHUB_TOKEN}\""
+          fi
+
+          # Try to fetch release info; produce a JSON array (possibly empty)
+          release_json=$(eval "curl -s -H \"Accept: application/vnd.github+json\" ${AUTH_HEADER} \"${API_URL}\"" 2>/dev/null || true)
+
+          tag=$(echo "$release_json" | jq -r '.tag_name // empty' 2>/dev/null || echo "")
+          asset_name=$(echo "$release_json" | jq -r '.assets[0].name // empty' 2>/dev/null || echo "")
+          asset_url=$(echo "$release_json" | jq -r '.assets[0].browser_download_url // empty' 2>/dev/null || echo "")
+          asset_size=$(echo "$release_json" | jq -r '.assets[0].size // 0' 2>/dev/null || echo 0)
+
+          if [ -n "$tag" ] && [ -n "$asset_url" ]; then
+            cat > "${TMP_RELEASES}" <<EOF
+[
+  {
+    "repo": "${REPO}",
+    "tag_name": "${tag}",
+    "asset_name": "${asset_name}",
+    "browser_download_url": "${asset_url}",
+    "size": ${asset_size},
+    "sha256": ""
+  }
+]
+EOF
+            echo "wrote ${TMP_RELEASES}"
+          else
+            echo "No release info found or fetch failed; writing empty array to ${TMP_RELEASES}"
+            echo "[]" > "${TMP_RELEASES}"
+          fi
 
       - name: Check upstream commit and skip build if unchanged
         id: check_upstream
@@ -34,18 +75,16 @@ jobs:
 
           current_commit=""
           if [ -f app/docs/manifest.json ]; then
-            # extract SHA after the @ in source_repo (e.g. owner/repo@<sha>)
             current_commit=$(jq -r '.source_repo' app/docs/manifest.json 2>/dev/null | sed -E 's/.*@(.+)$/\1/' || true)
           fi
 
-          # cheap remote check
-          remote_commit=$(git ls-remote https://github.com/darkseal-org/lol-skins.git refs/heads/main | cut -f1)
+          remote_commit=$(git ls-remote https://github.com/darkseal-org/lol-skins.git refs/heads/main | cut -f1 || true)
 
-          echo "current_commit=$current_commit remote_commit=$remote_commit"
+          echo "current_commit=${current_commit} remote_commit=${remote_commit}"
 
           if [ -n "$current_commit" ] && [ "$current_commit" = "$remote_commit" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
-            echo "No upstream changes (manifest already at $current_commit). Skipping heavy manifest build."
+            echo "No upstream changes (manifest already at ${current_commit})."
           else
             echo "changed=true" >> $GITHUB_OUTPUT
           fi
@@ -64,12 +103,10 @@ jobs:
           SRC_SHA=$(git rev-parse HEAD)
           SRC_BRANCH="main"
 
-          # create a temp file for the items array
           TMP_ITEMS="$(mktemp)"
           echo "[" > "${TMP_ITEMS}"
           first=true
 
-          # Find .zip and .fantome files and append JSON objects to TMP_ITEMS
           while IFS= read -r f; do
             size=$(stat -c%s "$f")
             sha256=$(sha256sum "$f" | cut -d' ' -f1)
@@ -92,35 +129,64 @@ jobs:
 
           echo "]" >> "${TMP_ITEMS}"
 
-          # ensure app/docs exists
           cd ../app
           mkdir -p docs
 
-          # Build final manifest using --slurpfile to include the items array safely
-          jq -n --slurpfile items "${TMP_ITEMS}" \
+          # Build final manifest including external_releases
+          jq -n --slurpfile items "${TMP_ITEMS}" --slurpfile releases "tmp/external_releases.json" \
             --arg gen "$(date -u +%FT%TZ)" \
             --arg repo "darkseal-org/lol-skins@${SRC_SHA}" \
             --arg branch "${SRC_BRANCH}" \
             --arg license_url "https://github.com/darkseal-org/lol-skins/blob/main/LICENSE" \
             --arg source_url "https://github.com/darkseal-org/lol-skins" \
             --arg attribution "Skins © their respective creators. DSCL license applies. Not affiliated with or endorsed by Dark Seal or Riot Games." \
-            '{schema:1, generated_at:$gen, source_repo:$repo, branch:$branch, license:$license_url, source:$source_url, attribution:$attribution, items: $items[0]}' \
+            '{schema:1, generated_at:$gen, source_repo:$repo, branch:$branch, license:$license_url, source:$source_url, attribution:$attribution, items: $items[0], external_releases: $releases[0] }' \
             > docs/manifest.json
 
           rm -f "${TMP_ITEMS}"
 
-      - name: Commit and push manifest (if changed)
+      - name: Merge external_releases into existing manifest (if upstream unchanged)
+        if: steps.check_upstream.outputs.changed == 'false'
+        run: |
+          set -euo pipefail
+          cd app
+          # Ensure docs exists
+          if [ ! -f docs/manifest.json ]; then
+            echo "No existing manifest.json found; nothing to merge."
+            exit 0
+          fi
+
+          RELEASES_FILE="tmp/external_releases.json"
+          # create a new manifest by replacing/adding the external_releases field
+          jq --slurpfile releases "${RELEASES_FILE}" '. + { external_releases: ($releases[0] // []) }' docs/manifest.json > docs/manifest.new.json
+          mv docs/manifest.new.json docs/manifest.json
+
+      - name: Commit and push manifest (if changed) (upstream changed)
         if: steps.check_upstream.outputs.changed == 'true'
         env:
           GHTOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd app
-          # use token auth to push changes back to repo
           git remote set-url origin "https://x-access-token:${GHTOKEN}@github.com/${{ github.repository }}.git"
           git add docs/manifest.json || true
           if git diff --staged --quiet; then
             echo "No changes to manifest.json"
           else
             git commit -m "chore: update lol-skins manifest"
+            git push origin HEAD:main
+          fi
+
+      - name: Commit and push manifest (if changed) (upstream unchanged - external_releases)
+        if: steps.check_upstream.outputs.changed == 'false'
+        env:
+          GHTOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd app
+          git remote set-url origin "https://x-access-token:${GHTOKEN}@github.com/${{ github.repository }}.git"
+          git add docs/manifest.json || true
+          if git diff --staged --quiet; then
+            echo "No changes to manifest.json (external_releases unchanged)"
+          else
+            git commit -m "chore: update external_releases in manifest"
             git push origin HEAD:main
           fi
