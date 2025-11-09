@@ -131,7 +131,7 @@ EOF
           cd ../app
           mkdir -p docs
 
-          # Build final manifest including external_releases
+          # Build final manifest including external_releases (from app/tmp)
           jq -n --slurpfile items "${TMP_ITEMS}" --slurpfile releases "tmp/external_releases.json" \
             --arg gen "$(date -u +%FT%TZ)" \
             --arg repo "darkseal-org/lol-skins@${SRC_SHA}" \
