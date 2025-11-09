@@ -36,13 +36,12 @@ jobs:
           REPO="LeagueToolkit/cslol-manager"
           API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
-          AUTH_HEADER=""
+          # Use authenticated request when GITHUB_TOKEN is available to avoid strict rate limits
           if [ -n "${GITHUB_TOKEN:-}" ]; then
-            AUTH_HEADER="-H \"Authorization: token ${GITHUB_TOKEN}\""
+            release_json=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token ${GITHUB_TOKEN}" "${API_URL}" || true)
+          else
+            release_json=$(curl -s -H "Accept: application/vnd.github+json" "${API_URL}" || true)
           fi
-
-          # Try to fetch release info; produce a JSON array (possibly empty)
-          release_json=$(eval "curl -s -H \"Accept: application/vnd.github+json\" ${AUTH_HEADER} \"${API_URL}\"" 2>/dev/null || true)
 
           tag=$(echo "$release_json" | jq -r '.tag_name // empty' 2>/dev/null || echo "")
           asset_name=$(echo "$release_json" | jq -r '.assets[0].name // empty' 2>/dev/null || echo "")
@@ -150,14 +149,12 @@ EOF
         run: |
           set -euo pipefail
           cd app
-          # Ensure docs exists
           if [ ! -f docs/manifest.json ]; then
             echo "No existing manifest.json found; nothing to merge."
             exit 0
           fi
 
           RELEASES_FILE="tmp/external_releases.json"
-          # create a new manifest by replacing/adding the external_releases field
           jq --slurpfile releases "${RELEASES_FILE}" '. + { external_releases: ($releases[0] // []) }' docs/manifest.json > docs/manifest.new.json
           mv docs/manifest.new.json docs/manifest.json
 
