@@ -24,12 +24,13 @@ jobs:
 
       - name: Clone this repository (app)
         run: |
-          # clone own repo into app dir (no actions/checkout used)
           git clone --depth=1 "https://github.com/${{ github.repository }}.git" app
           mkdir -p app/tmp
 
       - name: Fetch external releases info (always)
         id: fetch_releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TMP_RELEASES="app/tmp/external_releases.json"
@@ -37,13 +38,13 @@ jobs:
           API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
           # Auth when available to avoid strict rate limits
-          if [ -n "${GITHUB_TOKEN:-}" ]; then
-            release_json="$(curl -sS -H 'Accept: application/vnd.github+json' -H "Authorization: Bearer ${GITHUB_TOKEN}" "${API_URL}" || true)"
+          if [ -n "${GH_TOKEN:-}" ]; then
+            release_json="$(curl -sS -H 'Accept: application/vnd.github+json' -H "Authorization: Bearer ${GH_TOKEN}" "${API_URL}" || true)"
           else
             release_json="$(curl -sS -H 'Accept: application/vnd.github+json' "${API_URL}" || true)"
           fi
 
-          # Pick the cslol-manager.zip asset specifically (fallbacks to first asset if not present)
+          # Parse; prefer cslol-manager.zip, fallback to first asset
           tag="$(echo "${release_json}" | jq -r '.tag_name // empty')"
           asset_name="$(echo "${release_json}" | jq -r '.assets[]? | select(.name=="cslol-manager.zip") | .name' | head -n1)"
           if [ -z "${asset_name}" ]; then
@@ -53,18 +54,18 @@ jobs:
           if [ -z "${asset_url}" ]; then
             asset_url="$(echo "${release_json}" | jq -r '.assets[0]?.browser_download_url // empty')"
           fi
-          asset_size="$(echo "${release_json}" | jq -r '.assets[]? | select(.name=="cslol-manager.zip") | .size' | head -n1)"
-          if [ -z "${asset_size}" ] || ! [[ "${asset_size}" =~ ^[0-9]+$ ]]; then
-            asset_size=0
+          asset_size_raw="$(echo "${release_json}" | jq -r '.assets[]? | select(.name=="cslol-manager.zip") | .size' | head -n1)"
+          if [ -z "${asset_size_raw}" ] || ! [[ "${asset_size_raw}" =~ ^[0-9]+$ ]]; then
+            asset_size_raw=0
           fi
 
-          # Write a JSON array ([] if missing/failed)
+          # Write JSON array ([] if missing)
           jq -n \
             --arg repo "${REPO}" \
             --arg tag "${tag}" \
             --arg asset_name "${asset_name}" \
             --arg url "${asset_url}" \
-            --argjson size "${asset_size}" \
+            --argjson size "${asset_size_raw}" \
             'if ($tag != "" and $url != "") then
                [{repo:$repo, tag_name:$tag, asset_name:$asset_name, browser_download_url:$url, size:$size, sha256:""}]
              else
@@ -77,16 +78,12 @@ jobs:
         id: check_upstream
         run: |
           set -euo pipefail
-
           current_commit=""
           if [ -f app/docs/manifest.json ]; then
             current_commit=$(jq -r '.source_repo' app/docs/manifest.json 2>/dev/null | sed -E 's/.*@(.+)$/\1/' || true)
           fi
-
           remote_commit=$(git ls-remote https://github.com/darkseal-org/lol-skins.git refs/heads/main | cut -f1 || true)
-
           echo "current_commit=${current_commit} remote_commit=${remote_commit}"
-
           if [ -n "$current_commit" ] && [ "$current_commit" = "$remote_commit" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
             echo "No upstream changes (manifest already at ${current_commit})."
@@ -97,7 +94,6 @@ jobs:
       - name: Clone upstream lol-skins
         if: steps.check_upstream.outputs.changed == 'true'
         run: |
-          # shallow clone upstream; no submodules
           git clone --depth=1 --no-single-branch https://github.com/darkseal-org/lol-skins.git upstream
 
       - name: Generate manifest.json (stream items to temp file)
@@ -117,12 +113,7 @@ jobs:
             sha256=$(sha256sum "$f" | cut -d' ' -f1)
             last_commit=$(git log -1 --format=%H -- "$f")
             url="https://raw.githubusercontent.com/darkseal-org/lol-skins/${SRC_BRANCH}/${f}"
-            obj=$(jq -n \
-              --arg path "$f" \
-              --arg url "$url" \
-              --arg size "$size" \
-              --arg sha "$sha256" \
-              --arg commit "$last_commit" \
+            obj=$(jq -n --arg path "$f" --arg url "$url" --arg size "$size" --arg sha "$sha256" --arg commit "$last_commit" \
               '{path:$path, url:$url, size: ($size|tonumber), sha256:$sha, commit:$commit}')
             if [ "$first" = true ]; then
               echo "$obj" >> "${TMP_ITEMS}"
@@ -137,7 +128,7 @@ jobs:
           cd ../app
           mkdir -p docs
 
-          # Build final manifest including external_releases (from app/tmp)
+          # Build final manifest including external_releases
           jq -n --slurpfile items "${TMP_ITEMS}" --slurpfile releases "tmp/external_releases.json" \
             --arg gen "$(date -u +%FT%TZ)" \
             --arg repo "darkseal-org/lol-skins@${SRC_SHA}" \
@@ -159,9 +150,10 @@ jobs:
             echo "No existing manifest.json found; nothing to merge."
             exit 0
           fi
-
           RELEASES_FILE="tmp/external_releases.json"
-          jq --slurpfile releases "${RELEASES_FILE}" '. + { external_releases: ($releases[0] // []) }' docs/manifest.json > docs/manifest.new.json
+          jq --slurpfile releases "${RELEASES_FILE}" \
+            '. + { external_releases: ($releases[0] // []) }' \
+            docs/manifest.json > docs/manifest.new.json
           mv docs/manifest.new.json docs/manifest.json
 
       - name: Commit and push manifest (if changed) (upstream changed)
