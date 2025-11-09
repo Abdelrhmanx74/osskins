@@ -36,36 +36,42 @@ jobs:
           REPO="LeagueToolkit/cslol-manager"
           API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
-          # Use authenticated request when GITHUB_TOKEN is available to avoid strict rate limits
+          # Auth when available to avoid strict rate limits
           if [ -n "${GITHUB_TOKEN:-}" ]; then
-            release_json=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token ${GITHUB_TOKEN}" "${API_URL}" || true)
+            release_json="$(curl -sS -H 'Accept: application/vnd.github+json' -H "Authorization: Bearer ${GITHUB_TOKEN}" "${API_URL}" || true)"
           else
-            release_json=$(curl -s -H "Accept: application/vnd.github+json" "${API_URL}" || true)
+            release_json="$(curl -sS -H 'Accept: application/vnd.github+json' "${API_URL}" || true)"
           fi
 
-          tag=$(echo "$release_json" | jq -r '.tag_name // empty' 2>/dev/null || echo "")
-          asset_name=$(echo "$release_json" | jq -r '.assets[0].name // empty' 2>/dev/null || echo "")
-          asset_url=$(echo "$release_json" | jq -r '.assets[0].browser_download_url // empty' 2>/dev/null || echo "")
-          asset_size=$(echo "$release_json" | jq -r '.assets[0].size // 0' 2>/dev/null || echo 0)
-
-          if [ -n "$tag" ] && [ -n "$asset_url" ]; then
-            cat > "${TMP_RELEASES}" <<EOF
-[
-  {
-    "repo": "${REPO}",
-    "tag_name": "${tag}",
-    "asset_name": "${asset_name}",
-    "browser_download_url": "${asset_url}",
-    "size": ${asset_size},
-    "sha256": ""
-  }
-]
-EOF
-            echo "wrote ${TMP_RELEASES}"
-          else
-            echo "No release info found or fetch failed; writing empty array to ${TMP_RELEASES}"
-            echo "[]" > "${TMP_RELEASES}"
+          # Pick the cslol-manager.zip asset specifically (fallbacks to first asset if not present)
+          tag="$(echo "${release_json}" | jq -r '.tag_name // empty')"
+          asset_name="$(echo "${release_json}" | jq -r '.assets[]? | select(.name=="cslol-manager.zip") | .name' | head -n1)"
+          if [ -z "${asset_name}" ]; then
+            asset_name="$(echo "${release_json}" | jq -r '.assets[0]?.name // empty')"
           fi
+          asset_url="$(echo "${release_json}" | jq -r '.assets[]? | select(.name=="cslol-manager.zip") | .browser_download_url' | head -n1)"
+          if [ -z "${asset_url}" ]; then
+            asset_url="$(echo "${release_json}" | jq -r '.assets[0]?.browser_download_url // empty')"
+          fi
+          asset_size="$(echo "${release_json}" | jq -r '.assets[]? | select(.name=="cslol-manager.zip") | .size' | head -n1)"
+          if [ -z "${asset_size}" ] || ! [[ "${asset_size}" =~ ^[0-9]+$ ]]; then
+            asset_size=0
+          fi
+
+          # Write a JSON array ([] if missing/failed)
+          jq -n \
+            --arg repo "${REPO}" \
+            --arg tag "${tag}" \
+            --arg asset_name "${asset_name}" \
+            --arg url "${asset_url}" \
+            --argjson size "${asset_size}" \
+            'if ($tag != "" and $url != "") then
+               [{repo:$repo, tag_name:$tag, asset_name:$asset_name, browser_download_url:$url, size:$size, sha256:""}]
+             else
+               []
+             end' > "${TMP_RELEASES}"
+
+          echo "external_releases written to ${TMP_RELEASES}"
 
       - name: Check upstream commit and skip build if unchanged
         id: check_upstream
