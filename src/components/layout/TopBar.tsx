@@ -3,6 +3,7 @@
 import { ChampionSearch } from "@/components/ChampionSearch";
 import { DownloadingModal } from "@/components/DownloadingModal";
 import { InjectionStatusDot } from "@/components/InjectionStatusDot";
+import { ButtonInjection } from "@/components/button-injection";
 import PartyModeDialog from "@/components/PartyModeDialog";
 // Print logs moved into Settings dialog
 import { SettingsDialog } from "@/components/SettingsDialog";
@@ -174,8 +175,12 @@ export function TopBar({
               <TabsTrigger value="custom">{t("tabs.custom")}</TabsTrigger>
             </TabsList>
           </Tabs>
-          {/* show injection status marker; manual controls moved into the tabs area */}
-          <InjectionStatusDot showLabel bordered />
+          {/* Show status dot in auto mode, injection button in manual mode */}
+          {manualInjectionMode ? (
+            <ButtonInjection />
+          ) : (
+            <InjectionStatusDot showLabel bordered />
+          )}
           {/* Party Mode indicator */}
           {pairedFriendsCount > 0 && (
             <TooltipProvider>

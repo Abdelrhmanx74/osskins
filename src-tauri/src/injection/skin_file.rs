@@ -6,10 +6,108 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use walkdir::WalkDir;
 use zip::ZipArchive;
+use serde_json::Value;
 
 // Fantome file processing operations
 
 impl crate::injection::core::SkinInjector {
+  fn sanitize_for_file_name(&self, s: &str) -> String {
+    let mut out = s.to_lowercase().trim().to_string();
+    // Replace forbidden/special characters and spaces with '_'
+    out = out
+      .chars()
+      .map(|c| match c {
+        '/' | '\\' | ':' | '?' | '*' | '"' | '<' | '>' | '|' | '(' | ')' | '\'' | ' ' => '_',
+        _ => c,
+      })
+      .collect::<String>();
+    // Collapse multiple underscores
+    let mut collapsed = String::with_capacity(out.len());
+    let mut prev_us = false;
+    for ch in out.chars() {
+      if ch == '_' {
+        if !prev_us { collapsed.push('_'); }
+        prev_us = true;
+      } else {
+        collapsed.push(ch);
+        prev_us = false;
+      }
+    }
+    // Trim leading/trailing underscores
+    collapsed.trim_matches('_').to_string()
+  }
+
+  fn derive_skin_path_from_champion_data(
+    &mut self,
+    skin: &Skin,
+    skin_file_files_dir: &Path,
+  ) -> Option<PathBuf> {
+    let champions_dir = skin_file_files_dir;
+    if !champions_dir.exists() {
+      return None;
+    }
+
+    // Iterate champion directories and try to find matching champion_id in JSON
+    let rd = fs::read_dir(champions_dir).ok()?;
+    for entry in rd.flatten() {
+      let dir_path = entry.path();
+      if !dir_path.is_dir() { continue; }
+      let dir_name = match dir_path.file_name().and_then(|n| n.to_str()) { Some(s) => s, None => continue };
+      let json_path = dir_path.join(format!("{}.json", dir_name));
+      if !json_path.exists() { continue; }
+      let Ok(contents) = fs::read_to_string(&json_path) else { continue };
+      let Ok(value) = serde_json::from_str::<Value>(&contents) else { continue };
+      let champ_id = value.get("id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+      if champ_id != skin.champion_id { continue; }
+
+      // Found champion. Now find the skin by id, and optional chroma by id
+      let skins = match value.get("skins").and_then(|v| v.as_array()) { Some(a) => a, None => continue };
+      let mut skin_name_opt: Option<String> = None;
+      let mut chroma_suffix: Option<String> = None;
+      for s in skins {
+        let sid = s.get("id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+        if sid != skin.skin_id { continue; }
+        let sname = s.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        skin_name_opt = Some(sname.to_string());
+        if let (Some(chroma_id), Some(chromas)) = (skin.chroma_id, s.get("chromas").and_then(|v| v.as_array())) {
+          for c in chromas {
+            let cid = c.get("id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            if cid == chroma_id {
+              chroma_suffix = Some(format!("_chroma_{}", chroma_id));
+              break;
+            }
+          }
+        }
+        break;
+      }
+
+      if let Some(skin_name) = skin_name_opt {
+        let skin_stem = self.sanitize_for_file_name(&skin_name);
+        let file_name = match chroma_suffix.as_deref() {
+          Some(sfx) => format!("{}{}.zip", skin_stem, sfx),
+          None => format!("{}.zip", skin_stem),
+        };
+        let champion_dir = dir_path; // already sanitized dir
+        let candidate = champion_dir.join(&file_name);
+        self.log(&format!(
+          "[FALLBACK] Derived candidate from champion data: {}",
+          candidate.display()
+        ));
+        if candidate.exists() {
+          return Some(candidate);
+        }
+        // Also try .skin_file extension just in case
+        let alt = champion_dir.join(match chroma_suffix.as_deref() {
+          Some(sfx) => format!("{}{}.skin_file", skin_stem, sfx),
+          None => format!("{}.skin_file", skin_stem),
+        });
+        if alt.exists() {
+          return Some(alt);
+        }
+      }
+    }
+    None
+  }
   // Extract .skin_file file (similar to utility::unzip in CSLOL Manager)
   pub(crate) fn extract_skin_file(
     &mut self,
@@ -263,8 +361,24 @@ impl crate::injection::core::SkinInjector {
         "❌ Fantome file not found for skin (champion: {}, skin: {})",
         skin.champion_id, skin.skin_id
       ));
+      // Try deriving from stored champion data as a fallback
+      if let Some(derived) = self.derive_skin_path_from_champion_data(skin, skin_file_files_dir) {
+        self.log(&format!(
+          "✅ Fallback resolved via champion data: {}",
+          derived.display()
+        ));
+        return Ok(Some(derived));
+      }
     } else {
       self.log("❌ No skin_file path provided in skin data");
+      // Derive from stored champion JSON (first selection robustness)
+      if let Some(derived) = self.derive_skin_path_from_champion_data(skin, skin_file_files_dir) {
+        self.log(&format!(
+          "✅ Derived skin path from champion data: {}",
+          derived.display()
+        ));
+        return Ok(Some(derived));
+      }
     }
     Ok(None)
   }

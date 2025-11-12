@@ -59,6 +59,13 @@ export function useInitialization() {
           setLeaguePath(league_path);
 
           // preload skin selections
+          const loadedSelections: Array<{
+            champion_id: number;
+            skin_id: number;
+            chroma_id?: number;
+            skin_file?: string;
+          }> = [];
+
           (skins ?? []).forEach((s: unknown) => {
             if (
               typeof s === "object" &&
@@ -72,6 +79,7 @@ export function useInitialization() {
                 chroma_id?: number;
                 skin_file?: string;
               };
+              loadedSelections.push(skinObj);
               selectSkin(
                 skinObj.champion_id,
                 skinObj.skin_id,
@@ -80,6 +88,43 @@ export function useInitialization() {
               );
             }
           });
+
+          // Enrich any loaded selections missing skin_file using stored champion data
+          try {
+            const dataExists = await invoke<boolean>("check_champions_data");
+            if (dataExists && loadedSelections.length > 0) {
+              const raw = await invoke<string>("get_champion_data", {
+                championId: 0,
+              });
+              const champions = JSON.parse(raw) as Array<{
+                id: number;
+                skins: Array<{
+                  id: number;
+                  skin_file?: string;
+                  chromas?: Array<{ id: number; skin_file?: string }>;
+                }>;
+                name: string;
+              }>;
+
+              for (const sel of loadedSelections) {
+                if (!sel.skin_file) {
+                  const champ = champions.find((c) => c.id === sel.champion_id);
+                  const skin = champ?.skins.find((sk) => sk.id === sel.skin_id);
+                  let resolved: string | undefined = undefined;
+                  if (sel.chroma_id && skin?.chromas && skin.chromas.length > 0) {
+                    resolved = skin.chromas.find((c) => c.id === sel.chroma_id)?.skin_file;
+                  }
+                  resolved ??= skin?.skin_file;
+                  if (resolved) {
+                    // Update store selection with resolved path
+                    selectSkin(sel.champion_id, sel.skin_id, sel.chroma_id, resolved);
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("[Init] Failed to enrich selections with skin_file", e);
+          }
 
           // Load favorites
           if (favorites) {
