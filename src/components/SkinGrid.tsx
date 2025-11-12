@@ -23,7 +23,7 @@ export function SkinGrid({ champion, searchQuery = "" }: SkinGridProps) {
   if (filteredSkins.length === 0 && searchQuery.trim()) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
-        No skins found matching "{searchQuery}"
+        No skins found matching &quot;{searchQuery}&quot;
       </div>
     );
   }

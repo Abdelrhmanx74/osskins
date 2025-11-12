@@ -60,72 +60,71 @@ impl SkinInjector {
     // Look for mod-tools executable in multiple locations
     let mut mod_tools_path = None;
 
-    // Check in resource directory and bundled cslol-tools subfolder
-    if let Ok(resource_dir) = app_handle.path().resource_dir() {
-      // Direct resource root
-      let direct = resource_dir.join("mod-tools.exe");
-      if direct.exists() {
-        mod_tools_path = Some(direct.clone());
-      }
-      // Bundled under cslol-tools folder
-      let sub = resource_dir.join("cslol-tools").join("mod-tools.exe");
-      if sub.exists() {
-        mod_tools_path = Some(sub.clone());
+    // Prefer tools downloaded/managed by the app in app data directories
+
+    if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
+      let candidate = app_data_dir.join("cslol-tools").join("mod-tools.exe");
+
+      if candidate.exists() {
+        mod_tools_path = Some(candidate);
       }
     }
 
-    // Check next to the app executable
+    // Tauri's app-local directory is used by some installers; check there as well
     if mod_tools_path.is_none() {
       if let Ok(app_local_dir) = app_handle.path().app_local_data_dir() {
-        let candidate = app_local_dir.join("mod-tools.exe");
-        if candidate.exists() {
-          mod_tools_path = Some(candidate);
+        let managed = app_local_dir.join("cslol-tools").join("mod-tools.exe");
+
+        if managed.exists() {
+          mod_tools_path = Some(managed);
         }
       }
     }
 
-    // Check in CSLOL directory
+    // Legacy installers might have dropped mod-tools.exe directly in app-local data
     if mod_tools_path.is_none() {
       if let Ok(app_local_dir) = app_handle.path().app_local_data_dir() {
-        // Try looking in cslol-tools subdirectory
-        let candidate = app_local_dir.join("cslol-tools").join("mod-tools.exe");
-        if candidate.exists() {
-          mod_tools_path = Some(candidate);
-        }
-
-        // Try looking in the original CSLOL Manager directory
-        let candidate = app_local_dir
-          .join("..")
-          .join("cslol-manager-2024-10-27-401067d-prerelease")
-          .join("cslol-tools")
-          .join("mod-tools.exe");
-        if candidate.exists() {
-          mod_tools_path = Some(candidate.canonicalize().unwrap_or(candidate));
+        let legacy_single = app_local_dir.join("mod-tools.exe");
+        if legacy_single.exists() {
+          mod_tools_path = Some(legacy_single);
         }
       }
     }
 
-    // Fallback: look relative to current executable location
+    // Fall back to bundled resources shipped with the app
+    if mod_tools_path.is_none() {
+      if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        let direct = resource_dir.join("mod-tools.exe");
+        if direct.exists() {
+          mod_tools_path = Some(direct);
+        }
+        if mod_tools_path.is_none() {
+          let bundled = resource_dir.join("cslol-tools").join("mod-tools.exe");
+          if bundled.exists() {
+            mod_tools_path = Some(bundled);
+          }
+        }
+      }
+    }
+
+    // Finally search near the running executable (useful in dev environments)
     if mod_tools_path.is_none() {
       if let Ok(exe_path) = env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
-          // Common bundled structure: cslol-tools/*
-          let cand1 = exe_dir.join("cslol-tools").join("mod-tools.exe");
-          if cand1.exists() {
-            mod_tools_path = Some(cand1.clone());
-          }
-          // Next to exe in resources folder
-          let cand2 = exe_dir
-            .join("resources")
-            .join("cslol-tools")
-            .join("mod-tools.exe");
-          if cand2.exists() {
-            mod_tools_path = Some(cand2.clone());
-          }
-          // Directly in exe directory
-          let cand3 = exe_dir.join("mod-tools.exe");
-          if cand3.exists() {
-            mod_tools_path = Some(cand3.clone());
+          let candidates = [
+            exe_dir.join("cslol-tools").join("mod-tools.exe"),
+            exe_dir
+              .join("resources")
+              .join("cslol-tools")
+              .join("mod-tools.exe"),
+            exe_dir.join("mod-tools.exe"),
+          ];
+          for candidate in &candidates {
+            if candidate.exists() {
+              mod_tools_path = Some(candidate.clone());
+
+              break;
+            }
           }
         }
       }

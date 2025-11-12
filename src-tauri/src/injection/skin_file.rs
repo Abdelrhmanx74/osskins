@@ -372,10 +372,9 @@ impl crate::injection::core::SkinInjector {
       .unwrap_or_default()
       .to_string_lossy()
       .to_string();
-    // Use timestamp_nanos_opt when available; fall back to timestamp_nanos() for older chrono
-    let unique_suffix = chrono::Local::now()
-      .timestamp_nanos_opt()
-      .unwrap_or_else(|| chrono::Local::now().timestamp_nanos());
+    // Generate unique suffix using timestamp and subsecond nanoseconds
+    let now = chrono::Local::now();
+    let unique_suffix = now.timestamp() * 1_000_000_000 + now.timestamp_subsec_nanos() as i64;
     let extract_dir = self
       .app_dir
       .join("temp")
@@ -440,9 +439,22 @@ pub fn copy_default_overlay(
   destination: &Path,
 ) -> Result<bool, InjectionError> {
   // Check if we have a pre-built overlay in resources
+  let mut overlay_sources = Vec::new();
+
+  if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
+    overlay_sources.push(app_data_dir.join("cslol-tools").join("empty_overlay"));
+  }
+
+  if let Ok(app_local_dir) = app_handle.path().app_local_data_dir() {
+    overlay_sources.push(app_local_dir.join("cslol-tools").join("empty_overlay"));
+  }
+
   if let Ok(resource_dir) = app_handle.path().resource_dir() {
-    // First check in cslol-tools subfolder
-    let default_overlay = resource_dir.join("cslol-tools").join("empty_overlay");
+    overlay_sources.push(resource_dir.join("cslol-tools").join("empty_overlay"));
+    overlay_sources.push(resource_dir.join("empty_overlay"));
+  }
+
+  for default_overlay in overlay_sources {
     if default_overlay.exists() && default_overlay.is_dir() {
       println!("Found pre-built overlay at: {}", default_overlay.display());
 

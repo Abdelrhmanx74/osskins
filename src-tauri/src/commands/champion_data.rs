@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
+use std::time::Duration;
 
 const LOL_SKINS_MANIFEST_URL: &str = "https://abdelrhmanx74.github.io/osskins/manifest.json";
 
@@ -43,10 +44,19 @@ fn extract_manifest_commit(manifest: &LolSkinsManifest) -> Option<String> {
 }
 
 async fn fetch_latest_manifest() -> Result<LolSkinsManifest, String> {
-  let client = reqwest::Client::new();
+  // Use a tuned HTTP client so we fail fast on poor networks and let the UI fallback
+  let client = reqwest::Client::builder()
+    .connect_timeout(Duration::from_secs(5))
+    .timeout(Duration::from_secs(10))
+    .pool_idle_timeout(Duration::from_secs(30))
+    .build()
+    .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
   let resp = client
     .get(LOL_SKINS_MANIFEST_URL)
     .header("User-Agent", "osskins-tauri")
+    .header("Accept", "application/json")
+    .header("Cache-Control", "no-cache")
     .send()
     .await
     .map_err(|e| format!("Failed to fetch manifest: {}", e))?;
@@ -165,7 +175,13 @@ async fn get_changed_champions_via_github(
     base_sha, head_sha
   );
   println!("[DataUpdate] Comparing commits via: {}", url);
-  let client = reqwest::Client::new();
+  // Apply reasonable timeouts to avoid hanging the UI
+  let client = reqwest::Client::builder()
+    .connect_timeout(Duration::from_secs(5))
+    .timeout(Duration::from_secs(10))
+    .pool_idle_timeout(Duration::from_secs(30))
+    .build()
+    .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
   let mut req = client.get(&url).header("User-Agent", "osskins-tauri");
   if let Ok(token) = std::env::var("GITHUB_TOKEN") {
     if !token.trim().is_empty() {

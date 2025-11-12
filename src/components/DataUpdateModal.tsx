@@ -1,3 +1,4 @@
+
 import {
   Dialog,
   DialogContent,
@@ -15,23 +16,27 @@ interface DataUpdateModalProps {
 
 export function DataUpdateModal({ isOpen, progress }: DataUpdateModalProps) {
   const { t } = useI18n();
-  const getStatusMessage = () => {
-    if (!progress) return t("update.checking");
-
+  const championProgress = progress && progress.totalChampions > 0 ? progress : null;
+  const statusMessage = (() => {
+    if (!progress) {
+      return t("loading.champions_data");
+    }
     switch (progress.status) {
       case "checking":
-        return t("update.checking");
+        return progress.totalChampions === 0
+          ? t("loading.champions_data")
+          : t("update.checking");
       case "downloading":
         return t("update.downloading");
       case "processing":
         return t("update.processing").replace(
           "{champion}",
-          progress.currentChampion || ""
+          progress.currentChampion || "",
         );
       default:
         return t("update.processing_unknown");
     }
-  };
+  })();
 
   return (
     <Dialog open={isOpen}>
@@ -40,14 +45,14 @@ export function DataUpdateModal({ isOpen, progress }: DataUpdateModalProps) {
           <DialogHeader>
             <DialogTitle>{t("loading")}</DialogTitle>
             <p className="text-sm text-muted-foreground">
-              {getStatusMessage()}
+              {statusMessage}
             </p>
           </DialogHeader>
-          {progress && (
+          {championProgress && (
             <div className="space-y-2">
-              <Progress value={progress.progress} />
+              <Progress value={championProgress.progress} />
               <p className="text-xs text-muted-foreground text-right">
-                {progress.processedChampions} of {progress.totalChampions}{" "}
+                {championProgress.processedChampions} of {championProgress.totalChampions}{" "}
                 champions processed
               </p>
             </div>

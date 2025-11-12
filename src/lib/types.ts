@@ -50,6 +50,24 @@ export interface DataUpdateResult {
   updatedChampions?: string[];
 }
 
+export interface EnsureModToolsResult {
+  installed: boolean;
+  updated: boolean;
+  skipped: boolean;
+  version?: string;
+  latestVersion?: string;
+  path?: string;
+}
+
+export interface CslolManagerStatus {
+  installed: boolean;
+  version?: string;
+  latestVersion?: string;
+  hasUpdate: boolean;
+  path?: string;
+  downloadSize?: number;
+}
+
 // Custom skin type for user uploaded skins
 export interface CustomSkin {
   id: string;

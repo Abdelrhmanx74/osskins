@@ -1,12 +1,12 @@
 {
   "name": "osskins",
   "private": false,
-  "version": "1.3.1",
+  "version": "1.5.2",
   "type": "module",
   "scripts": {
     "dev": "next dev",
     "dev:admin": "powershell -Command \"Start-Process -FilePath pnpm -ArgumentList 'tauri dev' -Verb RunAs\"",
-    "build": "next build",
+    "build": "npx next build",
     "start": "next start",
     "lint": "biome check src/ && next lint",
     "tauri": "tauri"
@@ -29,6 +29,7 @@
     "@tauri-apps/plugin-opener": "^2.4.0",
     "@tauri-apps/plugin-updater": "~2",
     "@types/pako": "^2.0.3",
+    "axios": "^1.13.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "fuse.js": "^7.1.0",

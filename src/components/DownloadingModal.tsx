@@ -9,10 +9,36 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import type { DataUpdateProgress, DataUpdateResult } from "@/lib/types";
+import type {
+    DataUpdateProgress,
+    DataUpdateResult,
+} from "@/lib/types";
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState, useTransition } from "react";
+import { getLolSkinsManifest, getLolSkinsManifestCommit } from "@/lib/data-utils";
+import { Loader2 } from "lucide-react";
+import { useCallback, useEffect, useState, useTransition, useRef } from "react";
+import UpdateModal from "@/components/UpdateModal";
 import { toast } from "sonner";
+
+const formatBytes = (bytes: number): string => {
+    if (!Number.isFinite(bytes) || bytes <= 0) {
+        return "0 B";
+    }
+
+    const units = ["B", "KB", "MB", "GB", "TB"] as const;
+    const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const value = bytes / 1024 ** exponent;
+    return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[exponent]}`;
+};
+
+const formatSpeed = (bytesPerSecond?: number): string => {
+    if (!bytesPerSecond || bytesPerSecond <= 0) {
+        return "";
+    }
+    return `${formatBytes(bytesPerSecond)}/s`;
+};
+
+
 
 interface DownloadingModalProps {
     isOpen: boolean;
@@ -38,29 +64,74 @@ export function DownloadingModal({
     const [checkingForUpdates, setCheckingForUpdates] = useState(false);
     const [updatingData, setUpdatingData] = useState(false);
     const [isReinstalling, setIsReinstalling] = useState(false);
+    const [manifestCommit, setManifestCommit] = useState<string | null>(null);
+    const [manifestRepo, setManifestRepo] = useState<string | null>(null);
+    const [manifestGeneratedAt, setManifestGeneratedAt] = useState<string | null>(null);
+
     const isBusy = isUpdating || updatingData || isReinstalling;
+    const modalBusy = isBusy;
 
     // Check for GitHub updates when the modal is opened
     useEffect(() => {
         if (isOpen) {
             checkForUpdates();
+            // attempt to fetch manifest commit info for display
+            void (async () => {
+                try {
+                    const manifest = await getLolSkinsManifest();
+                    if (manifest) {
+                        const commit = getLolSkinsManifestCommit(manifest);
+                        setManifestCommit(commit);
+                        try {
+                            const repoParts = manifest.source_repo.split("@");
+                            // repoParts[0] typically contains owner/repo
+                            setManifestRepo(repoParts[0]);
+                        } catch {
+                            // ignore
+                        }
+                        setManifestGeneratedAt(manifest.generated_at || null);
+                        // commit sha captured; UI will display short sha if available
+                    }
+                } catch (err) {
+                    console.debug("Failed to load manifest for commit info:", err);
+                }
+            })();
         }
     }, [isOpen]);
 
     // Function to check for updates from GitHub
+    // Uses a request-id + timeout to avoid leaving the UI stuck when network is down.
+    const checkRequestId = useRef(0);
     const checkForUpdates = () => {
+        const id = ++checkRequestId.current;
         setCheckingForUpdates(true);
 
         startTransition(async () => {
+            let timerId: number | null = null;
             try {
-                const result = await invoke<DataUpdateResult>("check_data_updates");
+                const p = invoke<DataUpdateResult>("check_data_updates");
+                const timeoutPromise = new Promise<never>((_res, rej) => {
+                    // Give the backend a bit more time but still avoid hanging the UI indefinitely
+                    timerId = window.setTimeout(() => { rej(new Error("timeout")); }, 15000);
+                });
+                const result = await Promise.race([p, timeoutPromise]);
+                // ignore late responses from previous requests
+                if (id !== checkRequestId.current) return;
                 setUpdateResult(result);
                 console.log("Update check result:", result);
             } catch (error) {
                 console.error("Failed to check for updates:", error);
-                toast.error("Failed to check for updates");
+                if ((error as Error).message === "timeout") {
+                    toast.error("Data update check timed out — network may be slow or blocked");
+                } else {
+                    toast.error("Failed to check for updates");
+                }
             } finally {
-                setCheckingForUpdates(false);
+                if (typeof timerId === "number") {
+                    clearTimeout(timerId);
+                }
+                // only clear the visible checking state if this is the latest request
+                if (id === checkRequestId.current) setCheckingForUpdates(false);
             }
         });
     };
@@ -106,13 +177,18 @@ export function DownloadingModal({
         });
     };
 
+    const shortCommit = manifestCommit ? manifestCommit.slice(0, 8) : null;
+    const allowCloseWhenDownloading = Boolean(progress && progress.status === "downloading");
+
     const getStatusMessage = () => {
         if (checkingForUpdates) return "Checking for updates...";
 
         if (progress) {
             switch (progress.status) {
                 case "checking":
-                    return "Checking for updates...";
+                    return progress.totalChampions === 0
+                        ? "Preparing champion data..."
+                        : "Checking for updates...";
                 case "downloading":
                     return "Downloading updates...";
                 case "processing":
@@ -143,155 +219,64 @@ export function DownloadingModal({
         return "Ready";
     };
 
+    const items = updateResult?.updatedChampions && updateResult.updatedChampions.length > 0 ? updateResult.updatedChampions : null;
+
+    const primaryAction = items ? { label: isBusy ? "Updating..." : "Update Now", onClick: pullUpdates, disabled: isBusy } : undefined;
+    const secondaryAction = { label: isReinstalling ? "Reinstalling..." : "Reinstall Data", onClick: handleReinstall, disabled: checkingForUpdates || modalBusy };
+
+    // Build pill meta: include manifest generated date and the number (or names) of updated champions
+    const formatDate = (iso?: string | null) => {
+        if (!iso) return null;
+        try {
+            const d = new Date(iso);
+            return d.toLocaleString();
+        } catch {
+            return iso;
+        }
+    };
+
+    const updatedCount = updateResult?.updatedChampions?.length ?? 0;
+    const champListPreview = updateResult?.updatedChampions && updateResult.updatedChampions.length > 0 ? updateResult.updatedChampions.slice(0, 5).join(", ") : null;
+    const pillMetaParts: string[] = [];
+    const formattedDate = formatDate(manifestGeneratedAt);
+    if (formattedDate) pillMetaParts.push(formattedDate);
+    if (updatedCount > 0) pillMetaParts.push(`${updatedCount} champion${updatedCount > 1 ? "s" : ""}`);
+    if (champListPreview) pillMetaParts.push(champListPreview);
+    const pillMeta = pillMetaParts.length > 0 ? pillMetaParts.join(" • ") : null;
+
+    const upToDateBadge = updateResult && updateResult.success && updatedCount === 0 ? "Up to date" : null;
+    const pill = {
+        label: shortCommit ?? "-",
+        sub: undefined,
+        // show loader inside the pill when either we're performing an update/reinstall
+        // or when we're actively checking for updates. This keeps the modal UI
+        // clean and avoids changing the tertiary button label to "Checking...".
+        loading: modalBusy || checkingForUpdates,
+        badge: upToDateBadge ?? undefined,
+        badgeVariant: upToDateBadge ? "secondary" as const : undefined,
+    };
+
     return (
-        <Dialog
-            open={isOpen}
-            onOpenChange={(open) => {
-                if (!open) onClose();
+        <UpdateModal
+            isOpen={isOpen}
+            title={"Data Updates"}
+            statusMessage={getStatusMessage()}
+            isBusy={modalBusy}
+            progress={progress ? { value: progress.progress, processedChampions: progress.processedChampions, totalChampions: progress.totalChampions, currentChampion: progress.currentChampion } : null}
+            items={items}
+            commit={manifestCommit}
+            pill={pill}
+            pillMeta={pillMeta}
+            // keep the tertiary action label stable and use the pill loader to
+            // indicate checking state. Buttons remain disabled while busy.
+            tertiaryAction={{ label: "Refresh", onClick: checkForUpdates, disabled: checkingForUpdates || modalBusy }}
+            commitRepo={manifestRepo}
+            primaryAction={primaryAction}
+            secondaryAction={secondaryAction}
+            onClose={() => {
+                if (modalBusy && !allowCloseWhenDownloading) return;
+                onClose();
             }}
-        >
-            <DialogContent className="sm:max-w-md">
-                <div className="flex flex-col space-y-4">
-                    <DialogHeader>
-                        <DialogTitle>Data Updates</DialogTitle>
-                        <p className="text-sm text-muted-foreground animate-in fade-in-50 duration-300">
-                            {getStatusMessage()}
-                        </p>
-                    </DialogHeader>
-
-                    {/* Regular progress indicator for initial data download */}
-                    {progress && isBusy && (
-                        <div className="space-y-2 animate-in fade-in-50 duration-300">
-                            <Progress
-                                value={progress.progress}
-                                className={`transition-all duration-300 ${isPending ? "opacity-50" : "opacity-100"}`}
-                            />
-                            <div className="flex justify-between text-xs text-muted-foreground">
-                                <span>{Math.round(progress.progress)}%</span>
-                                <span>
-                                    {progress.processedChampions} of {progress.totalChampions}{" "}
-                                    champions
-                                </span>
-                            </div>
-                            <p className="text-xs text-muted-foreground text-right animate-in slide-in-from-right-5">
-                                {progress.currentChampion &&
-                                    `Currently processing: ${progress.currentChampion}`}
-                            </p>
-                        </div>
-                    )}
-
-                    {/* GitHub update UI */}
-                    {updateResult && (
-                        <div className="space-y-3 animate-in fade-in-50 duration-300">
-                            <div className="grid grid-cols-2 gap-2 text-sm">
-                                <span className="text-muted-foreground">Current Version:</span>
-                                <span className="font-mono">
-                                    {/* Legacy: show nothing, or fallback to success/error */}
-                                    {updateResult.success ? "Up to date" : "Not installed"}
-                                </span>
-
-                                <span className="text-muted-foreground">Latest Version:</span>
-                                <span className="font-mono">
-                                    {/* No available_version in type, fallback to success/error */}
-                                    {updateResult.success ? "Up to date" : "Unknown"}
-                                </span>
-                            </div>
-
-                            {/* No has_update in type, fallback to error/success logic */}
-                            {updateResult.error ||
-                                (updateResult.updatedChampions &&
-                                    updateResult.updatedChampions.length > 0) ? (
-                                <div className="rounded-md bg-muted/50 p-3 border border-border">
-                                    <p className="text-sm font-medium mb-1">Update Available</p>
-                                    <p className="text-xs text-muted-foreground mb-3">
-                                        {updateResult.error ??
-                                            "New data updates are available for download."}
-                                    </p>
-                                    {updateResult.updatedChampions &&
-                                        updateResult.updatedChampions.length > 0 && (
-                                            <div className="mb-3 space-y-1 text-xs text-muted-foreground">
-                                                <p className="font-medium text-foreground">
-                                                    Pending champions:
-                                                </p>
-                                                <ul className="grid gap-1 pl-4 list-disc">
-                                                    {updateResult.updatedChampions.map((champion) => (
-                                                        <li key={champion}>{champion}</li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        )}
-                                    <Button
-                                        size="sm"
-                                        className="w-full"
-                                        disabled={isBusy}
-                                        onClick={pullUpdates}
-                                    >
-                                        {isBusy ? "Updating..." : "Update Now"}
-                                    </Button>
-                                </div>
-                            ) : (
-                                <div className="rounded-md bg-muted/50 p-3 border border-border">
-                                    <p className="text-sm font-medium flex items-center gap-2">
-                                        <svg
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            width="16"
-                                            height="16"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="text-green-500"
-                                        >
-                                            <title>Data is up to date</title>
-                                            <path d="M20 6L9 17l-5-5" />
-                                        </svg>
-                                        Data is up to date
-                                    </p>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        You have the latest champion data installed.
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Loading state */}
-                    {(checkingForUpdates || isBusy) && !updateResult && !progress && (
-                        <div className="flex flex-col items-center justify-center py-4">
-                            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mb-2" />
-                            <p className="text-sm text-muted-foreground">
-                                {checkingForUpdates
-                                    ? "Checking for updates..."
-                                    : "Updating data..."}
-                            </p>
-                        </div>
-                    )}
-                </div>
-
-                <DialogFooter className="mt-4">
-                    <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={handleReinstall}
-                        disabled={checkingForUpdates || isBusy}
-                    >
-                        {isReinstalling ? "Reinstalling..." : "Reinstall Data"}
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={checkForUpdates}
-                        disabled={checkingForUpdates || isBusy}
-                    >
-                        Check for Updates
-                    </Button>
-                    <Button size="sm" onClick={onClose} disabled={isBusy}>
-                        Close
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+        />
     );
 }

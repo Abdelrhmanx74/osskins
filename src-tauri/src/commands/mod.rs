@@ -10,6 +10,7 @@ pub mod misc_items;
 pub mod party_mode;
 pub mod skin_injection;
 pub mod types;
+pub mod tools;
 
 // Re-export all public types and functions
 pub use app_control::*;
@@ -22,3 +23,4 @@ pub use league_detection::*;
 pub use misc_items::*;
 pub use party_mode::*;
 pub use skin_injection::*;
+pub use tools::*;

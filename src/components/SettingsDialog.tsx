@@ -29,16 +29,19 @@ import { ThemeToneSelector } from "./ThemeToneSelector";
 import { Separator } from "./ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { useI18n } from "@/lib/i18n";
+import { useToolsStore } from "@/lib/store/tools";
 import { skinManagementApi } from "@/lib/api/skin-management";
 import { Upload, Download } from "lucide-react";
 import { useRef } from "react";
 
 export function SettingsDialog() {
   const [isOpen, setIsOpen] = useState(false);
+  // CSLOL manager moved to TopBar menu; keep managerOpen only in TopBar
   const [isLoading, setIsLoading] = useState(false);
   const { leaguePath, setLeaguePath } = useGameStore();
   const { setShowUpdateModal } = useGameStore();
   const { locale, setLocale, t } = useI18n();
+  const toolsStatus = useToolsStore((s) => s.status);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const {
@@ -55,8 +58,10 @@ export function SettingsDialog() {
       setIsLoading(true);
       const path = await invoke<string>("select_league_directory");
       if (path) {
+        const prev = leaguePath;
         setLeaguePath(path);
-        setShowUpdateModal(true);
+        // Only trigger the update modal when leaguePath was previously empty (first-time add)
+        if (!prev) setShowUpdateModal(true);
       }
     } catch (err) {
       console.error("Failed to select League directory:", err);
@@ -71,8 +76,9 @@ export function SettingsDialog() {
       setIsLoading(true);
       const path = await invoke<string>("auto_detect_league");
       if (path) {
+        const prev = leaguePath;
         setLeaguePath(path);
-        setShowUpdateModal(true);
+        if (!prev) setShowUpdateModal(true);
       }
     } catch (err) {
       console.error("Failed to detect League directory:", err);
@@ -174,8 +180,8 @@ export function SettingsDialog() {
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <DropdownMenuItem
-          onSelect={(e) => {
-            e.preventDefault();
+          onSelect={(event: Event) => {
+            event.preventDefault();
             setIsOpen(true);
           }}
         >
@@ -184,7 +190,7 @@ export function SettingsDialog() {
         </DropdownMenuItem>
       </DialogTrigger>
       <DialogContent className="sm:max-w-4xl">
-        <DialogHeader>
+        <DialogHeader className="sr-only">
           <DialogTitle>{t("settings.title")}</DialogTitle>
           <DialogDescription>{t("settings.description")}</DialogDescription>
         </DialogHeader>
@@ -206,9 +212,7 @@ export function SettingsDialog() {
               />
               <div className="flex gap-2">
                 <Button
-                  onClick={() => {
-                    void handleAutoDetect();
-                  }}
+                  onClick={() => { void handleAutoDetect(); }}
                   disabled={isLoading}
                   className="flex-1"
                   variant="secondary"
@@ -217,9 +221,7 @@ export function SettingsDialog() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => {
-                    void handleSelectDirectory();
-                  }}
+                  onClick={() => { void handleSelectDirectory(); }}
                   disabled={isLoading}
                   className="flex-1"
                 >
@@ -289,19 +291,20 @@ export function SettingsDialog() {
                 />
               </div>
             </div>
+
           </div>
 
           <Separator orientation="vertical" className="mx-2" />
 
           {/* Right Side */}
-          <div className="flex-1 min-w-0 flex flex-col gap-4">
+          <div className="flex-1 min-w-0 flex flex-col m-auto gap-4">
             {/* Language selector */}
             <div className="grid grid-cols-1 gap-2 mt-4">
               <Label>{t("language.label")}</Label>
               <Select
                 value={locale}
-                onValueChange={(val) => {
-                  const v = val as unknown as Parameters<typeof setLocale>[0];
+                onValueChange={(val: string) => {
+                  const v = val as Parameters<typeof setLocale>[0];
                   setLocale(v);
                 }}
               >
@@ -342,7 +345,6 @@ export function SettingsDialog() {
             </div>
           </div>
         </div>
-
         <DialogFooter className="w-full flex sm:justify-between items-center">
           <Button
             variant="outline"

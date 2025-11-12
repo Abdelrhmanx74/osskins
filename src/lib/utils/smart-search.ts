@@ -44,7 +44,7 @@ export function createSearchIndex(champions: Champion[]): SearchableItem[] {
       // Collect all chroma colors and descriptions
       const allChromaColors: string[] = [];
       const allChromaDescriptions: string[] = [];
-      
+
       for (const chroma of skin.chromas) {
         // Add individual colors
         allChromaColors.push(...chroma.colors);
@@ -200,7 +200,7 @@ export function filterAndSortChampionsWithSearch(
 
     // If both matched by champion name, sort by score (lower is better)
     if (aHasChampionMatch && bHasChampionMatch) {
-      const scoreDiff = aChampionMatch! - bChampionMatch!;
+      const scoreDiff = aChampionMatch - bChampionMatch;
       if (scoreDiff !== 0) return scoreDiff;
     }
 

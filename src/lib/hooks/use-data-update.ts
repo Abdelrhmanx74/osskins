@@ -5,6 +5,7 @@ import {
   fetchChampionDetails,
   fetchChampionSummaries,
   fetchSkinZip,
+  getLegacyDownloadUrl,
   getLolSkinsManifest,
   getLolSkinsManifestCommit,
   resetLolSkinsManifestCache,
@@ -12,7 +13,8 @@ import {
   transformChampionData,
 } from "../data-utils";
 import type { LolSkinsManifestItem } from "../data-utils";
-import type { DataUpdateProgress } from "../types";
+import type { DataUpdateProgress, EnsureModToolsResult } from "../types";
+import { useToolsStore } from "../store/tools";
 
 // Helper function to delay execution
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -179,6 +181,35 @@ export function useDataUpdate() {
         progress: 0,
       });
 
+      // Ensure CSLOL tools are present before fetching champion data
+      const toolsStore = useToolsStore.getState();
+      toolsStore.clearProgress("auto");
+      const toolsResult = await (async () => {
+        try {
+          return await invoke<EnsureModToolsResult>("ensure_mod_tools", {
+            force: false,
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          toolsStore.mergeProgress("auto", { phase: "error", error: message });
+          throw err;
+        }
+      })();
+
+      const hasUpdate = Boolean(
+        toolsResult.latestVersion &&
+        toolsResult.version &&
+        toolsResult.version !== toolsResult.latestVersion,
+      );
+      toolsStore.updateStatus({
+        installed: toolsResult.installed,
+        version: toolsResult.version ?? null,
+        latestVersion: toolsResult.latestVersion ?? null,
+        hasUpdate,
+        path: toolsResult.path ?? null,
+        lastChecked: Date.now(),
+      });
+
       const manifest = await getLolSkinsManifest();
       const manifestIndex = manifest
         ? createManifestIndex(manifest.items)
@@ -284,32 +315,61 @@ export function useDataUpdate() {
             const skinKey = normalizeManifestKey(skin.name);
             const skinManifestEntry = manifestEntry?.skins.get(skinKey) ?? null;
 
-            let zipContent: BinaryBuffer = new Uint8Array();
             let hasZipContent = false;
             if (skinManifestEntry) {
-              const response = await fetch(skinManifestEntry.url);
-              if (response.ok) {
-                const buffer = await response.arrayBuffer();
-                zipContent = new Uint8Array(buffer) as BinaryBuffer;
-                hasZipContent = zipContent.byteLength > 0;
-              } else {
+              try {
+                // Download directly to disk via backend - memory efficient!
+                await invoke("download_and_save_file", {
+                  url: skinManifestEntry.url,
+                  championName: localChampionKey,
+                  fileName: `${localSkinKey}.zip`,
+                });
+                hasZipContent = true;
+              } catch (error) {
                 console.warn(
-                  `[Manifest] Download failed for ${skinManifestEntry.url} (status ${response.status})`,
+                  `[Manifest] Download failed for ${skinManifestEntry.url}:`,
+                  error,
                 );
               }
             }
 
             if (!hasZipContent) {
-              zipContent = (await fetchSkinZip(summary.name, skin.name)) as BinaryBuffer;
-              hasZipContent = zipContent.byteLength > 0;
-            }
-
-            if (hasZipContent) {
-              await invoke("save_zip_file", {
-                championName: localChampionKey,
-                fileName: `${localSkinKey}.zip`,
-                content: Array.from(zipContent),
-              });
+              // Fallback: try to get URL from legacy method and use backend download
+              try {
+                // Try to construct the legacy URL and download via backend
+                const legacyUrl = await getLegacyDownloadUrl(
+                  summary.name,
+                  skin.name,
+                  [],
+                );
+                if (legacyUrl) {
+                  await invoke("download_and_save_file", {
+                    url: legacyUrl,
+                    championName: localChampionKey,
+                    fileName: `${localSkinKey}.zip`,
+                  });
+                  hasZipContent = true;
+                } else {
+                  // Last resort: use old method (loads into memory)
+                  const zipContent = (await fetchSkinZip(
+                    summary.name,
+                    skin.name,
+                  )) as BinaryBuffer;
+                  if (zipContent.byteLength > 0) {
+                    await invoke("save_zip_file", {
+                      championName: localChampionKey,
+                      fileName: `${localSkinKey}.zip`,
+                      content: Array.from(zipContent),
+                    });
+                    hasZipContent = true;
+                  }
+                }
+              } catch (error) {
+                console.warn(
+                  `[Manifest] Fallback download failed for ${summary.name} / ${skin.name}:`,
+                  error,
+                );
+              }
             }
 
             if (skin.chromas && skin.chromas.length > 0) {
@@ -322,37 +382,64 @@ export function useDataUpdate() {
                     manifestEntry?.chromas.get(fallbackChromaKey) ??
                     null;
 
-                  let chromaContent: BinaryBuffer = new Uint8Array();
                   let hasChromaContent = false;
                   if (chromaManifestEntry) {
-                    const response = await fetch(chromaManifestEntry.url);
-                    if (response.ok) {
-                      const buffer = await response.arrayBuffer();
-                      chromaContent = new Uint8Array(buffer) as BinaryBuffer;
-                      hasChromaContent = chromaContent.byteLength > 0;
-                    } else {
+                    try {
+                      // Download directly to disk via backend - memory efficient!
+                      const chromaFileName = `${localSkinKey}_chroma_${chroma.id}.zip`;
+                      await invoke("download_and_save_file", {
+                        url: chromaManifestEntry.url,
+                        championName: localChampionKey,
+                        fileName: chromaFileName,
+                      });
+                      hasChromaContent = true;
+                    } catch (error) {
                       console.warn(
-                        `[Manifest] Download failed for ${chromaManifestEntry.url} (status ${response.status})`,
+                        `[Manifest] Download failed for ${chromaManifestEntry.url}:`,
+                        error,
                       );
                     }
                   }
 
                   if (!hasChromaContent) {
-                    chromaContent = (await fetchSkinZip(
-                      summary.name,
-                      `${skin.name} ${chroma.id}`,
-                      ["chromas", skin.name],
-                    )) as BinaryBuffer;
-                    hasChromaContent = chromaContent.byteLength > 0;
-                  }
-
-                  if (hasChromaContent) {
-                    const chromaFileName = `${localSkinKey}_chroma_${chroma.id}.zip`;
-                    await invoke("save_zip_file", {
-                      championName: localChampionKey,
-                      fileName: chromaFileName,
-                      content: Array.from(chromaContent),
-                    });
+                    // Fallback: try to get URL from legacy method and use backend download
+                    try {
+                      const legacyUrl = await getLegacyDownloadUrl(
+                        summary.name,
+                        `${skin.name} ${chroma.id}`,
+                        ["chromas", skin.name],
+                      );
+                      if (legacyUrl) {
+                        const chromaFileName = `${localSkinKey}_chroma_${chroma.id}.zip`;
+                        await invoke("download_and_save_file", {
+                          url: legacyUrl,
+                          championName: localChampionKey,
+                          fileName: chromaFileName,
+                        });
+                        hasChromaContent = true;
+                      } else {
+                        // Last resort: use old method (loads into memory)
+                        const chromaContent = (await fetchSkinZip(
+                          summary.name,
+                          `${skin.name} ${chroma.id}`,
+                          ["chromas", skin.name],
+                        )) as BinaryBuffer;
+                        if (chromaContent.byteLength > 0) {
+                          const chromaFileName = `${localSkinKey}_chroma_${chroma.id}.zip`;
+                          await invoke("save_zip_file", {
+                            championName: localChampionKey,
+                            fileName: chromaFileName,
+                            content: Array.from(chromaContent),
+                          });
+                          hasChromaContent = true;
+                        }
+                      }
+                    } catch (error) {
+                      console.warn(
+                        `[Manifest] Fallback download failed for chroma ${chroma.id}:`,
+                        error,
+                      );
+                    }
                   }
                 } catch (err) {
                   console.error(

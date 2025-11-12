@@ -199,13 +199,6 @@ pub async fn inject_skins_with_misc(
   result
 }
 
-// The ensure_mod_tools command is no longer needed since we're not using external tools anymore
-#[tauri::command]
-pub async fn ensure_mod_tools(_app: tauri::AppHandle) -> Result<(), String> {
-  // This function now does nothing since we don't need external tools anymore
-  Ok(())
-}
-
 #[tauri::command]
 pub async fn start_auto_inject(app: AppHandle, league_path: String) -> Result<(), String> {
   println!("Starting auto-inject for path: {}", league_path);

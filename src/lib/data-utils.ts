@@ -1,4 +1,5 @@
 import type { Champion, ChampionSummary, Skin, Chroma } from "./types";
+import { downloadFileSimple } from "./download-utils";
 
 const COMMUNITY_DRAGON_BASE_URL =
   "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default";
@@ -41,10 +42,9 @@ function stripZipExtension(name: string): string {
 }
 
 function normalizeSegment(segment: string): string {
-  // Normalize apostrophes and similar characters for fuzzy matching
   return segment
     .toLowerCase()
-    .replace(/['’`]/g, "") // Remove all apostrophe-like chars
+    .replace(/['’`]/g, "") // Remove apostrophe-like chars
     .replace(/[^a-z0-9]/g, "");
 }
 
@@ -53,23 +53,17 @@ function tokenize(value: string): string[] {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
-  if (!cleaned) {
-    return [];
-  }
+  if (!cleaned) return [];
   return cleaned.split(/\s+/);
 }
 
 function tokenSignature(tokens: string[]): string {
-  if (tokens.length === 0) {
-    return "";
-  }
+  if (tokens.length === 0) return "";
   return [...tokens].sort().join("|");
 }
 
 function computeTokenOverlap(target: string[], candidate: string[]): number {
-  if (target.length === 0 || candidate.length === 0) {
-    return 0;
-  }
+  if (target.length === 0 || candidate.length === 0) return 0;
   const targetCounts = new Map<string, number>();
   for (const token of target) {
     targetCounts.set(token, (targetCounts.get(token) ?? 0) + 1);
@@ -97,9 +91,7 @@ function computeSubPathScore(candidate: string[], target: string[]): number {
     return candidate.length === 0 ? 2 : 0;
   }
 
-  if (candidate.length === 0) {
-    return 0;
-  }
+  if (candidate.length === 0) return 0;
 
   if (candidate[0] === "chromas" && target[0] === "chromas") {
     const intersection = candidate.filter((seg) => target.includes(seg)).length;
@@ -110,9 +102,7 @@ function computeSubPathScore(candidate: string[], target: string[]): number {
 }
 
 async function ensureLolSkinsManifest(): Promise<LolSkinsManifest | null> {
-  if (manifestCache) {
-    return manifestCache;
-  }
+  if (manifestCache) return manifestCache;
 
   if (!manifestFetchPromise) {
     const requestGeneration = manifestGeneration;
@@ -143,9 +133,7 @@ async function ensureLolSkinsManifest(): Promise<LolSkinsManifest | null> {
     })();
   }
 
-  const fetchPromise = manifestFetchPromise;
-  const data = await fetchPromise;
-  return data;
+  return await manifestFetchPromise;
 }
 
 export async function getLolSkinsManifest(): Promise<LolSkinsManifest | null> {
@@ -173,10 +161,8 @@ function findManifestEntry(
   subPath: string[],
   fileName: string,
 ): LolSkinsManifestItem | null {
-  // Normalize for fuzzy matching: remove apostrophes, spaces, lowercase
   const targetChampion = normalizeSegment(championName);
   const targetSubPath = subPath.map(normalizeSegment);
-  // Try both normalized and raw for more robust matching
   const targetBaseName = normalizeSegment(fileName);
   const targetBaseNameNoSpace = fileName
     .replace(/['’`]/g, "")
@@ -213,13 +199,13 @@ function findManifestEntry(
       return item;
     }
 
-    // Fuzzy: try token signature
+    // Fuzzy: token signature
     const candidateTokens = tokenize(baseName);
     if (tokenSignature(candidateTokens) === targetSignature) {
       return item;
     }
 
-    // Fuzzy: try substring match (for e.g. BeeMawKogMaw vs Bee'Maw)
+    // Fuzzy: substring match
     if (
       candidateBaseNoSpace.includes(targetBaseNameNoSpace) ||
       targetBaseNameNoSpace.includes(candidateBaseNoSpace)
@@ -246,25 +232,13 @@ async function fetchSkinZipViaManifest(
 ): Promise<Uint8Array | null> {
   try {
     const manifest = await ensureLolSkinsManifest();
-    if (!manifest) {
-      return null;
-    }
+    if (!manifest) return null;
 
     const entry = findManifestEntry(manifest, championName, subPath, fileName);
-    if (!entry) {
-      return null;
-    }
+    if (!entry) return null;
 
-    const response = await fetch(entry.url);
-    if (!response.ok) {
-      console.warn(
-        `[Manifest] Download failed for ${entry.url} (status ${response.status})`,
-      );
-      return null;
-    }
-
-    const buffer = await response.arrayBuffer();
-    return new Uint8Array(buffer);
+    // Use the manifest url directly for download - manifest should point to downloadable resource
+    return await downloadFileSimple(entry.url);
   } catch (error) {
     console.warn(
       `[Manifest] Error fetching skin via manifest for ${championName} / ${fileName}`,
@@ -274,11 +248,22 @@ async function fetchSkinZipViaManifest(
   }
 }
 
-async function fetchSkinZipLegacy(
+/// Convert a GitHub blob URL to raw.githubusercontent URL
+function convertGithubBlobToRaw(url: string): string {
+  // e.g. https://github.com/user/repo/blob/branch/path/to/file.zip
+  // -> https://raw.githubusercontent.com/user/repo/branch/path/to/file.zip
+  if (!url.includes("github.com") || !url.includes("/blob/")) return url;
+  return url
+    .replace("github.com", "raw.githubusercontent.com")
+    .replace("/blob/", "/");
+}
+
+/// Get legacy download URL without downloading (for backend downloads)
+export async function getLegacyDownloadUrl(
   championName: string,
   fileName: string,
   subPath: string[] = [],
-): Promise<Uint8Array> {
+): Promise<string | null> {
   const normalizedChampion = championName.replace(/KDA/g, "K DA");
 
   const normalizedSubPath = subPath.map((segment) =>
@@ -286,12 +271,35 @@ async function fetchSkinZipLegacy(
   );
 
   let normalizedFileName = fileName.replace(/KDA/g, "K DA");
-
   normalizedFileName = normalizedFileName.replace(
     /\bM\.D(?!\.)(?=\s|$)/g,
     "M.D.",
   );
 
+  // Prefer manifest entry (authoritative). If found, return a downloadable URL.
+  try {
+    const manifest = await ensureLolSkinsManifest();
+    if (manifest) {
+      const entry = findManifestEntry(
+        manifest,
+        championName,
+        subPath,
+        fileName,
+      );
+      if (entry && entry.url) {
+        // If manifest points to GitHub blob, convert to raw so it can be downloaded directly.
+        return convertGithubBlobToRaw(entry.url);
+      }
+    }
+  } catch (err) {
+    // Ignore manifest lookup failures and fall back to legacy heuristics
+    console.warn(
+      "[Manifest] Failed to resolve manifest entry, falling back to legacy URL",
+      err,
+    );
+  }
+
+  // Legacy fallback: construct raw.githubusercontent URL from repository structure
   const encodedSegments = [
     "skins",
     normalizedChampion,
@@ -302,23 +310,14 @@ async function fetchSkinZipLegacy(
     .join("/");
 
   const blobUrl = `https://github.com/darkseal-org/lol-skins/blob/main/${encodedSegments}`;
-
-  const rawUrl = blobUrl
-    .replace("github.com", "raw.githubusercontent.com")
-    .replace("/blob/", "/");
+  const rawUrl = convertGithubBlobToRaw(blobUrl);
 
   try {
-    const response = await fetch(rawUrl, { method: "HEAD" });
+    const headResponse = await fetch(rawUrl, { method: "HEAD" });
+    if (headResponse.ok) return rawUrl;
 
-    if (response.ok) {
-      const contentResponse = await fetch(rawUrl);
-      if (contentResponse.ok) {
-        const buffer = await contentResponse.arrayBuffer();
-        return new Uint8Array(buffer);
-      }
-    }
-
-    if (subPath.includes("chromas") && !response.ok) {
+    // If chromas path, try flatter chromas layout fallback
+    if (subPath.includes("chromas")) {
       const flatStructureSegments = [
         "skins",
         normalizedChampion,
@@ -329,20 +328,31 @@ async function fetchSkinZipLegacy(
         .join("/");
 
       const flatBlobUrl = `https://github.com/darkseal-org/lol-skins/blob/main/${flatStructureSegments}`;
-      const flatRawUrl = flatBlobUrl
-        .replace("github.com", "raw.githubusercontent.com")
-        .replace("/blob/", "/");
+      const flatRawUrl = convertGithubBlobToRaw(flatBlobUrl);
 
-      const flatResponse = await fetch(flatRawUrl);
-      if (flatResponse.ok) {
-        const buffer = await flatResponse.arrayBuffer();
-        return new Uint8Array(buffer);
-      }
+      const flatHeadResponse = await fetch(flatRawUrl, { method: "HEAD" });
+      if (flatHeadResponse.ok) return flatRawUrl;
     }
   } catch {
-    // ignore fetch errors
+    // ignore network errors and fall through
   }
 
+  return null;
+}
+
+async function fetchSkinZipLegacy(
+  championName: string,
+  fileName: string,
+  subPath: string[] = [],
+): Promise<Uint8Array> {
+  const url = await getLegacyDownloadUrl(championName, fileName, subPath);
+  if (url) {
+    try {
+      return await downloadFileSimple(url);
+    } catch {
+      // ignore download errors
+    }
+  }
   return new Uint8Array();
 }
 
@@ -367,14 +377,10 @@ interface ChampionDetails {
 }
 
 function constructAssetUrl(path: string): string {
-  // Remove leading slash if present
   const cleanPath = path.startsWith("/") ? path.slice(1) : path;
-
-  // Remove the 'lol-game-data/assets/' prefix if present and convert to lowercase
   const transformedPath = cleanPath
     .replace("lol-game-data/assets/", "")
     .toLowerCase();
-
   return `${COMMUNITY_DRAGON_BASE_URL}/${transformedPath}`;
 }
 
@@ -407,15 +413,9 @@ export async function fetchFantomeFile(
   skinId: number,
 ): Promise<Uint8Array> {
   try {
-    const response = await fetch(
+    return await downloadFileSimple(
       `${FANTOME_BASE_URL}/${championId}/${skinId}.skin_file`,
     );
-    if (!response.ok) {
-      console.warn(`Fantome not found: champion ${championId}, skin ${skinId}`);
-      return new Uint8Array();
-    }
-    const arrayBuffer = await response.arrayBuffer();
-    return new Uint8Array(arrayBuffer);
   } catch (err) {
     console.warn(
       `Error fetching skin_file for champion ${championId}, skin ${skinId}:`,
@@ -436,18 +436,14 @@ export async function fetchSkinZip(
     subPath,
     fileName,
   );
-  if (manifestContent) {
-    return manifestContent;
-  }
+  if (manifestContent) return manifestContent;
 
   const legacyContent = await fetchSkinZipLegacy(
     championName,
     fileName,
     subPath,
   );
-  if (legacyContent.byteLength > 0) {
-    return legacyContent;
-  }
+  if (legacyContent.byteLength > 0) return legacyContent;
 
   console.warn(
     `[Manifest] Unable to locate ${championName} / ${fileName}.zip in manifest or repository`,
@@ -455,14 +451,13 @@ export async function fetchSkinZip(
   return legacyContent;
 }
 
-// Sanitize a string to be safe for use as a filename or path component
 export function sanitizeForFileName(str: string): string {
   return str
     .toLowerCase()
     .trim()
-    .replace(/[/\\:?*"<>|()' ]+/g, "_") // replace invalid Windows path chars, spaces, apostrophes, parentheses
-    .replace(/_+/g, "_") // collapse multiple underscores
-    .replace(/^_+|_+$/g, ""); // trim leading/trailing underscores
+    .replace(/[/\\:?*"<>|()' ]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 export function transformChampionData(
@@ -472,20 +467,15 @@ export function transformChampionData(
 ): Champion {
   const baseDir = sanitizeForFileName(summary.name);
   const skins: Skin[] = details.skins.map((skin) => {
-    const baseSkinId = skin.id % 1000;
-    const chromas: Chroma[] = (skin.chromas ?? []).map((chroma) => {
-      const chromaBaseSkinId = chroma.id % 1000;
-      return {
-        id: chroma.id,
-        name: chroma.name,
-        skinChromaPath: constructAssetUrl(chroma.chromaPath),
-        colors: chroma.colors,
-        description: chroma.description,
-        rarity: chroma.rarity,
-        skin_file: `${baseDir}/${sanitizeForFileName(skin.name)}_chroma_${chroma.id
-          }.zip`,
-      };
-    });
+    const chromas: Chroma[] = (skin.chromas ?? []).map((chroma) => ({
+      id: chroma.id,
+      name: chroma.name,
+      skinChromaPath: constructAssetUrl(chroma.chromaPath),
+      colors: chroma.colors,
+      description: chroma.description,
+      rarity: chroma.rarity,
+      skin_file: `${baseDir}/${sanitizeForFileName(skin.name)}_chroma_${chroma.id}.zip`,
+    }));
 
     return {
       id: skin.id,
