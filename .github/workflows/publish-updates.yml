@@ -28,7 +28,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build_and_upload:
-    name: Build on Windows and upload
+    name: Build on Windows and upload artifacts
     needs: create_release
     runs-on: windows-latest
     env:
@@ -69,7 +69,7 @@ jobs:
         shell: pwsh
         run: pnpm tauri build
 
-      - name: Find all Windows bundle files (exe/msi and .sig)
+      - name: Find Windows artifacts (exe/msi and .sig)
         id: find_all
         shell: pwsh
         run: |
@@ -81,8 +81,7 @@ jobs:
           $list = $files | ForEach-Object { $_.FullName }
           $joined = ($list -join "`n")
           Write-Host "Artifacts:`n$joined"
-          # Save newline-separated list to GITHUB_OUTPUT
-          $joined | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          # Multi-line output
           Add-Content -Path $env:GITHUB_OUTPUT -Value "files<<EOF`n$joined`nEOF"
 
       - name: Upload all artifacts to release (exe/msi/sig)
@@ -98,35 +97,6 @@ jobs:
             Write-Host "Uploading $f"
             gh release upload "$env:RELEASE_TAG" "$f" --clobber
           }
-
-      - name: Compute sha256 and create metadata file (Windows)
-        id: meta
-        shell: pwsh
-        run: |
-          # Optional: keep if you still want a side meta json
-          $root = "src-tauri\target\release\bundle"
-          $exe = Get-ChildItem -Path $root -Recurse -File | Where-Object { $_.Name -like "*.exe" } | Select-Object -First 1
-          if ($null -eq $exe) { Write-Error "No .exe found"; exit 1 }
-          $hash = Get-FileHash -Algorithm SHA256 -Path $exe.FullName
-          $obj = @{
-            platform = "windows"
-            file = $exe.Name
-            sha256 = $hash.Hash.ToLower()
-            size = [int64](Get-Item $exe.FullName).Length
-          }
-          $metafile = "meta-windows.json"
-          $obj | ConvertTo-Json -Depth 4 | Out-File -FilePath $metafile -Encoding utf8
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "meta_file=$metafile"
-
-      - name: Upload metadata file to release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.meta.outputs.meta_file }}
-          asset_name: ${{ steps.meta.outputs.meta_file }}
-          asset_content_type: application/json
 
   generate_metadata:
     name: Generate updates.json from Tauri .sig
@@ -147,29 +117,32 @@ jobs:
           API="https://api.github.com/repos/$REPO/releases/$RELEASE_ID/assets"
           echo "Listing assets from $API"
           curl -s -H "Authorization: token $TOKEN" "$API" > /tmp/assets.json
-          cat /tmp/assets.json | jq -r '.[].name' | sed 's/^/ - /'
+          jq -r '.[].name' /tmp/assets.json | sed 's/^/ - /'
 
-          # Pick NSIS .exe for updates; pair with its .sig
-          exe_url=$(jq -r '.[] | select(.name|endswith(".exe")) | .browser_download_url' /tmp/assets.json | head -n1)
-          sig_url=$(jq -r '.[] | select(.name|endswith(".exe.sig")) | .browser_download_url' /tmp/assets.json | head -n1)
+          # Choose NSIS .exe for updates; pair with its .sig (switch to .msi if you prefer)
+          exe_name=$(jq -r '.[] | select(.name|endswith(".exe")) | .name' /tmp/assets.json | head -n1)
+          exe_url=$(jq -r ".[] | select(.name==\"$exe_name\") | .browser_download_url" /tmp/assets.json | head -n1)
+          sig_url=$(jq -r ".[] | select(.name==\"$exe_name.sig\") | .browser_download_url" /tmp/assets.json | head -n1)
 
           if [ -z "$exe_url" ]; then echo "No .exe found in assets"; exit 1; fi
-          if [ -z "$sig_url" ]; then echo "No .exe.sig found in assets"; exit 1; fi
+          if [ -z "$sig_url" ]; then echo "No matching .exe.sig found in assets"; exit 1; fi
 
-          curl -sL -H "Authorization: token $TOKEN" -o /tmp/app.exe "$exe_url"
           curl -sL -H "Authorization: token $TOKEN" -o /tmp/app.exe.sig "$sig_url"
 
           # Tauri .sig contains the updater signature; trim whitespace/newlines
           signature=$(tr -d '\r\n' < /tmp/app.exe.sig)
 
+          # Optional: drop leading v for the version string
+          ver="${VERSION#v}"
+
           now=$(date --utc +"%Y-%m-%dT%H:%M:%SZ")
 
-          jq -n --arg v "$VERSION" --arg d "$now" --arg u "$exe_url" --arg s "$signature" \
+          jq -n --arg v "$ver" --arg d "$now" --arg u "$exe_url" --arg s "$signature" \
             '{
               version:$v,
               pub_date:$d,
               platforms:{
-                windows: {
+                "windows-x86_64": {
                   url:$u,
                   signature:$s
                 }
