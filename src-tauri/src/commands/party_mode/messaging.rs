@@ -1,10 +1,9 @@
 // Chat messaging and skin sharing
 
-use std::path::PathBuf;
 use base64::{engine::general_purpose, Engine};
-use tauri::{AppHandle, Emitter, Manager};
 use serde_json;
-use crate::commands::types::{PartyModeMessage, SkinShare};
+use tauri::AppHandle;
+use crate::commands::types::PartyModeMessage;
 use super::types::{LcuConnection, PARTY_MODE_MESSAGE_PREFIX};
 use super::lcu::get_conversation_id;
 

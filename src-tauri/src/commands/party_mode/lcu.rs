@@ -1,6 +1,5 @@
 // LCU connection and API utilities
 
-use std::path::PathBuf;
 use base64::{engine::general_purpose, Engine};
 use tauri::{AppHandle, Manager};
 use crate::commands::types::{SavedConfig, FriendInfo};
