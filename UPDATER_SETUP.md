@@ -118,15 +118,12 @@ The signature comes from the `.sig` file created during signing.
 
 ## 🎯 Update Endpoints Configured
 
-Your app is configured to check:
+Your app is configured to check the latest release:
 ```
-https://github.com/Abdelrhmanx74/osskins/releases/download/v{version}/updates.json
+https://github.com/Abdelrhmanx74/osskins/releases/latest/download/updates.json
 ```
 
-For example, for v1.5.3:
-```
-https://github.com/Abdelrhmanx74/osskins/releases/download/v1.5.3/updates.json
-```
+This endpoint always points to the most recent release, making it easier to manage updates without version-specific URLs.
 
 ## ⚠️ Important Notes
 
