@@ -1,35 +1,46 @@
 # 🚀 Simple Updater Setup - Step by Step
 
-This is a simplified, no-password guide to set up the Tauri updater for Osskins.
+This is a simplified guide to set up the Tauri updater for Osskins.
 
 ---
 
-## Step 1: Generate Your Keys (No Password)
+## Step 1: Generate Your Keys (With Password)
 
 Open your terminal and run:
 
 ```bash
-pnpm tauri signer generate -- -w ~/.tauri/osskins.key --no-password
+pnpm tauri signer generate -- -w ~/.tauri/osskins.key
 ```
 
 **On Windows**, use:
 ```bash
-pnpm tauri signer generate -- -w C:\Users\YourName\.tauri\osskins.key --no-password
+pnpm tauri signer generate -- -w C:\Users\YourName\.tauri\osskins.key
 ```
 
-Replace `YourName` with your actual Windows username.
+Replace `YourName` with your actual Windows username (e.g., `Mana`).
 
-### What This Does:
-- Creates a **private key** at the specified location
-- Creates a **public key** with `.pub` extension
-- **NO PASSWORD** required (simpler!)
+### What Happens:
+1. You'll be prompted to enter a password
+2. You'll be asked to confirm the password
+3. Keys are generated with password protection
 
-### Expected Output:
+### Example Output:
 ```
-Generated new key pair at:
-  Private: ~/.tauri/osskins.key (or C:\Users\YourName\.tauri\osskins.key on Windows)
-  Public:  ~/.tauri/osskins.key.pub
+Please enter a password to protect the secret key.
+Password: ********
+Password (one more time): ********
+
+Deriving a key from the password in order to encrypt the secret key... done
+
+Your keypair was generated successfully
+Private: ~/.tauri/osskins.key (Keep it secret!)
+Public: ~/.tauri/osskins.key.pub
 ```
+
+**⚠️ IMPORTANT:** 
+- Choose a password you won't forget
+- Write it down securely
+- You'll need this password for GitHub Secrets
 
 ---
 
@@ -107,17 +118,31 @@ dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5ekgrWTNE
 
 ---
 
-## Step 5: Add GitHub Secret - Private Key
+## Step 5: Add GitHub Secrets
 
-1. Go to: https://github.com/Abdelrhmanx74/osskins/settings/secrets/actions
+Go to: https://github.com/Abdelrhmanx74/osskins/settings/secrets/actions
 
-2. Click **"New repository secret"**
+### Secret 1: Private Key
 
-3. Enter the details:
+1. Click **"New repository secret"**
+
+2. Enter the details:
    - **Name:** `TAURI_SIGNING_PRIVATE_KEY`
    - **Value:** Paste your private key (the long string from Step 4)
 
-4. Click **"Add secret"**
+3. Click **"Add secret"**
+
+### Secret 2: Password
+
+1. Click **"New repository secret"** again
+
+2. Enter the details:
+   - **Name:** `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+   - **Value:** The password you chose in Step 1
+
+3. Click **"Add secret"**
+
+**Both secrets are required!**
 
 ---
 
@@ -231,8 +256,8 @@ After successful test:
 
 ### Commands
 ```bash
-# Generate keys (no password)
-pnpm tauri signer generate -- -w ~/.tauri/osskins.key --no-password
+# Generate keys (with password - required)
+pnpm tauri signer generate -- -w ~/.tauri/osskins.key
 
 # View public key
 cat ~/.tauri/osskins.key.pub
@@ -255,19 +280,24 @@ git tag -d v1.5-test
 git push origin :refs/tags/v1.5-test
 ```
 
+### GitHub Secrets Required
+- `TAURI_SIGNING_PRIVATE_KEY` - Your private key content
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` - The password you chose
+
 ---
 
 ## Security Notes
 
 ✅ **DO:**
 - Keep your private key safe
-- Back it up securely
+- Remember your password (write it down securely)
+- Back up both the key and password
 - Use GitHub Secrets for CI/CD
 
 ❌ **DON'T:**
 - Commit the private key to Git
-- Share the private key
-- Lose the private key (users won't get updates!)
+- Share the private key or password
+- Lose the private key or password (users won't get updates!)
 
 ---
 
