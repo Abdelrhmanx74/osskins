@@ -80,12 +80,25 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           
+          echo "Searching for build artifacts..."
+          ls -la src-tauri/target/release/bundle/msi/ || echo "MSI directory not found"
+          
           # Find the .sig file
           SIG_FILE=$(find src-tauri/target/release/bundle/msi -name "*.msi.zip.sig" | head -n 1)
+          if [ -z "$SIG_FILE" ]; then
+            echo "Error: No .sig file found!"
+            exit 1
+          fi
+          echo "Found signature file: $SIG_FILE"
           SIGNATURE=$(cat "$SIG_FILE")
           
           # Find the .msi.zip file
           MSI_ZIP=$(find src-tauri/target/release/bundle/msi -name "*.msi.zip" | head -n 1)
+          if [ -z "$MSI_ZIP" ]; then
+            echo "Error: No .msi.zip file found!"
+            exit 1
+          fi
+          echo "Found MSI zip file: $MSI_ZIP"
           MSI_FILENAME=$(basename "$MSI_ZIP")
           
           # Create updates.json
@@ -105,6 +118,13 @@ jobs:
           
           echo "Created updates.json:"
           cat updates.json
+          
+          echo "Verifying signature is not empty..."
+          if [ -z "$SIGNATURE" ]; then
+            echo "Error: Signature is empty!"
+            exit 1
+          fi
+          echo "Signature verification passed."
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
