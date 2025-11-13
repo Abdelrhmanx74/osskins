@@ -81,7 +81,6 @@ jobs:
           $list = $files | ForEach-Object { $_.FullName }
           $joined = ($list -join "`n")
           Write-Host "Artifacts:`n$joined"
-          # Multi-line output
           Add-Content -Path $env:GITHUB_OUTPUT -Value "files<<EOF`n$joined`nEOF"
 
       - name: Upload all artifacts to release (exe/msi/sig)
@@ -119,7 +118,7 @@ jobs:
           curl -s -H "Authorization: token $TOKEN" "$API" > /tmp/assets.json
           jq -r '.[].name' /tmp/assets.json | sed 's/^/ - /'
 
-          # Choose NSIS .exe for updates; pair with its .sig (switch to .msi if you prefer)
+          # Choose NSIS .exe for updates; pair with its .sig (switch to MSI if preferred)
           exe_name=$(jq -r '.[] | select(.name|endswith(".exe")) | .name' /tmp/assets.json | head -n1)
           exe_url=$(jq -r ".[] | select(.name==\"$exe_name\") | .browser_download_url" /tmp/assets.json | head -n1)
           sig_url=$(jq -r ".[] | select(.name==\"$exe_name.sig\") | .browser_download_url" /tmp/assets.json | head -n1)
@@ -128,13 +127,10 @@ jobs:
           if [ -z "$sig_url" ]; then echo "No matching .exe.sig found in assets"; exit 1; fi
 
           curl -sL -H "Authorization: token $TOKEN" -o /tmp/app.exe.sig "$sig_url"
-
-          # Tauri .sig contains the updater signature; trim whitespace/newlines
           signature=$(tr -d '\r\n' < /tmp/app.exe.sig)
 
-          # Optional: drop leading v for the version string
+          # Strip leading 'v' for version (both 'v1.2.3' and '1.2.3' are valid)
           ver="${VERSION#v}"
-
           now=$(date --utc +"%Y-%m-%dT%H:%M:%SZ")
 
           jq -n --arg v "$ver" --arg d "$now" --arg u "$exe_url" --arg s "$signature" \
