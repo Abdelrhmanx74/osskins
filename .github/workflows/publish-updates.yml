@@ -31,6 +31,9 @@ jobs:
     name: Build on Windows and upload
     needs: create_release
     runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,13 +50,11 @@ jobs:
 
       - name: Install dependencies
         shell: pwsh
-        run: |
-          pnpm install
+        run: pnpm install
 
       - name: Build frontend
         shell: pwsh
-        run: |
-          pnpm build
+        run: pnpm build
 
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
@@ -66,60 +67,56 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: pwsh
-        run: |
-          pnpm tauri build
+        run: pnpm tauri build
 
-      - name: Find bundle artifact (Windows)
-        id: find_artifact
+      - name: Find all Windows bundle files (exe/msi and .sig)
+        id: find_all
         shell: pwsh
         run: |
-          Write-Host "Searching for bundle files under src-tauri\target\release\bundle"
-          $paths = Get-ChildItem -Path "src-tauri\target\release\bundle" -Recurse -File -ErrorAction SilentlyContinue
-          if (-not $paths) {
-            Write-Host "Fallback: searching under target"
-            $paths = Get-ChildItem -Path "target" -Recurse -File -ErrorAction SilentlyContinue
+          $root = "src-tauri\target\release\bundle"
+          Write-Host "Searching under $root"
+          $files = Get-ChildItem -Path $root -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -in ".exe", ".msi", ".sig" }
+          if (-not $files) { Write-Error "No artifacts found"; exit 1 }
+          $list = $files | ForEach-Object { $_.FullName }
+          $joined = ($list -join "`n")
+          Write-Host "Artifacts:`n$joined"
+          # Save newline-separated list to GITHUB_OUTPUT
+          $joined | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "files<<EOF`n$joined`nEOF"
+
+      - name: Upload all artifacts to release (exe/msi/sig)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+            choco install gh -y | Out-Null
           }
-          if (-not $paths) {
-            Write-Error "No artifact found"
-            exit 1
+          $files = "${{ steps.find_all.outputs.files }}".Split("`n") | Where-Object { $_ -ne "" }
+          foreach ($f in $files) {
+            Write-Host "Uploading $f"
+            gh release upload "$env:RELEASE_TAG" "$f" --clobber
           }
-          $artifact = $paths[0].FullName
-          $file = $paths[0].Name
-          Write-Host "Found artifact: $artifact"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "artifact=$artifact"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "file=$file"
 
       - name: Compute sha256 and create metadata file (Windows)
         id: meta
         shell: pwsh
         run: |
-          $ARTIFACT = "${{ steps.find_artifact.outputs.artifact }}"
-          Write-Host "Artifact: $ARTIFACT"
-          $FNAME = "${{ steps.find_artifact.outputs.file }}"
-          $hash = Get-FileHash -Algorithm SHA256 -Path $ARTIFACT
-          $SHA256 = $hash.Hash.ToLower()
-          $SIZE = (Get-Item $ARTIFACT).Length
-          $PLATFORM = "windows"
-          $METAFILE = "meta-$PLATFORM.json"
+          # Optional: keep if you still want a side meta json
+          $root = "src-tauri\target\release\bundle"
+          $exe = Get-ChildItem -Path $root -Recurse -File | Where-Object { $_.Name -like "*.exe" } | Select-Object -First 1
+          if ($null -eq $exe) { Write-Error "No .exe found"; exit 1 }
+          $hash = Get-FileHash -Algorithm SHA256 -Path $exe.FullName
           $obj = @{
-            platform = $PLATFORM
-            file = $FNAME
-            sha256 = $SHA256
-            size = [int64]$SIZE
+            platform = "windows"
+            file = $exe.Name
+            sha256 = $hash.Hash.ToLower()
+            size = [int64](Get-Item $exe.FullName).Length
           }
-          $obj | ConvertTo-Json -Depth 4 | Out-File -FilePath $METAFILE -Encoding utf8
-          Write-Host "meta_file=$METAFILE"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "meta_file=$METAFILE"
-
-      - name: Upload artifact to release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.find_artifact.outputs.artifact }}
-          asset_name: ${{ steps.find_artifact.outputs.file }}
-          asset_content_type: application/octet-stream
+          $metafile = "meta-windows.json"
+          $obj | ConvertTo-Json -Depth 4 | Out-File -FilePath $metafile -Encoding utf8
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "meta_file=$metafile"
 
       - name: Upload metadata file to release
         uses: actions/upload-release-asset@v1
@@ -132,74 +129,54 @@ jobs:
           asset_content_type: application/json
 
   generate_metadata:
-    name: Generate updates.json and sign assets
-    needs: build_and_upload
+    name: Generate updates.json from Tauri .sig
+    needs: [create_release, build_and_upload]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install jq, openssl, curl
+      - name: Install jq, curl
         run: |
-          sudo apt-get update && sudo apt-get install -y jq openssl curl
+          sudo apt-get update && sudo apt-get install -y jq curl
 
-      - name: Prepare private key
-        env:
-          UPDATER_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
-        run: |
-          if [ -z "$UPDATER_PRIVATE_KEY" ]; then echo "Missing UPDATER_PRIVATE_KEY secret"; exit 1; fi
-          echo "$UPDATER_PRIVATE_KEY" > private.pem
-          chmod 600 private.pem
-
-      - name: List release assets
+      - name: Build updates.json using uploaded assets and Tauri signatures
         env:
           REPO: ${{ github.repository }}
           RELEASE_ID: ${{ needs.create_release.outputs.release_id }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
         run: |
           API="https://api.github.com/repos/$REPO/releases/$RELEASE_ID/assets"
           echo "Listing assets from $API"
           curl -s -H "Authorization: token $TOKEN" "$API" > /tmp/assets.json
-          cat /tmp/assets.json | jq -r '.[] | .name' > /tmp/asset-names.txt
-          echo "Assets:"; cat /tmp/asset-names.txt
+          cat /tmp/assets.json | jq -r '.[].name' | sed 's/^/ - /'
 
-      - name: Download assets and compute hashes/signatures
-        env:
-          REPO: ${{ github.repository }}
-          RELEASE_ID: ${{ needs.create_release.outputs.release_id }}
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p /tmp/assetfiles
-          jq -c '.[]' /tmp/assets.json | while read -r a; do
-            name=$(echo "$a" | jq -r .name)
-            url=$(echo "$a" | jq -r .browser_download_url)
-            echo "Downloading $name from $url"
-            curl -sL -H "Authorization: token $TOKEN" -o "/tmp/assetfiles/$name" "$url"
-            sha256=$(sha256sum "/tmp/assetfiles/$name" | awk '{print $1}')
-            size=$(stat -c%s "/tmp/assetfiles/$name" 2>/dev/null || stat -f%z "/tmp/assetfiles/$name")
-            sig=$(openssl dgst -sha256 -sign private.pem "/tmp/assetfiles/$name" | openssl base64 -A)
-            platform="unknown"
-            case "$name" in
-              *.exe*) platform="windows" ;;
-              *.dmg*) platform="macos" ;;
-              *.AppImage*|*.deb*|*.tar.gz*) platform="linux" ;;
-            esac
-            entry=$(jq -n --arg p "$platform" --arg n "$name" --arg u "$url" --arg h "$sha256" --arg s "$sig" --arg sz "$size" '{platform:$p, file:$n, url:$u, sha256:$h, signature:$s, size:(($sz|tonumber))}')
-            echo "$entry" >> /tmp/entries.ndjson
-          done
+          # Pick NSIS .exe for updates; pair with its .sig
+          exe_url=$(jq -r '.[] | select(.name|endswith(".exe")) | .browser_download_url' /tmp/assets.json | head -n1)
+          sig_url=$(jq -r '.[] | select(.name|endswith(".exe.sig")) | .browser_download_url' /tmp/assets.json | head -n1)
 
-      - name: Build updates.json
-        env:
-          VERSION: ${{ github.ref_name }}
-        run: |
+          if [ -z "$exe_url" ]; then echo "No .exe found in assets"; exit 1; fi
+          if [ -z "$sig_url" ]; then echo "No .exe.sig found in assets"; exit 1; fi
+
+          curl -sL -H "Authorization: token $TOKEN" -o /tmp/app.exe "$exe_url"
+          curl -sL -H "Authorization: token $TOKEN" -o /tmp/app.exe.sig "$sig_url"
+
+          # Tauri .sig contains the updater signature; trim whitespace/newlines
+          signature=$(tr -d '\r\n' < /tmp/app.exe.sig)
+
           now=$(date --utc +"%Y-%m-%dT%H:%M:%SZ")
-          # Build a JSON object grouping entries by platform
-          jq -s 'reduce .[] as $item ({}; .[$item.platform]=$item)' /tmp/entries.ndjson > /tmp/platforms.json
-          jq -n --arg v "$VERSION" --arg d "$now" --slurpfile P /tmp/platforms.json '{version:$v, pub_date:$d, platforms: ($P[0])}' > updates.json
-          # Sign updates.json and append signature
-          sig=$(openssl dgst -sha256 -sign private.pem updates.json | openssl base64 -A)
-          jq --arg s "$sig" '. + {signature:$s}' updates.json > updates.signed.json
-          mv updates.signed.json updates.json
+
+          jq -n --arg v "$VERSION" --arg d "$now" --arg u "$exe_url" --arg s "$signature" \
+            '{
+              version:$v,
+              pub_date:$d,
+              platforms:{
+                windows: {
+                  url:$u,
+                  signature:$s
+                }
+              }
+            }' > updates.json
+
+          cat updates.json
 
       - name: Upload updates.json to release
         uses: actions/upload-release-asset@v1
