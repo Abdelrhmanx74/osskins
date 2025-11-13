@@ -53,6 +53,7 @@ rfd = "0.14" # For file dialogs
 percent-encoding = "2.3"
 copypasta = "0.8"
 futures-util = "0.3"
+notify = "6.1" # For file system watching - provides instant lockfile detection
 
 [features]
 # by default Tauri runs in production mode

@@ -36,20 +36,24 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["resources/fonts/*"]
+    "resources": [
+      "resources/fonts/*"
+    ]
   },
   "plugins": {
     "fs": {
       "requireLiteralLeadingDot": false
     },
     "http": {
-      "scope": ["*"]
+      "scope": [
+        "*"
+      ]
     },
     "shell": {
       "open": true
     },
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYxNzQyQjU2QUMxOTE3QTMKUldTakZ4bXNWaXQwWVJTR2crb24yUlAwWHlVVDRTZWhSME9VK0NRMCtTdEtnc2VDbURHbHIrekkK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgwODEzQTVFMEI1QjFGQ0YKUldUUEgxc0xYanFCZ05icVVpdVgySXNselNkc2JPcUZmeFZISnNLL0tNWlBxeVBYbXRta1ZqNXkK",
       "endpoints": [
         "https://github.com/Abdelrhmanx74/osskins/releases/latest/download/updates.json"
       ],

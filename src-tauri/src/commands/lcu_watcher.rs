@@ -19,6 +19,8 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::{thread, time::Duration};
 use tauri::{AppHandle, Emitter, Manager};
+use notify::{Watcher, RecursiveMode, Event as NotifyEvent};
+use std::sync::mpsc;
 
 // Injection mode selection – stored in config.json under "injection_mode"
 #[derive(PartialEq, Eq)]
@@ -98,7 +100,7 @@ pub fn is_in_champ_select() -> bool {
 
 #[tauri::command]
 pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), String> {
-  println!("Starting LCU status watcher for path: {}", league_path);
+  println!("Starting improved LCU watcher with file system monitoring for path: {}", league_path);
   let app_handle = app.clone();
   let league_path_clone = league_path.clone();
 
@@ -144,12 +146,39 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
     let mut last_party_injection_time: std::time::Instant =
       std::time::Instant::now() - std::time::Duration::from_secs(60);
 
-    loop {
-      let mut sleep_duration = Duration::from_secs(5);
+    // Set up file system watcher for lockfile - provides instant detection
+    let (lockfile_tx, lockfile_rx) = mpsc::channel();
+    let league_path_for_watcher = league_path_clone.clone();
+    
+    thread::spawn(move || {
+      match notify::recommended_watcher(move |res: Result<NotifyEvent, notify::Error>| {
+        if res.is_ok() {
+          // Debounce: ignore rapid-fire events from same file operation
+          let _ = lockfile_tx.send(());
+        }
+      }) {
+        Ok(mut watcher) => {
+          match watcher.watch(PathBuf::from(&league_path_for_watcher).as_path(), RecursiveMode::NonRecursive) {
+            Ok(_) => {
+              println!("[LCU Watcher] File system watcher active for instant lockfile detection");
+              // Keep watcher alive - it will drop when the thread ends
+              loop {
+                thread::sleep(Duration::from_secs(3600)); // Sleep longer since we only need to keep thread alive
+              }
+            }
+            Err(e) => {
+              eprintln!("[LCU Watcher] Failed to start file watcher: {} - falling back to polling only", e);
+            }
+          }
+        }
+        Err(e) => {
+          eprintln!("[LCU Watcher] Failed to create file watcher: {} - falling back to polling only", e);
+        }
+      }
+    });
 
-      let log_msg = format!("[LCU Watcher] Monitoring directory: {}", league_path_clone);
-      println!("{}", log_msg);
-      emit_terminal_log(&app_handle, &log_msg);
+    loop {
+      let mut sleep_duration = Duration::from_secs(10); // Increased from 5s to 10s since we have file watcher now
 
       // Only check the configured League directory for lockfile
       let search_dirs = [PathBuf::from(&league_path_clone)];
@@ -158,11 +187,8 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
       let mut found_any_lockfile = false;
       let mut lockfile_path = None;
 
-      // Rest of the lockfile detection code remains the same
+      // Lockfile detection - reduced logging to minimize console spam
       for dir in &search_dirs {
-        let log_msg = format!("[LCU Watcher] Looking for lockfiles in: {}", dir.display());
-        println!("{}", log_msg);
-        emit_terminal_log(&app_handle, &log_msg);
 
         // Check each possible lockfile name
         for name in [
@@ -171,16 +197,17 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
           "LeagueClient.lockfile",
         ] {
           let path = dir.join(name);
-          if path.exists() {
+          if let Ok(content) = fs::read_to_string(&path) {
             found_any_lockfile = true;
             lockfile_path = Some(path.clone());
-            println!("[LCU Watcher] Found lockfile: {}", path.display());
-            emit_terminal_log(
-              &app_handle,
-              &format!("[LCU Watcher] Found lockfile: {}", path.display()),
-            );
-          }
-          if let Ok(content) = fs::read_to_string(&path) {
+            // Only log when lockfile status changes (not on every loop)
+            if lockfile_path.is_none() {
+              println!("[LCU Watcher] Found lockfile: {}", path.display());
+              emit_terminal_log(
+                &app_handle,
+                &format!("[LCU Watcher] Found lockfile: {}", path.display()),
+              );
+            }
             let parts: Vec<&str> = content.split(':').collect();
             if parts.len() >= 5 {
               port = Some(parts[2].to_string());
@@ -462,9 +489,9 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
               }
             }
 
-            // Check for party mode messages continuously (every 3 seconds) regardless of phase
-            // This ensures we don't miss connection requests when not in champion select
-            if last_party_mode_check.elapsed().as_secs() >= 3 {
+            // Check for party mode messages (polling required as LCU doesn't provide WebSocket events for all chat messages)
+            // Reduced from 3s to 1.5s for better responsiveness while still being reasonable
+            if last_party_mode_check.elapsed().as_millis() >= 1500 {
               last_party_mode_check = std::time::Instant::now();
               if let Err(e) = check_for_party_mode_messages_with_connection(
                 &app_handle,
@@ -476,11 +503,11 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
               }
             }
 
-            // Check if party mode injection should be triggered (every 2 seconds)
-            // This runs independently of champion changes to handle the timing properly
+            // Check if party mode injection should be triggered
+            // Runs independently of champion changes to handle timing properly
             // Skip party mode injection if manual injection mode is active
             if phase == "ChampSelect"
-              && last_party_injection_check.elapsed().as_secs() >= 2
+              && last_party_injection_check.elapsed().as_millis() >= 1000 // Reduced from 2s to 1s
               && !crate::commands::skin_injection::is_manual_injection_active()
             {
               last_party_injection_check = std::time::Instant::now();
@@ -1150,7 +1177,26 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
           Err(e) => println!("Failed to build HTTP client: {}", e),
         }
 
-        thread::sleep(sleep_duration);
+        // Smart waiting: check file watcher channel or timeout
+        // This provides instant response to lockfile changes while still doing periodic checks
+        match lockfile_rx.recv_timeout(sleep_duration) {
+          Ok(_) => {
+            // File system event detected - drain any additional queued events to debounce
+            while lockfile_rx.try_recv().is_ok() {
+              // Discard rapid-fire events
+            }
+            // Small delay to let file operations complete
+            thread::sleep(Duration::from_millis(100));
+          }
+          Err(mpsc::RecvTimeoutError::Timeout) => {
+            // Normal timeout - continue with periodic check
+          }
+          Err(mpsc::RecvTimeoutError::Disconnected) => {
+            // Watcher died - fall back to periodic checks only
+            eprintln!("[LCU Watcher] File watcher disconnected, using polling only");
+            thread::sleep(sleep_duration);
+          }
+        }
       }
     }
   });
