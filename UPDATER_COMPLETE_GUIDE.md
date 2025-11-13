@@ -26,13 +26,17 @@ You **MUST** set up these secrets for the updater to work. Without them, builds 
 If you haven't generated your signing keys yet, run:
 
 ```bash
+# Without password (simpler - recommended)
+pnpm tauri signer generate -- -w ~/.tauri/osskins.key --no-password
+
+# OR with password (more secure)
 pnpm tauri signer generate -- -w ~/.tauri/osskins.key
 ```
 
 This will:
 - Create a **private key** at `~/.tauri/osskins.key` (or `C:\Users\YourName\.tauri\osskins.key` on Windows)
 - Create a **public key** at `~/.tauri/osskins.key.pub`
-- Prompt you for a password (REMEMBER THIS!)
+- If using password: Prompt you for a password (REMEMBER THIS!)
 
 The public key is already configured in your `tauri.conf.json` ✅
 
@@ -55,10 +59,11 @@ The key looks like this (use YOUR actual key):
 dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5...
 ```
 
-#### Secret 2: TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+#### Secret 2: TAURI_SIGNING_PRIVATE_KEY_PASSWORD (Optional)
 
 - **Name**: `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
 - **Value**: The password you entered when generating the keys
+- **If you used `--no-password`**: Skip this secret entirely!
 
 ---
 

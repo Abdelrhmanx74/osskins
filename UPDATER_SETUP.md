@@ -70,7 +70,11 @@ After building locally, you need to sign the update:
 pnpm tauri build
 
 # The artifacts will be in src-tauri/target/release/bundle/
-# Sign the .msi.zip file
+# Sign the .msi.zip file (without password)
+pnpm tauri signer sign "src-tauri/target/release/bundle/msi/osskins_1.5.3_x64_en-US.msi.zip" \
+  -p ~/.tauri/osskins.key
+
+# OR if you used a password:
 pnpm tauri signer sign "src-tauri/target/release/bundle/msi/osskins_1.5.3_x64_en-US.msi.zip" \
   -p ~/.tauri/osskins.key \
   -w "your-password"
