@@ -23,7 +23,8 @@ jobs:
           tag_name: ${{ github.ref_name }}
           release_name: Release ${{ github.ref_name }}
           draft: false
-          prerelease: false
+          # mark as prerelease when the tag contains "-test"
+          prerelease: ${{ contains(github.ref_name, '-test') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -31,6 +32,10 @@ jobs:
     name: Build on Windows and upload
     needs: create_release
     runs-on: windows-latest
+    env:
+      # expose whether this is a test/prerelease to the job
+      IS_TEST: ${{ contains(github.ref_name, '-test') }}
+      UPLOAD_URL_TEMPLATE: ${{ needs.create_release.outputs.upload_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,67 +74,112 @@ jobs:
         run: |
           pnpm tauri build
 
-      - name: Find bundle artifact (Windows)
-        id: find_artifact
+      - name: Find and upload bundle artifacts (Windows)
+        id: upload_artifacts
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IS_TEST: ${{ env.IS_TEST }}
+          UPLOAD_URL_TEMPLATE: ${{ env.UPLOAD_URL_TEMPLATE }}
         run: |
-          Write-Host "Searching for bundle files under src-tauri\target\release\bundle"
-          $paths = Get-ChildItem -Path "src-tauri\target\release\bundle" -Recurse -File -ErrorAction SilentlyContinue
-          if (-not $paths) {
-            Write-Host "Fallback: searching under target"
-            $paths = Get-ChildItem -Path "target" -Recurse -File -ErrorAction SilentlyContinue
+          Write-Host "Searching for bundle artifacts under src-tauri\target\release\bundle and target"
+          $patterns = @('*.msi','*.exe','*.zip','*.dmg','*.AppImage','*.deb','*.tar.gz')
+          $searchRoots = @("src-tauri\target\release\bundle", "target")
+          $found = @()
+
+          foreach ($root in $searchRoots) {
+            foreach ($p in $patterns) {
+              try {
+                $found += Get-ChildItem -Path $root -Recurse -File -Include $p -ErrorAction SilentlyContinue
+              } catch {
+                # ignore
+              }
+            }
           }
-          if (-not $paths) {
-            Write-Error "No artifact found"
+
+          $found = $found | Sort-Object FullName -Unique
+
+          if (-not $found -or $found.Count -eq 0) {
+            Write-Error "No build artifacts found"
             exit 1
           }
-          $artifact = $paths[0].FullName
-          $file = $paths[0].Name
-          Write-Host "Found artifact: $artifact"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "artifact=$artifact"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "file=$file"
 
-      - name: Compute sha256 and create metadata file (Windows)
+          Write-Host "Found artifacts:"
+          $i = 0
+          foreach ($f in $found) {
+            $i++
+            Write-Host "$i) $($f.FullName)"
+          }
+
+          # The upload_url from create_release is a template like https://uploads.github.com/repos/.../assets{?name,label}
+          $upload_template = $env:UPLOAD_URL_TEMPLATE
+          if (-not $upload_template) {
+            Write-Error "Missing upload_url from release creation"
+            exit 1
+          }
+          $upload_base = $upload_template -replace '\{.*\}',''
+
+          # Upload each artifact (and its .sig if present). Use curl to upload to the release assets endpoint.
+          foreach ($f in $found) {
+            $nameEscaped = [System.Uri]::EscapeDataString($f.Name)
+            $upload_url = "$upload_base?name=$nameEscaped"
+            Write-Host "Uploading asset $($f.Name) to $upload_url"
+            # Use curl provided by runner
+            $uploadCmd = @(
+              'curl', '-sS',
+              '-X', 'POST',
+              '-H', "Authorization: token $($env:GITHUB_TOKEN)",
+              '-H', 'Content-Type: application/octet-stream',
+              '--data-binary', "@$($f.FullName)",
+              $upload_url
+            )
+            Write-Host ($uploadCmd -join ' ')
+            $resp = & curl -sS -X POST -H "Authorization: token $($env:GITHUB_TOKEN)" -H "Content-Type: application/octet-stream" --data-binary "@$($f.FullName)" $upload_url
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Upload failed for $($f.FullName)"
+              exit 1
+            } else {
+              Write-Host "Uploaded $($f.Name)"
+            }
+
+            # If a sidecar .sig exists next to the artifact, upload it too (optional)
+            $sigPath1 = "$($f.FullName).sig"
+            $sigPath2 = Join-Path $f.DirectoryName ("$($f.BaseName).sig")
+            $sigToUpload = $null
+            if (Test-Path $sigPath1) { $sigToUpload = $sigPath1 }
+            elseif (Test-Path $sigPath2) { $sigToUpload = $sigPath2 }
+
+            if ($sigToUpload) {
+              $sigNameEscaped = [System.Uri]::EscapeDataString((Split-Path $sigToUpload -Leaf))
+              $sigUploadUrl = "$upload_base?name=$sigNameEscaped"
+              Write-Host "Uploading signature $sigToUpload as $sigUploadUrl"
+              & curl -sS -X POST -H "Authorization: token $($env:GITHUB_TOKEN)" -H "Content-Type: application/octet-stream" --data-binary "@$sigToUpload" $sigUploadUrl
+              if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Failed to upload signature $sigToUpload"
+              } else {
+                Write-Host "Uploaded signature $(Split-Path $sigToUpload -Leaf)"
+              }
+            } else {
+              if ($env:IS_TEST -eq 'True' -or $env:IS_TEST -eq 'true') {
+                Write-Host "No .sig found for $($f.Name) — running in test mode, continuing."
+              } else {
+                Write-Warning "No .sig found for $($f.Name). This is OK because signatures will be generated server-side when building updates.json."
+              }
+            }
+          }
+
+          # Output list of uploaded artifact names (for debug / downstream)
+          $names = $found | ForEach-Object { $_.Name } | ConvertTo-Json -Compress
+          Write-Host "artifact_names=$names"
+          Write-Host "::set-output name=artifact_names::$names"
+
+      - name: Compute sha256 and create metadata file (Windows)  # kept for backward compatibility, optional
         id: meta
         shell: pwsh
         run: |
-          $ARTIFACT = "${{ steps.find_artifact.outputs.artifact }}"
-          Write-Host "Artifact: $ARTIFACT"
-          $FNAME = "${{ steps.find_artifact.outputs.file }}"
-          $hash = Get-FileHash -Algorithm SHA256 -Path $ARTIFACT
-          $SHA256 = $hash.Hash.ToLower()
-          $SIZE = (Get-Item $ARTIFACT).Length
-          $PLATFORM = "windows"
-          $METAFILE = "meta-$PLATFORM.json"
-          $obj = @{
-            platform = $PLATFORM
-            file = $FNAME
-            sha256 = $SHA256
-            size = [int64]$SIZE
-          }
-          $obj | ConvertTo-Json -Depth 4 | Out-File -FilePath $METAFILE -Encoding utf8
-          Write-Host "meta_file=$METAFILE"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "meta_file=$METAFILE"
-
-      - name: Upload artifact to release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.find_artifact.outputs.artifact }}
-          asset_name: ${{ steps.find_artifact.outputs.file }}
-          asset_content_type: application/octet-stream
-
-      - name: Upload metadata file to release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.meta.outputs.meta_file }}
-          asset_name: ${{ steps.meta.outputs.meta_file }}
-          asset_content_type: application/json
+          Write-Host "This step is kept optional; the generate_metadata job recomputes hashes and signatures."
+          # Optionally compute metadata for the first artifact and upload it as additional info
+          # (left intentionally simple; generator job will create updates.json anyway)
 
   generate_metadata:
     name: Generate updates.json and sign assets
@@ -181,6 +231,7 @@ jobs:
             platform="unknown"
             case "$name" in
               *.exe*) platform="windows" ;;
+              *.msi*) platform="windows" ;;
               *.dmg*) platform="macos" ;;
               *.AppImage*|*.deb*|*.tar.gz*) platform="linux" ;;
             esac
