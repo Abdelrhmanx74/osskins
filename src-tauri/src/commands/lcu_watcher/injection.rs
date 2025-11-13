@@ -8,7 +8,7 @@ use serde_json;
 use crate::commands::misc_items::get_selected_misc_items;
 use crate::commands::types::SavedConfig;
 use crate::commands::party_mode::RECEIVED_SKINS;
-use crate::injection::{inject_skins_and_misc, Skin};
+use crate::injection::Skin;
 use super::utils::is_in_champ_select;
 
 // Helper function to inject skins for multiple champions (used in instant-assign)
@@ -68,7 +68,10 @@ pub fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_i
           .unwrap_or_else(|_| PathBuf::from("."))
           .join("champions");
 
-        match inject_skins_and_misc(
+        // Emit start event once for the whole batch
+        let _ = app.emit("injection-status", "injecting");
+
+        match crate::injection::inject_skins_and_misc_no_events(
           app,
           league_path,
           &skins_to_inject,
@@ -76,7 +79,8 @@ pub fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_i
           &champions_dir,
         ) {
           Ok(_) => {
-            let _ = app.emit("injection-status", "success");
+            // Emit success once for the whole batch
+            let _ = app.emit("injection-status", "completed");
             if !skins_to_inject.is_empty() {
               println!(
                 "[Enhanced] Successfully injected {} skins and {} misc items",
@@ -528,7 +532,10 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
   }
 
   // Inject friend skins using the same logic as the main injection
-  match inject_skins_and_misc(
+  // Emit start event once for the whole batch
+  let _ = app.emit("injection-status", "injecting");
+
+  match crate::injection::inject_skins_and_misc_no_events(
     app,
     league_path,
     &skins_to_inject,
@@ -557,21 +564,13 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
         );
       }
 
-      let _ = app.emit(
-        "injection-status",
-        format!(
-          "Successfully injected {} skins ({} friend)",
-          total, friend_count
-        ),
-      );
+      // Emit success once for the whole batch
+      let _ = app.emit("injection-status", "completed");
       Ok(())
     }
     Err(e) => {
       println!("[Party Mode] ❌ Failed to inject friend skins: {}", e);
-      let _ = app.emit(
-        "injection-status",
-        format!("Failed to inject friend skins: {}", e),
-      );
+      let _ = app.emit("injection-status", "error");
       Err(format!("Failed to inject friend skins: {}", e))
     }
   }
@@ -857,7 +856,10 @@ pub async fn trigger_party_mode_injection_for_champions(
     }
   }
 
-  match inject_skins_and_misc(app, league_path, &unique_skins, &misc_items, &champions_dir) {
+  // Emit start event once for the whole batch
+  let _ = app.emit("injection-status", "injecting");
+
+  match crate::injection::inject_skins_and_misc_no_events(app, league_path, &unique_skins, &misc_items, &champions_dir) {
     Ok(_) => {
       let total = unique_skins.len();
       let friend_count = total.saturating_sub(local_added_count);
@@ -865,17 +867,13 @@ pub async fn trigger_party_mode_injection_for_champions(
         "[Party Mode] ✅ Multi-champion injection complete: {} skins ({} friend, {} local)",
         total, friend_count, local_added_count
       );
-      let _ = app.emit(
-        "injection-status",
-        format!(
-          "instant-assign injected {} skins ({} friend)",
-          total, friend_count
-        ),
-      );
+      // Emit success once for the whole batch
+      let _ = app.emit("injection-status", "completed");
       Ok(())
     }
     Err(e) => {
       eprintln!("[Party Mode] ❌ Multi-champion injection failed: {}", e);
+      let _ = app.emit("injection-status", "error");
       Err(format!("Multi-champion injection failed: {}", e))
     }
   }

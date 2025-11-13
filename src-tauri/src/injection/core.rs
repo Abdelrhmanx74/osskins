@@ -268,9 +268,30 @@ impl SkinInjector {
     misc_items: &[MiscItem],
     skin_file_files_dir: &Path,
   ) -> Result<(), InjectionError> {
-    // Emit start event to frontend
-    if let Some(app) = &self.app_handle {
-      let _ = app.emit("injection-status", "injecting");
+    self.inject_skins_and_misc_internal(skins, misc_items, skin_file_files_dir, true)
+  }
+
+  pub fn inject_skins_and_misc_no_events(
+    &mut self,
+    skins: &[Skin],
+    misc_items: &[MiscItem],
+    skin_file_files_dir: &Path,
+  ) -> Result<(), InjectionError> {
+    self.inject_skins_and_misc_internal(skins, misc_items, skin_file_files_dir, false)
+  }
+
+  fn inject_skins_and_misc_internal(
+    &mut self,
+    skins: &[Skin],
+    misc_items: &[MiscItem],
+    skin_file_files_dir: &Path,
+    emit_events: bool,
+  ) -> Result<(), InjectionError> {
+    // Emit start event to frontend (only if requested)
+    if emit_events {
+      if let Some(app) = &self.app_handle {
+        let _ = app.emit("injection-status", "injecting");
+      }
     }
 
     // NOTE: Cleanup is now handled by the LCU watcher on phase changes instead of before each injection
@@ -428,9 +449,11 @@ impl SkinInjector {
 
     self.log("Skin injection completed successfully");
     // Note: We don't set state to Idle because we're now in Running state with the overlay active
-    // After all steps complete successfully, emit end event
-    if let Some(app) = &self.app_handle {
-      let _ = app.emit("injection-status", "completed");
+    // After all steps complete successfully, emit end event (only if requested)
+    if emit_events {
+      if let Some(app) = &self.app_handle {
+        let _ = app.emit("injection-status", "completed");
+      }
     }
     Ok(())
   }
@@ -509,6 +532,12 @@ impl SkinInjector {
 
     // Reset the state regardless of previous state to ensure cleanup
     self.set_state(ModState::Idle);
+    
+    // Emit idle status to frontend so UI updates properly
+    if let Some(app) = &self.app_handle {
+      let _ = app.emit("injection-status", "idle");
+    }
+    
     self.log("Skin injection stopped");
 
     Ok(())

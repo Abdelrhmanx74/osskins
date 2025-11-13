@@ -101,7 +101,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
     });
 
     loop {
-      let mut sleep_duration = Duration::from_secs(10); // Increased from 5s to 10s since we have file watcher now
+      let mut sleep_duration = Duration::from_secs(2); // Responsive polling for phase changes (2s), file watcher provides instant lockfile detection
 
       // Only check the configured League directory for lockfile
       let search_dirs = [PathBuf::from(&league_path_clone)];
@@ -299,6 +299,10 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
               if should_cleanup {
                 // Reset party injection flag when cleaning up (allows new injection on next phase)
                 PARTY_INJECTION_DONE_THIS_PHASE.store(false, Ordering::Relaxed);
+
+                // ALWAYS emit idle status to frontend first, regardless of whether processes need cleanup
+                // This ensures the UI updates immediately when user cancels matchmaking
+                let _ = app_handle.emit("injection-status", "idle");
 
                 match crate::injection::needs_injection_cleanup(&app_handle, &league_path_clone) {
                   Ok(needs_cleanup) => {
@@ -998,7 +1002,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                   }
                 }
 
-                // If we resolved any champions, inject (solo flow) and also trigger party-mode flow
+                // If we resolved any champions, trigger party-mode injection flow (which includes local skins)
                 if !resolved_champions.is_empty() {
                   emit_terminal_log(
                     &app_handle,
@@ -1008,11 +1012,10 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                       resolved_champions
                     ),
                   );
-                  // Solo instant-assign injection (kept as-is)
-                  inject_skins_for_champions(&app_handle, &league_path_clone, &resolved_champions);
 
-                  // Party Mode: on instant-assign (Lobby->Matchmaking), send our shares now and try to inject
+                  // Party Mode: on instant-assign (Lobby->Matchmaking), send our shares now and inject
                   // friend + local skins for the resolved champions without waiting for ChampSelect.
+                  // NOTE: We use ONLY party mode injection here (not solo) to avoid duplicate injections
                   let app_for_async = app_handle.clone();
                   let champs_u32: Vec<u32> = resolved_champions.iter().map(|c| *c as u32).collect();
                   std::thread::spawn(move || {
