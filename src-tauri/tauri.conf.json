@@ -36,18 +36,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "resources/fonts/*"
-    ]
+    "resources": ["resources/fonts/*"]
   },
   "plugins": {
     "fs": {
       "requireLiteralLeadingDot": false
     },
     "http": {
-      "scope": [
-        "*"
-      ]
+      "scope": ["*"]
     },
     "shell": {
       "open": true
