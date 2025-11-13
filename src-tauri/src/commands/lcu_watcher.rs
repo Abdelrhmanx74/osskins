@@ -724,13 +724,17 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                         let champ_id = skin.champion_id;
 
                         if last_champion_id == Some(champ_id) {
-                          if !last_selected_skins.contains_key(&champ_id)
+                          // Check if skin has changed - simplified to always re-inject when different
+                          let skin_has_changed = !last_selected_skins.contains_key(&champ_id)
                             || last_selected_skins.get(&champ_id).map_or(true, |old_skin| {
                               old_skin.skin_id != skin.skin_id
                                 || old_skin.chroma_id != skin.chroma_id
                                 || old_skin.skin_file != skin.skin_file
-                            })
-                          {
+                            });
+                          
+                          if skin_has_changed {
+                            println!("[Auto Injection] Skin change detected for champion {}, triggering re-injection", champ_id);
+                            
                             let mut skins_to_inject = vec![Skin {
                               champion_id: skin.champion_id,
                               skin_id: skin.skin_id,
@@ -763,17 +767,9 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                               continue;
                             }
 
-                            // Check if injection was already done this phase (prevents ARAM loops)
-                            let already_done =
-                              PARTY_INJECTION_DONE_THIS_PHASE.load(Ordering::Relaxed);
-                            if already_done {
-                              println!("[Party Mode] Injection already completed for this phase; skipping champion {}", champ_id);
-                              continue;
-                            }
-
-                            // Check if we should inject now (wait for friends to share their skins)
+                            // For skin changes, check if we should wait for party mode friends
+                            // should_inject_now returns true immediately if no friends are in party
                             let should_inject = {
-                              // Create a runtime to handle the async call
                               let rt = tokio::runtime::Runtime::new()
                                 .expect("Failed to create Tokio runtime");
                               rt.block_on(async {
@@ -785,7 +781,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                 {
                                   Ok(should) => should,
                                   Err(e) => {
-                                    println!("[Party Mode] Error checking injection timing: {}", e);
+                                    println!("[Auto Injection] Error checking party mode timing: {}", e);
                                     true // Default to inject if there's an error
                                   }
                                 }
@@ -793,9 +789,11 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                             };
 
                             if !should_inject {
-                              println!("[Party Mode] Delaying injection for champion {}, waiting for more friends to share", champ_id);
+                              println!("[Auto Injection] Waiting for party friends to share before injecting champion {}", champ_id);
                               continue;
                             }
+
+                            println!("[Auto Injection] Proceeding with injection for champion {} (skin change detected)", champ_id);
 
                             // Filter out skins whose skin_file files can't be found locally
                             let assets_skins_dir =
