@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   create_release:
     name: Create GitHub Release
@@ -23,7 +26,6 @@ jobs:
           tag_name: ${{ github.ref_name }}
           release_name: Release ${{ github.ref_name }}
           draft: false
-          # mark as prerelease when the tag contains "-test"
           prerelease: ${{ contains(github.ref_name, '-test') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -33,7 +35,6 @@ jobs:
     needs: create_release
     runs-on: windows-latest
     env:
-      # expose whether this is a test/prerelease to the job
       IS_TEST: ${{ contains(github.ref_name, '-test') }}
       UPLOAD_URL_TEMPLATE: ${{ needs.create_release.outputs.upload_url }}
     steps:
@@ -92,7 +93,7 @@ jobs:
               try {
                 $found += Get-ChildItem -Path $root -Recurse -File -Include $p -ErrorAction SilentlyContinue
               } catch {
-                # ignore
+                # ignore missing directories
               }
             }
           }
@@ -105,13 +106,9 @@ jobs:
           }
 
           Write-Host "Found artifacts:"
-          $i = 0
-          foreach ($f in $found) {
-            $i++
-            Write-Host "$i) $($f.FullName)"
-          }
+          $found | ForEach-Object { Write-Host "- $($_.FullName)" }
 
-          # The upload_url from create_release is a template like https://uploads.github.com/repos/.../assets{?name,label}
+          # upload_url is a template like https://uploads.github.com/.../assets{?name,label}
           $upload_template = $env:UPLOAD_URL_TEMPLATE
           if (-not $upload_template) {
             Write-Error "Missing upload_url from release creation"
@@ -119,21 +116,10 @@ jobs:
           }
           $upload_base = $upload_template -replace '\{.*\}',''
 
-          # Upload each artifact (and its .sig if present). Use curl to upload to the release assets endpoint.
           foreach ($f in $found) {
             $nameEscaped = [System.Uri]::EscapeDataString($f.Name)
             $upload_url = "$upload_base?name=$nameEscaped"
             Write-Host "Uploading asset $($f.Name) to $upload_url"
-            # Use curl provided by runner
-            $uploadCmd = @(
-              'curl', '-sS',
-              '-X', 'POST',
-              '-H', "Authorization: token $($env:GITHUB_TOKEN)",
-              '-H', 'Content-Type: application/octet-stream',
-              '--data-binary', "@$($f.FullName)",
-              $upload_url
-            )
-            Write-Host ($uploadCmd -join ' ')
             $resp = & curl -sS -X POST -H "Authorization: token $($env:GITHUB_TOKEN)" -H "Content-Type: application/octet-stream" --data-binary "@$($f.FullName)" $upload_url
             if ($LASTEXITCODE -ne 0) {
               Write-Error "Upload failed for $($f.FullName)"
@@ -142,7 +128,7 @@ jobs:
               Write-Host "Uploaded $($f.Name)"
             }
 
-            # If a sidecar .sig exists next to the artifact, upload it too (optional)
+            # Check for sidecar .sig files adjacent to artifact
             $sigPath1 = "$($f.FullName).sig"
             $sigPath2 = Join-Path $f.DirectoryName ("$($f.BaseName).sig")
             $sigToUpload = $null
@@ -152,10 +138,10 @@ jobs:
             if ($sigToUpload) {
               $sigNameEscaped = [System.Uri]::EscapeDataString((Split-Path $sigToUpload -Leaf))
               $sigUploadUrl = "$upload_base?name=$sigNameEscaped"
-              Write-Host "Uploading signature $sigToUpload as $sigUploadUrl"
+              Write-Host "Uploading signature $sigToUpload to $sigUploadUrl"
               & curl -sS -X POST -H "Authorization: token $($env:GITHUB_TOKEN)" -H "Content-Type: application/octet-stream" --data-binary "@$sigToUpload" $sigUploadUrl
               if ($LASTEXITCODE -ne 0) {
-                Write-Warning "Failed to upload signature $sigToUpload"
+                Write-Warning "Failed to upload signature $sigToUpload (non-fatal)"
               } else {
                 Write-Host "Uploaded signature $(Split-Path $sigToUpload -Leaf)"
               }
@@ -163,23 +149,11 @@ jobs:
               if ($env:IS_TEST -eq 'True' -or $env:IS_TEST -eq 'true') {
                 Write-Host "No .sig found for $($f.Name) — running in test mode, continuing."
               } else {
-                Write-Warning "No .sig found for $($f.Name). This is OK because signatures will be generated server-side when building updates.json."
+                Write-Error "No .sig found for $($f.Name) and this is not a -test release. Aborting."
+                exit 1
               }
             }
           }
-
-          # Output list of uploaded artifact names (for debug / downstream)
-          $names = $found | ForEach-Object { $_.Name } | ConvertTo-Json -Compress
-          Write-Host "artifact_names=$names"
-          Write-Host "::set-output name=artifact_names::$names"
-
-      - name: Compute sha256 and create metadata file (Windows)  # kept for backward compatibility, optional
-        id: meta
-        shell: pwsh
-        run: |
-          Write-Host "This step is kept optional; the generate_metadata job recomputes hashes and signatures."
-          # Optionally compute metadata for the first artifact and upload it as additional info
-          # (left intentionally simple; generator job will create updates.json anyway)
 
   generate_metadata:
     name: Generate updates.json and sign assets
@@ -230,8 +204,7 @@ jobs:
             sig=$(openssl dgst -sha256 -sign private.pem "/tmp/assetfiles/$name" | openssl base64 -A)
             platform="unknown"
             case "$name" in
-              *.exe*) platform="windows" ;;
-              *.msi*) platform="windows" ;;
+              *.exe*|*.msi*) platform="windows" ;;
               *.dmg*) platform="macos" ;;
               *.AppImage*|*.deb*|*.tar.gz*) platform="linux" ;;
             esac
@@ -244,10 +217,8 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           now=$(date --utc +"%Y-%m-%dT%H:%M:%SZ")
-          # Build a JSON object grouping entries by platform
           jq -s 'reduce .[] as $item ({}; .[$item.platform]=$item)' /tmp/entries.ndjson > /tmp/platforms.json
           jq -n --arg v "$VERSION" --arg d "$now" --slurpfile P /tmp/platforms.json '{version:$v, pub_date:$d, platforms: ($P[0])}' > updates.json
-          # Sign updates.json and append signature
           sig=$(openssl dgst -sha256 -sign private.pem updates.json | openssl base64 -A)
           jq --arg s "$sig" '. + {signature:$s}' updates.json > updates.signed.json
           mv updates.signed.json updates.json
