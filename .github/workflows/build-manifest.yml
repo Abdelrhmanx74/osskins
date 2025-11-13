@@ -15,7 +15,7 @@ jobs:
       - name: Prepare environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq coreutils git curl
+          sudo apt-get install -y jq coreutils git curl python3
 
       - name: Configure git user
         run: |
@@ -44,8 +44,15 @@ jobs:
             release_json="$(curl -sS -H 'Accept: application/vnd.github+json' "${API_URL}" || true)"
           fi
 
-          # Parse; prefer cslol-manager.zip, fallback to first asset
+          # Parse tag and detect test/dev suffix
           tag="$(echo "${release_json}" | jq -r '.tag_name // empty')"
+          IS_TEST=false
+          if [ -n "$tag" ] && echo "$tag" | grep -q -- '-test$'; then
+            IS_TEST=true
+          fi
+          echo "Fetched release tag: ${tag:-<none>} (is_test=${IS_TEST})"
+
+          # Choose primary asset: prefer cslol-manager.zip, fallback to first asset
           asset_name="$(echo "${release_json}" | jq -r '.assets[]? | select(.name=="cslol-manager.zip") | .name' | head -n1)"
           if [ -z "${asset_name}" ]; then
             asset_name="$(echo "${release_json}" | jq -r '.assets[0]?.name // empty')"
@@ -54,9 +61,53 @@ jobs:
           if [ -z "${asset_url}" ]; then
             asset_url="$(echo "${release_json}" | jq -r '.assets[0]?.browser_download_url // empty')"
           fi
+
           asset_size_raw="$(echo "${release_json}" | jq -r '.assets[]? | select(.name=="cslol-manager.zip") | .size' | head -n1)"
           if [ -z "${asset_size_raw}" ] || ! [[ "${asset_size_raw}" =~ ^[0-9]+$ ]]; then
             asset_size_raw=0
+          fi
+
+          # If we have an asset URL, attempt to download to compute sha256 and size.
+          sig_b64=""
+          sha256=""
+          size=0
+          if [ -n "${asset_url}" ]; then
+            mkdir -p app/tmp/assetfiles
+            outpath="app/tmp/assetfiles/${asset_name}"
+            echo "Downloading asset ${asset_name}..."
+            if [ -n "${GH_TOKEN:-}" ]; then
+              curl -sL -H "Authorization: token ${GH_TOKEN}" -o "${outpath}" "${asset_url}"
+            else
+              curl -sL -o "${outpath}" "${asset_url}"
+            fi
+
+            if [ -f "${outpath}" ]; then
+              sha256="$(sha256sum "${outpath}" | awk '{print $1}')"
+              size="$(stat -c%s "${outpath}" 2>/dev/null || stat -f%z "${outpath}" 2>/dev/null || echo 0)"
+            fi
+
+            # Try to find a signature asset next to the main asset (asset_name + .sig)
+            sig_url="$(echo "${release_json}" | jq -r --arg sname "${asset_name}.sig" '.assets[]? | select(.name==$sname) | .browser_download_url' | head -n1 || true)"
+            if [ -n "${sig_url}" ]; then
+              echo "Found signature asset, downloading..."
+              if [ -n "${GH_TOKEN:-}" ]; then
+                sig_contents="$(curl -sL -H "Authorization: token ${GH_TOKEN}" "${sig_url}")"
+              else
+                sig_contents="$(curl -sL "${sig_url}")"
+              fi
+              # base64-encode the signature file for embedding in JSON (portable)
+              sig_b64="$(printf "%s" "$sig_contents" | python3 -c 'import sys,base64; data=sys.stdin.buffer.read(); print(base64.b64encode(data).decode())')"
+            else
+              # No .sig asset present
+              sig_b64=""
+              if [ "${IS_TEST}" = false ]; then
+                echo "Warning: no signature asset (${asset_name}.sig) found for release ${tag}. This is allowed but signature will be empty in manifest."
+              else
+                echo "Test release: no signature required for ${asset_name}."
+              fi
+            fi
+          else
+            echo "No asset URL found for release ${tag}; writing empty external_releases entry."
           fi
 
           # Write JSON array ([] if missing)
@@ -65,9 +116,11 @@ jobs:
             --arg tag "${tag}" \
             --arg asset_name "${asset_name}" \
             --arg url "${asset_url}" \
-            --argjson size "${asset_size_raw}" \
+            --arg sha256 "${sha256:-}" \
+            --arg sig "${sig_b64:-}" \
+            --argjson size "${size:-0}" \
             'if ($tag != "" and $url != "") then
-               [{repo:$repo, tag_name:$tag, asset_name:$asset_name, browser_download_url:$url, size:$size, sha256:""}]
+               [{repo:$repo, tag_name:$tag, asset_name:$asset_name, browser_download_url:$url, size:$size, sha256:$sha256, signature:$sig}]
              else
                []
              end' > "${TMP_RELEASES}"
