@@ -18,7 +18,7 @@ use super::types::{InjectionMode, PHASE_STATE, PARTY_INJECTION_DONE_THIS_PHASE, 
 use super::utils::{read_injection_mode, compute_party_injection_signature};
 use super::logging::emit_terminal_log;
 use super::session::{get_selected_champion_id, get_swift_play_champion_selections, extract_swift_play_champions_from_lobby};
-use super::injection::{inject_skins_for_champions, trigger_party_mode_injection, trigger_party_mode_injection_for_champions};
+use super::injection::{trigger_party_mode_injection, trigger_party_mode_injection_for_champions};
 use super::party_mode::check_for_party_mode_messages_with_connection;
 
 #[tauri::command]

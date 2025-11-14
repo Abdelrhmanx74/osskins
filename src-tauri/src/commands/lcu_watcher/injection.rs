@@ -12,6 +12,8 @@ use crate::injection::Skin;
 use super::utils::is_in_champ_select;
 
 // Helper function to inject skins for multiple champions (used in instant-assign)
+// Kept for backward compatibility and manual calls (not referenced by watcher now).
+#[allow(dead_code)]
 pub fn inject_skins_for_champions(app: &AppHandle, league_path: &str, champion_ids: &[i64]) {
   let config_dir = app
     .path()
