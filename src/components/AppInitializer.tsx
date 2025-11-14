@@ -4,7 +4,6 @@ import React from "react";
 import Splash from "./Splash";
 import { useInitialization } from "@/lib/hooks/use-initialization";
 import { useConfigLoader } from "@/lib/hooks/use-config-loader";
-import { useSoftUpdater } from "@/lib/hooks/use-soft-updater";
 import { useGameStore } from "@/lib/store";
 import { ToolsPhase, ToolsSource, useToolsStore } from "@/lib/store/tools";
 
@@ -88,7 +87,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
   }, []);
 
   const { isInitialized } = useInitialization();
-  useSoftUpdater({ autoCheck: true });
+  // Updater removed: no auto-check
   // Also trigger config loader hook which sets misc selections
   useConfigLoader();
 

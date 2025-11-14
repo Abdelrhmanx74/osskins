@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import type { Update } from "@tauri-apps/plugin-updater";
+
+// Updater was removed. Provide a tiny no-op store to avoid breaking imports.
+type Update = unknown;
 
 export type AppUpdateStatus =
     | "idle"
@@ -59,56 +61,27 @@ const initialState: Omit<
     bannerDismissed: false,
 };
 
-export const useAppUpdaterStore = create<AppUpdateState>((set, get) => ({
+export const useAppUpdaterStore = create<AppUpdateState>((set, _get) => ({
     ...initialState,
     setStatus: (status) => {
         set({ status });
     },
-    setUpdateHandle: (handle) => {
-        const previous = get().updateHandle;
-        if (previous && previous !== handle) {
-            void previous.close().catch(() => {
-                /* ignore close errors */
-            });
-        }
-        set({ updateHandle: handle });
+    setUpdateHandle: (_handle) => {
+        // no-op
     },
-    setInfo: (info) => {
-        set((state) => ({
-            ...state,
-            ...info,
-        }));
+    setInfo: (_info) => {
+        // no-op
     },
-    setProgress: (downloadedBytes, totalBytes) => {
-        const progress = (() => {
-            if (downloadedBytes == null || totalBytes == null || totalBytes <= 0) {
-                return downloadedBytes != null && totalBytes === 0 ? 100 : null;
-            }
-            const ratio = Math.min(1, Math.max(0, downloadedBytes / totalBytes));
-            return Math.round(ratio * 100);
-        })();
-
-        set({
-            downloadedBytes,
-            totalBytes,
-            progress,
-        });
+    setProgress: (_downloadedBytes, _totalBytes) => {
+        // no-op
     },
-    setError: (message) => {
-        set({ error: message });
+    setError: (_message) => {
+        // no-op
     },
-    setBannerDismissed: (dismissed) => {
-        set({ bannerDismissed: dismissed });
+    setBannerDismissed: (_dismissed) => {
+        // no-op
     },
     reset: () => {
-        const previous = get().updateHandle;
-        if (previous) {
-            void previous.close().catch(() => {
-                /* ignore close errors */
-            });
-        }
-        set({
-            ...initialState,
-        });
+        set({ ...initialState });
     },
 }));

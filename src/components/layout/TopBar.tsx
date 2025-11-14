@@ -26,8 +26,6 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { type SkinTab, useGameStore } from "@/lib/store";
 import { usePartyModeStore } from "@/lib/store/party-mode";
-import { useAppUpdaterStore } from "@/lib/store/updater";
-import { useSoftUpdater } from "@/lib/hooks/use-soft-updater";
 import type { Champion, DataUpdateProgress } from "@/lib/types";
 import { Menu, RefreshCw, Users2Icon, ArrowDownToLine, Sparkles, Download, Check, Zap, Hand, ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -62,16 +60,7 @@ export function TopBar({
   // Get tab state from the store
   const { activeTab, setActiveTab, manualInjectionMode, setManualInjectionMode } = useGameStore();
   const pairedFriendsCount = usePartyModeStore((s) => s.pairedFriends.length);
-  const appUpdateStatus = useAppUpdaterStore((state) => state.status);
-  const appUpdateDismissed = useAppUpdaterStore((state) => state.bannerDismissed);
-  const hasAppUpdateHandle = useAppUpdaterStore((state) => state.updateHandle !== null);
-  const { checkForUpdates, installUpdate, showBanner } = useSoftUpdater();
-  const appUpdateBusy =
-    appUpdateStatus === "checking" ||
-    appUpdateStatus === "downloading" ||
-    appUpdateStatus === "installing";
-  const hasDownloadedAppUpdate = appUpdateStatus === "downloaded";
-  const shouldShowAppUpdateBadge = hasAppUpdateHandle && appUpdateStatus !== "installed";
+  // Updater removed: no updater store or hook
 
   // Load saved tab preference from localStorage
   useEffect(() => {
@@ -217,9 +206,7 @@ export function TopBar({
                 className="relative"
               >
                 <Menu className="h-5 w-5" />
-                {shouldShowAppUpdateBadge && (
-                  <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-amber-500" />
-                )}
+                {/* Updater removed */}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="min-w-50" align="end">
@@ -243,38 +230,7 @@ export function TopBar({
                 <RefreshCw className="h-4 w-4" />
                 CSLOL Manager
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={(event: Event) => {
-                  event.preventDefault();
-                  void checkForUpdates();
-                }}
-                disabled={appUpdateBusy}
-              >
-                <ArrowDownToLine className="h-4 w-4" />
-                {t("menu.checkAppUpdate")}
-              </DropdownMenuItem>
-              {hasDownloadedAppUpdate && (
-                <DropdownMenuItem
-                  onSelect={(event: Event) => {
-                    event.preventDefault();
-                    void installUpdate();
-                  }}
-                >
-                  <Sparkles className="h-4 w-4" />
-                  {t("menu.installAppUpdate")}
-                </DropdownMenuItem>
-              )}
-              {appUpdateStatus === "available" && appUpdateDismissed && (
-                <DropdownMenuItem
-                  onSelect={(event: Event) => {
-                    event.preventDefault();
-                    showBanner();
-                  }}
-                >
-                  <Sparkles className="h-4 w-4" />
-                  {t("appUpdate.actions.showDetails")}
-                </DropdownMenuItem>
-              )}
+              {/* Updater menu items removed */}
               <SettingsDialog />
             </DropdownMenuContent>
           </DropdownMenu>

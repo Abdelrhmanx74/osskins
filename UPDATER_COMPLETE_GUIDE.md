@@ -1,8 +1,8 @@
-# 🚀 Complete Tauri Updater Setup Guide
+# Tauri Updater (Removed)
 
 ## ✅ What's Been Done
 
-Your Osskins app now has a **fully functional automatic updater** with all the recommended best practices from the Tauri documentation!
+This document has been archived; the Tauri soft updater feature has been removed from the repository.
 
 ### ✨ Features Implemented
 

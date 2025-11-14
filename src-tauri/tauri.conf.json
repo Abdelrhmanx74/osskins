@@ -28,7 +28,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -51,18 +50,6 @@
     },
     "shell": {
       "open": true
-    },
-    "updater": {
-      "bundle": {
-        "createUpdaterArtifacts": true
-      },
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgwODEzQTVFMEI1QjFGQ0YKUldUUEgxc0xYanFCZ05icVVpdVgySXNselNkc2JPcUZmeFZISnNLL0tNWlBxeVBYbXRta1ZqNXkK",
-      "endpoints": [
-        "https://github.com/Abdelrhmanx74/osskins/releases/latest/download/updates.json"
-      ],
-      "windows": {
-        "installMode": "passive"
-      }
     }
   }
 }

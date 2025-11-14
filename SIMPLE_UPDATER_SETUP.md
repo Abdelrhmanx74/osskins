@@ -1,6 +1,6 @@
-# 🚀 Simple Updater Setup - Step by Step
+# Tauri Updater (Removed)
 
-This is a simplified guide to set up the Tauri updater for Osskins.
+This simple updater guide has been archived; the soft updater feature was removed from the project.
 
 ---
 
@@ -246,7 +246,7 @@ After successful test:
 
 ---
 
-## Quick Reference
+## Quick Reference (archived)
 
 ### File Locations
 - **Private Key:** `~/.tauri/osskins.key` (Mac/Linux) or `C:\Users\YourName\.tauri\osskins.key` (Windows)
@@ -280,9 +280,8 @@ git tag -d v1.5-test
 git push origin :refs/tags/v1.5-test
 ```
 
-### GitHub Secrets Required
-- `TAURI_SIGNING_PRIVATE_KEY` - Your private key content
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` - The password you chose
+### GitHub Secrets (archived)
+The updater no longer requires secrets as the feature is removed.
 
 ---
 

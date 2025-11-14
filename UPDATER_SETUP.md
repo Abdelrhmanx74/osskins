@@ -1,67 +1,11 @@
 # Tauri Updater Setup Guide
 
-## ✅ What's Already Done
+# Tauri Updater (Removed)
 
-1. **Public Key Added**: Your `tauri.conf.json` now has the public key configured
-2. **Updater Store**: `src/lib/store/updater.ts` - State management for updates
-3. **Updater Hook**: `src/lib/hooks/use-soft-updater.ts` - Logic for checking/downloading/installing updates
-4. **UI Components**: Banner and update dialogs already implemented
+The soft updater feature has been removed from the Osskins project. This repository no longer includes the Tauri Updater plugin or related UI and backend code.
 
-## 🔐 GitHub Secrets Setup
-
-You need to add these secrets to your GitHub repository:
-
-### 1. Go to GitHub Settings
-Navigate to: `https://github.com/Abdelrhmanx74/osskins/settings/secrets/actions`
-
-### 2. Add TAURI_SIGNING_PRIVATE_KEY
-
-Click "New repository secret" and add:
-- **Name**: `TAURI_SIGNING_PRIVATE_KEY`
-- **Value**: Copy the ENTIRE content from `C:\Users\Mana\.tauri\osskins.key`
-
-The private key looks like this (use YOUR actual key):
-```
-dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5ekgrWTNEOHlsc0ZCMDVJNUs0ZUZqRkF4ckpYNTQ1dXpDNnpyW
-WJydWNRRUFBQkFBQUFBQUFBQUFBQUlBQUFBQURJcE1JZGFVR25vakRkM1pZUlkralB6TFRqOUxoQ09KZW9ZM1pCeXhLbkJ3TWdBdHliWDMrSmgvdmJHcnJaa3
-```
-
-### 3. Add TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-
-Click "New repository secret" and add:
-- **Name**: `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-- **Value**: The password you entered when generating the key pair
-
-## 📦 How to Create a Release
-
-### Option 1: Using GitHub UI (Recommended for now)
-
-1. Go to `https://github.com/Abdelrhmanx74/osskins/releases/new`
-2. Create a new tag (e.g., `v1.5.3`)
-3. Set release title and description
-4. **Manually upload your build artifacts**:
-   - Build locally: `pnpm tauri build`
-   - Sign the artifacts (see signing section below)
-   - Upload the `.msi`, `.msi.zip`, `.msi.zip.sig` files
-   - Upload `updates.json` (see format below)
-
-### Option 2: Automated with GitHub Actions (Recommended)
-
-I've created a workflow file `.github/workflows/release.yml` that will:
-- Build your app for Windows (can add other platforms)
-- Sign the update artifacts automatically
-- Create the `updates.json` file
-- Upload everything to the release
-
-**To trigger it**: Just create a new tag and push it:
-```bash
-git tag v1.5.3
-git push origin v1.5.3
-```
-
-Or create a release in GitHub UI, and the workflow will run automatically.
-
-## 🔧 Manual Signing (if not using GitHub Actions)
+If you need to reintroduce the updater in the future, consult the official Tauri Updater documentation:
+https://tauri.app/v2/guides/release/updater/
 
 After building locally, you need to sign the update:
 

@@ -6,7 +6,6 @@ import { DataUpdateModal } from "@/components/DataUpdateModal";
 import { ManualSkinGrid } from "@/components/ManualSkinGrid";
 import { MiscItemView } from "@/components/MiscItemView";
 import { SkinGrid } from "@/components/SkinGrid";
-import { AppUpdateBanner } from "@/components/AppUpdateBanner";
 import { GameDirectorySelector } from "@/components/game-directory/GameDirectorySelector";
 import { TopBar } from "@/components/layout/TopBar";
 import { useChampionPersistence } from "@/lib/hooks/use-champion-persistence";
@@ -200,7 +199,7 @@ export default function Home() {
           isUpdating={isUpdating}
           progress={progress}
         />
-        <AppUpdateBanner />
+        {/* AppUpdateBanner removed */}
 
         {/* Main content */}
         <div className="flex flex-1 overflow-hidden w-full mx-auto">
