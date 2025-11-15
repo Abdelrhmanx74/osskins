@@ -1,5 +1,3 @@
-export { DownloadingModal } from "./download/DownloadingModal";
-/*
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -19,7 +17,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getLolSkinsManifest, getLolSkinsManifestCommit } from "@/lib/data-utils";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState, useTransition, useRef } from "react";
-import UpdateModal from "@/components/UpdateModal";
+import UpdateModal from "./UpdateModal";
 import { toast } from "sonner";
 
 const formatBytes = (bytes: number): string => {
@@ -50,7 +48,6 @@ interface DownloadingModalProps {
     onReinstallData: () => Promise<void>;
     isUpdating: boolean;
 }
-*/
 
 export function DownloadingModal({
     isOpen,
@@ -222,7 +219,6 @@ export function DownloadingModal({
         return "Ready";
     };
 
-
     // Parse updated skin names for champions
     const [updatedSkins, setUpdatedSkins] = useState<string[]>([]);
     useEffect(() => {
@@ -286,6 +282,7 @@ export function DownloadingModal({
     return (
         <UpdateModal
             isOpen={isOpen}
+            title={"Data Updates"}
             statusMessage={getStatusMessage()}
             isBusy={modalBusy}
             progress={progress ? { value: progress.progress, processedChampions: progress.processedChampions, totalChampions: progress.totalChampions, currentChampion: progress.currentChampion } : null}

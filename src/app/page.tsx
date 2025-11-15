@@ -2,7 +2,7 @@
 
 import { ChampionGrid } from "@/components/ChampionGrid";
 import { CustomSkinList } from "@/components/CustomSkinList";
-import { DataUpdateModal } from "@/components/DataUpdateModal";
+import { DataUpdateModal } from "@/components/download/DataUpdateModal";
 import { ManualSkinGrid } from "@/components/ManualSkinGrid";
 import { MiscItemView } from "@/components/MiscItemView";
 import { SkinGrid } from "@/components/SkinGrid";

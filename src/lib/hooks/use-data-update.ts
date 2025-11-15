@@ -20,8 +20,8 @@ import { useToolsStore } from "../store/tools";
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 interface ManifestCollections {
-  skins: Map<string, LolSkinsManifestItem>;
-  chromas: Map<string, LolSkinsManifestItem>;
+  skins: Map<string, { url: string; size: number; sha256: string; commit: string }>;
+  chromas: Map<string, { url: string; size: number; sha256: string; commit: string }>;
 }
 
 interface UpdateTuning {
@@ -43,45 +43,48 @@ const stripZipExtension = (value: string): string =>
   value.toLowerCase().endsWith(".zip") ? value.slice(0, -4) : value;
 
 const createManifestIndex = (
-  items: LolSkinsManifestItem[],
+  manifest: { items?: LolSkinsManifestItem[]; champions?: Array<{ key: string; assets: { skins: Array<{ key?: string; url: string; size: number; sha256: string; commit: string }>; chromas: Array<{ key?: string; url: string; size: number; sha256: string; commit: string }>; } }>; },
 ): Map<string, ManifestCollections> => {
   const index = new Map<string, ManifestCollections>();
 
-  for (const item of items) {
-    const segments = item.path.split("/");
-    if (segments.length < 3) {
-      continue;
-    }
-
-    if (normalizeManifestKey(segments[0]) !== "skins") {
-      continue;
-    }
-
-    const championKey = normalizeManifestKey(segments[1]);
-    if (!index.has(championKey)) {
-      index.set(championKey, {
-        skins: new Map<string, LolSkinsManifestItem>(),
-        chromas: new Map<string, LolSkinsManifestItem>(),
-      });
-    }
-
-    const manifestEntry = index.get(championKey);
-    if (!manifestEntry) {
-      continue;
-    }
-
-    const lastSegment = stripZipExtension(segments[segments.length - 1]);
-    const targetKey = normalizeManifestKey(lastSegment);
-
-    if (segments.length >= 4 && normalizeManifestKey(segments[2]) === "chromas") {
-      if (!manifestEntry.chromas.has(targetKey)) {
-        manifestEntry.chromas.set(targetKey, item);
+  // v2 path: champions array with explicit assets
+  if (manifest.champions && manifest.champions.length > 0) {
+    for (const champ of manifest.champions) {
+      const championKey = normalizeManifestKey(champ.key);
+      if (!index.has(championKey)) {
+        index.set(championKey, { skins: new Map(), chromas: new Map() });
       }
-    } else if (!manifestEntry.skins.has(targetKey)) {
-      manifestEntry.skins.set(targetKey, item);
+      const entry = index.get(championKey)!;
+      for (const s of champ.assets.skins || []) {
+        const key = normalizeManifestKey(s.key ?? "");
+        if (!entry.skins.has(key)) entry.skins.set(key, { url: s.url, size: s.size, sha256: s.sha256, commit: s.commit });
+      }
+      for (const c of champ.assets.chromas || []) {
+        const key = normalizeManifestKey(c.key ?? "");
+        if (!entry.chromas.has(key)) entry.chromas.set(key, { url: c.url, size: c.size, sha256: c.sha256, commit: c.commit });
+      }
     }
+    return index;
   }
 
+  // v1 path: flat items array with paths
+  const items = manifest.items ?? [];
+  for (const item of items) {
+    const segments = item.path.split("/");
+    if (segments.length < 3) continue;
+    if (normalizeManifestKey(segments[0]) !== "skins") continue;
+    const championKey = normalizeManifestKey(segments[1]);
+    if (!index.has(championKey)) index.set(championKey, { skins: new Map(), chromas: new Map() });
+    const entry = index.get(championKey)!;
+    const lastSegment = stripZipExtension(segments[segments.length - 1]);
+    const targetKey = normalizeManifestKey(lastSegment);
+    const data = { url: item.url, size: item.size, sha256: item.sha256, commit: item.commit };
+    if (segments.length >= 4 && normalizeManifestKey(segments[2]) === "chromas") {
+      if (!entry.chromas.has(targetKey)) entry.chromas.set(targetKey, data);
+    } else if (!entry.skins.has(targetKey)) {
+      entry.skins.set(targetKey, data);
+    }
+  }
   return index;
 };
 
@@ -212,7 +215,7 @@ export function useDataUpdate() {
 
       const manifest = await getLolSkinsManifest();
       const manifestIndex = manifest
-        ? createManifestIndex(manifest.items)
+        ? createManifestIndex(manifest as any)
         : null;
       const manifestCommit = manifest
         ? getLolSkinsManifestCommit(manifest)
@@ -319,7 +322,7 @@ export function useDataUpdate() {
             if (skinManifestEntry) {
               try {
                 // Download directly to disk via backend - memory efficient!
-                await invoke("download_and_save_file", {
+                await invoke("download_file_to_champion_with_progress", {
                   url: skinManifestEntry.url,
                   championName: localChampionKey,
                   fileName: `${localSkinKey}.zip`,
@@ -343,7 +346,7 @@ export function useDataUpdate() {
                   [],
                 );
                 if (legacyUrl) {
-                  await invoke("download_and_save_file", {
+                  await invoke("download_file_to_champion_with_progress", {
                     url: legacyUrl,
                     championName: localChampionKey,
                     fileName: `${localSkinKey}.zip`,
@@ -387,7 +390,7 @@ export function useDataUpdate() {
                     try {
                       // Download directly to disk via backend - memory efficient!
                       const chromaFileName = `${localSkinKey}_chroma_${chroma.id}.zip`;
-                      await invoke("download_and_save_file", {
+                      await invoke("download_file_to_champion_with_progress", {
                         url: chromaManifestEntry.url,
                         championName: localChampionKey,
                         fileName: chromaFileName,
@@ -411,7 +414,7 @@ export function useDataUpdate() {
                       );
                       if (legacyUrl) {
                         const chromaFileName = `${localSkinKey}_chroma_${chroma.id}.zip`;
-                        await invoke("download_and_save_file", {
+                        await invoke("download_file_to_champion_with_progress", {
                           url: legacyUrl,
                           championName: localChampionKey,
                           fileName: chromaFileName,

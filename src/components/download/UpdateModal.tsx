@@ -1,15 +1,15 @@
-export { default } from "./download/UpdateModal";
 "use client";
 
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import React, { useEffect, useState } from "react";
-import { Loader2, RefreshCcw } from "lucide-react";
-import { Badge } from "./ui/badge";
+import { Loader2 } from "lucide-react";
+import { Badge } from "../ui/badge";
 
 interface UpdateModalProps {
     isOpen: boolean;
+    title?: string;
     statusMessage?: string;
     isBusy?: boolean;
     progress?: {
@@ -36,6 +36,7 @@ interface UpdateModalProps {
 
 export default function UpdateModal({
     isOpen,
+    title = "Update",
     statusMessage,
     isBusy = false,
     progress = null,
@@ -107,8 +108,8 @@ export default function UpdateModal({
         <Dialog open={isOpen} onOpenChange={(v: boolean) => { if (!v && onClose) onClose(); }}>
             <DialogContent className="sm:max-w-xl">
                 <div className="size-full flex flex-col space-y-4">
-                    <DialogHeader className="sr-only">
-                        <DialogTitle>data updates</DialogTitle>
+                    <DialogHeader>
+                        <DialogTitle>{title}</DialogTitle>
                         {statusMessage && (
                             <p className="text-sm text-muted-foreground">{statusMessage}</p>
                         )}
@@ -161,18 +162,13 @@ export default function UpdateModal({
                                 )}
                                 <div className="flex flex-col leading-tight">
                                     <span className="font-medium text-foreground line-clamp-1">{commitTitle ?? pill?.label ?? shortCommit ?? (isBusy ? "Updating..." : "-")}</span>
-                                    <span className="text-xs text-muted-foreground line-clamp-1">{pill?.sub ?? pillMeta ?? commitTitle}</span>
+                                    <span className="text-xs text-muted-foreground line-clamp-1">{pill?.sub ?? pillMeta ?? (commitTitle ? "Commit" : "SHA")}</span>
                                 </div>
-                                {pill?.badge ? (
+                                {pill?.badge && (
                                     <div className="ml-auto">
                                         <Badge variant={pill.badgeVariant ?? "secondary"}>{pill.badge}</Badge>
                                     </div>
-                                ) : primaryAction && (
-                                    <Button size="sm" className="rounded-full ml-auto" onClick={primaryAction.onClick} disabled={(primaryAction.disabled ?? false) || isBusy}>
-                                        {primaryAction.label}
-                                    </Button>
                                 )}
-
                             </div>
                         </div>
                     )}
@@ -180,14 +176,19 @@ export default function UpdateModal({
 
                 <DialogFooter className="mt-4">
                     <div className="flex gap-2 w-full">
+                        {tertiaryAction && (
+                            <Button variant="ghost" size="sm" onClick={tertiaryAction.onClick} disabled={(tertiaryAction.disabled ?? false) || isBusy}>
+                                {tertiaryAction.label}
+                            </Button>
+                        )}
                         {secondaryAction && (
-                            <Button variant="destructive" size="sm" onClick={secondaryAction.onClick} disabled={(secondaryAction.disabled ?? false) || isBusy}>
+                            <Button variant="outline" size="sm" onClick={secondaryAction.onClick} disabled={(secondaryAction.disabled ?? false) || isBusy}>
                                 {secondaryAction.label}
                             </Button>
                         )}
-                        {tertiaryAction && (
-                            <Button variant="ghost" size="sm" onClick={tertiaryAction.onClick} disabled={(tertiaryAction.disabled ?? false) || isBusy}>
-                                <RefreshCcw />
+                        {primaryAction && (
+                            <Button size="sm" onClick={primaryAction.onClick} disabled={(primaryAction.disabled ?? false) || isBusy}>
+                                {primaryAction.label}
                             </Button>
                         )}
                         <Button className="ml-auto" variant="outline" size="sm" onClick={() => { if (onClose) onClose(); }} disabled={isBusy}>

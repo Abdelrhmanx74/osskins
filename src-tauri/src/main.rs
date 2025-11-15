@@ -82,6 +82,8 @@ fn main() {
       save_skin_file,
       save_zip_file,
       download_and_save_file,
+      download_file_to_champion_with_progress,
+      cancel_download,
       select_league_directory,
       inject_skins,
       inject_skins_with_misc,

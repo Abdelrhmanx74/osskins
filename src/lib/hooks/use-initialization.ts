@@ -135,8 +135,22 @@ export function useInitialization() {
           void invoke("start_auto_inject", { leaguePath: league_path });
         }
 
-        // Initialization no longer triggers or checks for remote commits.
-        // Update must be started manually via the UI.
+        // Auto-update: if enabled in config, check for updates and update automatically on start
+        try {
+          const auto = auto_update_data !== false;
+          if (auto && !hasStartedUpdate) {
+            const result = await invoke<{ success: boolean; updated_champions: string[]; error?: string }>(
+              "check_data_updates"
+            );
+            if (result?.success && Array.isArray(result.updated_champions) && result.updated_champions.length > 0) {
+              setHasStartedUpdate(true);
+              // Start update silently; UI DownloadingModal can still be opened by the user
+              void updateData();
+            }
+          }
+        } catch (e) {
+          console.warn("[Init] Auto-update check failed", e);
+        }
 
         if (mounted) {
           setIsInitialized(true);

@@ -1,7 +1,7 @@
 "use client";
 
 import { ChampionSearch } from "@/components/ChampionSearch";
-import { DownloadingModal } from "@/components/DownloadingModal";
+import { DownloadingModal } from "@/components/download/DownloadingModal";
 import { InjectionStatusDot } from "@/components/InjectionStatusDot";
 import { ButtonInjection } from "@/components/button-injection";
 import PartyModeDialog from "@/components/PartyModeDialog";
@@ -27,7 +27,7 @@ import { useI18n } from "@/lib/i18n";
 import { type SkinTab, useGameStore } from "@/lib/store";
 import { usePartyModeStore } from "@/lib/store/party-mode";
 import type { Champion, DataUpdateProgress } from "@/lib/types";
-import { Menu, RefreshCw, Users2Icon, ArrowDownToLine, Sparkles, Download, Check, Zap, Hand, ChevronDown } from "lucide-react";
+import { Menu, RefreshCw, Users2Icon, ArrowDownToLine, Sparkles, Check, Zap, Hand, ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import CslolManagerModal from "@/components/CslolManagerModal";
 import { Badge } from "../ui/badge";

@@ -44,6 +44,7 @@ export function SettingsDialog() {
   const toolsStatus = useToolsStore((s) => s.status);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [autoUpdate, setAutoUpdate] = useState<boolean>(true);
   const {
     clearAllSelections,
     selectSkin,
@@ -51,7 +52,24 @@ export function SettingsDialog() {
     setManualInjectionMode,
   } = useGameStore();
 
-  // No auto-update toggle in settings UI (commit-based update logic removed)
+  // Load current auto update preference when dialog opens
+  useEffect(() => {
+    if (!isOpen) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const cfg = (await invoke<unknown>("load_config")) as { auto_update_data?: boolean };
+        if (!mounted) return;
+        setAutoUpdate(cfg.auto_update_data !== false);
+      } catch {
+        if (!mounted) return;
+        setAutoUpdate(true);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [isOpen]);
 
   const handleSelectDirectory = async () => {
     try {
@@ -271,6 +289,33 @@ export function SettingsDialog() {
               </p>
             </div>
             {/* Auto-update removed: update flow is manual via TopBar */}
+            <Separator />
+
+            {/* Automatic data updates toggle */}
+            <div className="grid grid-cols-1 gap-2 mt-2">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="auto-updates">Allow automatic updates</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Check for data updates on start and download automatically.
+                  </p>
+                </div>
+                <Switch
+                  id="auto-updates"
+                  checked={autoUpdate}
+                  onCheckedChange={async (v) => {
+                    setAutoUpdate(v);
+                    try {
+                      await invoke("set_auto_update_data", { value: v });
+                      toast.success(v ? "Automatic updates enabled" : "Automatic updates disabled");
+                    } catch (e) {
+                      console.error(e);
+                      toast.error("Failed to save preference");
+                    }
+                  }}
+                />
+              </div>
+            </div>
             <Separator />
 
             {/* Manual Injection Mode Toggle */}

@@ -16,6 +16,29 @@ export interface LolSkinsManifestItem {
   commit: string;
 }
 
+// v2 structures (optional)
+export interface ManifestAssetV2 {
+  key?: string;
+  name?: string;
+  url: string;
+  size: number;
+  sha256: string;
+  commit: string;
+}
+
+export interface ManifestChampionV2 {
+  key: string; // normalized folder key, e.g. "ahri"
+  name?: string;
+  id?: number;
+  alias?: string;
+  fingerprint?: string; // aggregated hash for quick change detection
+  size?: number; // total bytes across assets
+  assets: {
+    skins: ManifestAssetV2[];
+    chromas: ManifestAssetV2[];
+  };
+}
+
 export interface LolSkinsManifest {
   schema: number;
   generated_at: string;
@@ -24,7 +47,16 @@ export interface LolSkinsManifest {
   license: string;
   source: string;
   attribution: string;
-  items: LolSkinsManifestItem[];
+  items?: LolSkinsManifestItem[]; // v1
+  champions?: ManifestChampionV2[]; // v2
+  external_releases?: Array<{
+    repo: string;
+    tag_name: string;
+    asset_name: string;
+    browser_download_url: string;
+    size: number;
+    sha256?: string;
+  }>;
 }
 
 let manifestCache: LolSkinsManifest | null = null;
@@ -148,8 +180,14 @@ export function getLolSkinsManifestCommit(
     return repoParts[1];
   }
 
-  if (manifest.items.length > 0 && manifest.items[0]?.commit) {
+  if (manifest.items && manifest.items.length > 0 && manifest.items[0]?.commit) {
     return manifest.items[0].commit;
+  }
+
+  if (manifest.champions && manifest.champions.length > 0) {
+    const first = manifest.champions[0];
+    const asset = first.assets?.skins?.[0] || first.assets?.chromas?.[0];
+    if (asset?.commit) return asset.commit;
   }
 
   return null;
@@ -234,10 +272,22 @@ async function fetchSkinZipViaManifest(
     const manifest = await ensureLolSkinsManifest();
     if (!manifest) return null;
 
+    // v2 lookup
+    if (manifest.champions && manifest.champions.length > 0) {
+      const champKey = normalizeSegment(championName);
+      const champ = manifest.champions.find((c) => normalizeSegment(c.key) === champKey || normalizeSegment(c.name ?? "") === champKey);
+      if (!champ) return null;
+      const isChroma = subPath.map(normalizeSegment).includes("chromas");
+      const targetKey = normalizeSegment(stripZipExtension(fileName));
+      const assets = isChroma ? champ.assets.chromas : champ.assets.skins;
+      const asset = assets.find((a) => normalizeSegment(a.key ?? a.name ?? "") === targetKey);
+      if (!asset) return null;
+      return await downloadFileSimple(asset.url);
+    }
+
+    // v1 lookup
     const entry = findManifestEntry(manifest, championName, subPath, fileName);
     if (!entry) return null;
-
-    // Use the manifest url directly for download - manifest should point to downloadable resource
     return await downloadFileSimple(entry.url);
   } catch (error) {
     console.warn(

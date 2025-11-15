@@ -3047,6 +3047,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-shell",
  "tokio",
+ "tokio-util",
  "uuid",
  "walkdir",
  "web-sys",
@@ -5051,6 +5052,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

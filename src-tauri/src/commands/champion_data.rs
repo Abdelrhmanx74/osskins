@@ -19,6 +19,42 @@ struct LolSkinsManifestItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct ManifestAssetV2 {
+  #[serde(default)]
+  key: Option<String>,
+  #[serde(default)]
+  name: Option<String>,
+  url: String,
+  size: u64,
+  sha256: String,
+  commit: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ManifestChampionV2 {
+  key: String,
+  #[serde(default)]
+  name: Option<String>,
+  #[serde(default)]
+  id: Option<u32>,
+  #[serde(default)]
+  alias: Option<String>,
+  #[serde(default)]
+  fingerprint: Option<String>,
+  #[serde(default)]
+  size: Option<u64>,
+  assets: ManifestChampionAssetsV2,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ManifestChampionAssetsV2 {
+  #[serde(default)]
+  skins: Vec<ManifestAssetV2>,
+  #[serde(default)]
+  chromas: Vec<ManifestAssetV2>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct LolSkinsManifest {
   schema: u32,
   generated_at: String,
@@ -27,7 +63,10 @@ struct LolSkinsManifest {
   license: Option<String>,
   source: Option<String>,
   attribution: Option<String>,
-  items: Vec<LolSkinsManifestItem>,
+  #[serde(default)]
+  items: Vec<LolSkinsManifestItem>, // v1
+  #[serde(default)]
+  champions: Vec<ManifestChampionV2>, // v2
 }
 
 fn extract_manifest_commit(manifest: &LolSkinsManifest) -> Option<String> {
@@ -36,11 +75,21 @@ fn extract_manifest_commit(manifest: &LolSkinsManifest) -> Option<String> {
     return Some(parts[1].to_string());
   }
 
-  manifest
-    .items
-    .first()
-    .map(|item| item.commit.clone())
-    .filter(|commit| !commit.is_empty())
+  if let Some(item) = manifest.items.first() {
+    if !item.commit.is_empty() {
+      return Some(item.commit.clone());
+    }
+  }
+
+  if let Some(champ) = manifest.champions.first() {
+    if let Some(asset) = champ.assets.skins.first().or_else(|| champ.assets.chromas.first()) {
+      if !asset.commit.is_empty() {
+        return Some(asset.commit.clone());
+      }
+    }
+  }
+
+  None
 }
 
 async fn fetch_latest_manifest() -> Result<LolSkinsManifest, String> {
@@ -128,35 +177,63 @@ fn champion_from_path(path: &str) -> Option<String> {
 
 fn diff_manifests(previous: &LolSkinsManifest, current: &LolSkinsManifest) -> Vec<String> {
   let mut changes: HashSet<String> = HashSet::new();
+  // Prefer v2 champion-based diff if both provide champions
+  if !previous.champions.is_empty() && !current.champions.is_empty() {
+    let prev_map: HashMap<&str, &ManifestChampionV2> = previous
+      .champions
+      .iter()
+      .map(|c| (c.key.as_str(), c))
+      .collect();
+    let curr_map: HashMap<&str, &ManifestChampionV2> = current
+      .champions
+      .iter()
+      .map(|c| (c.key.as_str(), c))
+      .collect();
 
-  let prev_map: HashMap<&str, &LolSkinsManifestItem> = previous
-    .items
-    .iter()
-    .map(|item| (item.path.as_str(), item))
-    .collect();
-  let curr_map: HashMap<&str, &LolSkinsManifestItem> = current
-    .items
-    .iter()
-    .map(|item| (item.path.as_str(), item))
-    .collect();
-
-  for (path, current_item) in &curr_map {
-    let needs_update = match prev_map.get(path) {
-      Some(previous_item) => previous_item.sha256 != current_item.sha256,
-      None => true,
-    };
-
-    if needs_update {
-      if let Some(champion) = champion_from_path(path) {
-        changes.insert(champion);
+    for (key, curr) in &curr_map {
+      let changed = match prev_map.get(key) {
+        Some(prev) => prev.fingerprint != curr.fingerprint || prev.size != curr.size,
+        None => true,
+      };
+      if changed {
+        let name = curr.name.clone().unwrap_or_else(|| (*key).to_string());
+        changes.insert(name);
       }
     }
-  }
+    for key in prev_map.keys() {
+      if !curr_map.contains_key(key) {
+        changes.insert((*key).to_string());
+      }
+    }
+  } else {
+    // v1 path: compare items by path and sha
+    let prev_map: HashMap<&str, &LolSkinsManifestItem> = previous
+      .items
+      .iter()
+      .map(|item| (item.path.as_str(), item))
+      .collect();
+    let curr_map: HashMap<&str, &LolSkinsManifestItem> = current
+      .items
+      .iter()
+      .map(|item| (item.path.as_str(), item))
+      .collect();
 
-  for path in prev_map.keys() {
-    if !curr_map.contains_key(path) {
-      if let Some(champion) = champion_from_path(path) {
-        changes.insert(champion);
+    for (path, current_item) in &curr_map {
+      let needs_update = match prev_map.get(path) {
+        Some(previous_item) => previous_item.sha256 != current_item.sha256,
+        None => true,
+      };
+      if needs_update {
+        if let Some(champion) = champion_from_path(path) {
+          changes.insert(champion);
+        }
+      }
+    }
+    for path in prev_map.keys() {
+      if !curr_map.contains_key(path) {
+        if let Some(champion) = champion_from_path(path) {
+          changes.insert(champion);
+        }
       }
     }
   }

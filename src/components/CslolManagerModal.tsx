@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useState, useEffect } from "react";
-import UpdateModal from "@/components/UpdateModal";
+import UpdateModal from "@/components/download/UpdateModal";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useToolsStore } from "@/lib/store/tools";

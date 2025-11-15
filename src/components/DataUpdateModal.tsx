@@ -1,3 +1,4 @@
+export { DataUpdateModal } from "./download/DataUpdateModal";
 
 import {
   Dialog,
@@ -29,10 +30,11 @@ export function DataUpdateModal({ isOpen, progress }: DataUpdateModalProps) {
       case "downloading":
         return t("update.downloading");
       case "processing":
-        return t("update.processing").replace(
-          "{champion}",
-          progress.currentChampion || "",
-        );
+        if (progress.currentSkin) {
+          // Champion — Skin
+          return `${progress.currentChampion || ""} — ${progress.currentSkin}`;
+        }
+        return t("update.processing").replace("{champion}", progress.currentChampion || "");
       default:
         return t("update.processing_unknown");
     }
@@ -51,10 +53,15 @@ export function DataUpdateModal({ isOpen, progress }: DataUpdateModalProps) {
           {championProgress && (
             <div className="space-y-2">
               <Progress value={championProgress.progress} />
-              <p className="text-xs text-muted-foreground text-right">
-                {championProgress.processedChampions} of {championProgress.totalChampions}{" "}
-                champions processed
-              </p>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  {championProgress.currentChampion}
+                  {championProgress.currentSkin ? ` — ${championProgress.currentSkin}` : ""}
+                </span>
+                <span>
+                  {championProgress.processedChampions} of {championProgress.totalChampions} champions
+                </span>
+              </div>
             </div>
           )}
         </div>
