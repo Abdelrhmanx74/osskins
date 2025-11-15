@@ -4,12 +4,14 @@
   "description": "Mock LCU server for testing League Client integrations and dashboards.",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js set-Content 'D:\\Mana\\Riot Games\\League of Legends\\lockfile' 'LeagueClientUx:12345:56174:password:https'"
+    "start": "node index.js set-Content 'D:\\Mana\\Riot Games\\League of Legends\\lockfile' 'LeagueClientUx:12345:56174:password:https'",
+    "test:partymode": "node test-partymode.js"
   },
   "dependencies": {
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
+    "socket.io-client": "^4.8.1",
     "say": "^0.16.0",
     "socket.io": "^4.7.5"
   }

@@ -1010,3 +1010,82 @@ app.post("/test/aram/disable", (req, res) => {
   console.log("[TEST] ARAM auto-share DISABLED");
   res.json({ success: true });
 });
+
+// ARAM: simulate a local reroll which assigns a new random champion and sends a fresh skin_share to friends
+app.post("/test/aram/reroll", (req, res) => {
+  // Pick a new random champion different from current if possible
+  let candidates = availableSkins;
+  if (selectedChampionId) {
+    candidates = availableSkins.filter((s) => s.championId !== selectedChampionId) || availableSkins;
+  }
+  const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+  selectedChampionId = chosen.championId;
+
+  console.log(`[TEST][ARAM] Local reroll -> ${chosen.skinName} (${selectedChampionId})`);
+
+  // Send skin share message to each sharing friend (similar to lock-in)
+  friends.forEach((friend) => {
+    if (!friend.isSharing) return;
+    const conversationId = getConversationId(friend.pid);
+    const skinShare = {
+      from_summoner_id: user.summonerId.toString(),
+      from_summoner_name: user.displayName,
+      champion_id: chosen.championId,
+      skin_id: chosen.skinId,
+      skin_name: chosen.skinName,
+      chroma_id: null,
+      skin_file_path: `mock_local_skins/${chosen.skinName.toLowerCase().replace(/[^a-z0-9]/g, "_")}.skin_file`,
+      timestamp: Date.now(),
+    };
+    const partyMessage = { message_type: "skin_share", data: skinShare };
+    const messageBody = `OSS:${JSON.stringify(partyMessage)}`;
+    const message = {
+      id: messageIdCounter++,
+      body: messageBody,
+      type: "chat",
+      fromSummonerId: user.summonerId.toString(),
+      timestamp: Date.now(),
+    };
+    const conversation = Object.values(conversations).find((c) => c.id === conversationId);
+    conversation.messages.push(message);
+    io.emit("chat-message", {
+      direction: "sent",
+      body: messageBody,
+      to: friend.displayName,
+      to_id: friend.summonerId.toString(),
+      conversationId,
+      timestamp: message.timestamp,
+    });
+  });
+
+  res.json({ success: true, selectedChampionId });
+});
+
+// Inject an invalid OSS message from a friend to ensure parser robustness
+app.post("/test/send-invalid-oss", (req, res) => {
+  const { friendIndex = 0 } = req.body || {};
+  const friend = friends[friendIndex];
+  if (!friend) return res.status(400).json({ error: "Friend not found" });
+  const conversationId = getConversationId(friend.pid);
+  const badBody = "OSS:{this_is:not_json";
+  const message = {
+    id: messageIdCounter++,
+    body: badBody,
+    type: "chat",
+    fromSummonerId: friend.summonerId.toString(),
+    timestamp: Date.now(),
+  };
+  const conversation = Object.values(conversations).find((c) => c.id === conversationId);
+  conversation.messages.push(message);
+  // Try processing – it should log an error and continue
+  try { processPartyModeMessage(badBody, friend.summonerId.toString()); } catch { }
+  io.emit("chat-message", {
+    direction: "received",
+    body: badBody,
+    from: friend.displayName,
+    from_id: friend.summonerId.toString(),
+    conversationId,
+    timestamp: message.timestamp,
+  });
+  res.json({ success: true });
+});

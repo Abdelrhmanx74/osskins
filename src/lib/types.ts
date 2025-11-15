@@ -38,6 +38,7 @@ export interface Champion {
 
 export interface DataUpdateProgress {
   currentChampion: string;
+  currentSkin?: string;
   totalChampions: number;
   processedChampions: number;
   status: "checking" | "downloading" | "processing";
