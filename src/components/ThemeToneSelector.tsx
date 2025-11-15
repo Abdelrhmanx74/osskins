@@ -230,6 +230,58 @@ export const TONES = [
       mutedDark: "oklch(0.32 0.06 28)",
     },
   },
+  // New themes: Mono, Sepia, Pastel — distinct palettes
+  {
+    name: "Monochrome",
+    value: "mono",
+    palette: {
+      primary: "oklch(0.54 0.02 0)",
+      background: "oklch(0.98 0.02 0)",
+      backgroundDark: "oklch(0.06 0.02 0)",
+      foreground: "oklch(0.14 0.02 0)",
+      foregroundDark: "oklch(0.98 0.02 0)",
+      border: "oklch(0.88 0.02 0)",
+      borderDark: "oklch(0.20 0.02 0)",
+      accent: "oklch(0.98 0.02 0)",
+      accentDark: "oklch(0.12 0.02 0)",
+      muted: "oklch(0.99 0.01 0)",
+      mutedDark: "oklch(0.24 0.02 0)",
+    },
+  },
+  {
+    name: "Sepia",
+    value: "sepia",
+    palette: {
+      primary: "oklch(0.62 0.18 40)",
+      background: "oklch(0.98 0.04 40)",
+      backgroundDark: "oklch(0.08 0.10 40)",
+      foreground: "oklch(0.14 0.02 40)",
+      foregroundDark: "oklch(0.96 0.02 40)",
+      border: "oklch(0.86 0.06 40)",
+      borderDark: "oklch(0.30 0.06 40)",
+      accent: "oklch(0.78 0.28 30)",
+      accentDark: "oklch(0.44 0.18 30)",
+      muted: "oklch(0.95 0.04 40)",
+      mutedDark: "oklch(0.26 0.05 40)",
+    },
+  },
+  {
+    name: "Pastel",
+    value: "pastel",
+    palette: {
+      primary: "oklch(0.94 0.10 300)",
+      background: "oklch(0.995 0.06 300)",
+      backgroundDark: "oklch(0.30 0.05 300)",
+      foreground: "oklch(0.14 0.02 300)",
+      foregroundDark: "oklch(0.98 0.02 300)",
+      border: "oklch(0.94 0.08 300)",
+      borderDark: "oklch(0.36 0.08 300)",
+      accent: "oklch(0.86 0.18 160)",
+      accentDark: "oklch(0.46 0.18 160)",
+      muted: "oklch(0.99 0.05 300)",
+      mutedDark: "oklch(0.34 0.06 300)",
+    },
+  },
 ];
 
 // The key used to store tone in localStorage as a backup
