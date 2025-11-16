@@ -66,33 +66,48 @@ pub async fn handle_party_mode_message(
         return Ok(());
       }
 
-      let now_secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-      let share_ts = match i64::try_from(skin_share.timestamp) {
-        Ok(ts) => ts,
-        Err(_) => {
-          verbose_log!(
-            "[Party Mode][INBOUND][SKIP] timestamp {} overflows i64",
-            skin_share.timestamp
-          );
-          return Ok(());
-        }
-      };
-      let age_secs = (now_secs - share_ts).max(0) as u64;
-      let max_age = get_configured_max_share_age_secs(app);
-      if age_secs > max_age {
-        verbose_log!(
-          "[Party Mode][INBOUND][SKIP] stale share age={}s (> {}s) from {}",
-          age_secs,
-          max_age,
-          skin_share.from_summoner_name
-        );
-        return Ok(());
-      }
-
-      if !crate::commands::lcu_watcher::is_in_champ_select() {
+  let now_secs = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .unwrap_or_default()
+    .as_secs() as i64;
+  let share_ts = match i64::try_from(skin_share.timestamp) {
+    Ok(ts) => ts,
+    Err(_) => {
+      verbose_log!(
+        "[Party Mode][INBOUND][SKIP] timestamp {} overflows i64",
+        skin_share.timestamp
+      );
+      return Ok(());
+    }
+  };
+  let age_secs = (now_secs - share_ts).max(0) as u64;
+  
+  // Session-based staleness check: messages older than current session should be ignored
+  let current_session_id = {
+    let guard = super::types::CURRENT_SESSION_ID.lock().unwrap();
+    guard.clone()
+  };
+  
+  // If we have a session ID and the message is older than 60 seconds, check if it's from a previous session
+  if current_session_id.is_some() && age_secs > 60 {
+    verbose_log!(
+      "[Party Mode][INBOUND][SKIP] message from {} is >60s old ({}s), likely from previous session",
+      skin_share.from_summoner_name,
+      age_secs
+    );
+    return Ok(());
+  }
+  
+  let max_age = get_configured_max_share_age_secs(app);
+  if age_secs > max_age {
+    verbose_log!(
+      "[Party Mode][INBOUND][SKIP] stale share age={}s (> {}s) from {}",
+      age_secs,
+      max_age,
+      skin_share.from_summoner_name
+    );
+    return Ok(());
+  }      if !crate::commands::lcu_watcher::is_in_champ_select() {
         normal_log!(
           "[Party Mode] Received skin share from {} while not in ChampSelect; storing for later",
           skin_share.from_summoner_name

@@ -149,7 +149,7 @@ pub async fn download_file_to_champion_with_progress(
         speed: Some(0.0),
         champion_name: Some(champion_name.clone()),
         file_name: Some(file_name.clone()),
-        dest_path: file_path.to_string_lossy().to_string().into(),
+        dest_path: Some(file_path.to_string_lossy().to_string()),
         error: None,
       },
     );
@@ -185,7 +185,7 @@ pub async fn download_file_to_champion_with_progress(
                     speed: Some(speed),
                     champion_name: Some(champion_name.clone()),
                     file_name: Some(file_name.clone()),
-                    dest_path: file_path.to_string_lossy().to_string().into(),
+                      dest_path: Some(file_path.to_string_lossy().to_string()),
                     error: None,
                   }
                 );
@@ -230,6 +230,8 @@ pub async fn download_file_to_champion_with_progress(
       Ok(id)
     }
     Err(err) if err == "canceled" => {
+      // remove partial file if present
+      let _ = async_fs::remove_file(&file_path).await;
       emit(
         &app,
         DownloadProgressPayload {
@@ -250,6 +252,8 @@ pub async fn download_file_to_champion_with_progress(
       Err("Download canceled".into())
     }
     Err(err) => {
+      // remove partial file if present
+      let _ = async_fs::remove_file(&file_path).await;
       emit(
         &app,
         DownloadProgressPayload {

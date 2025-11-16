@@ -22,4 +22,7 @@ mod test_injection_logic;
 mod test_race_conditions;
 
 #[cfg(test)]
+mod test_swift_aram;
+
+#[cfg(test)]
 mod test_helpers;

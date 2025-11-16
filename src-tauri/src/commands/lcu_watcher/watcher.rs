@@ -549,6 +549,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                         let current_champion_id = selected_champ_id as u32;
 
                         // Trigger skin sharing when locking in for the first time OR when changing to a different locked champion
+                        // This handles ARAM rerolls and champion swaps
                         let champion_changed = if let Some(last_champ) = last_champion_id {
                           last_champ != current_champion_id
                         } else {
@@ -557,6 +558,9 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
 
                         // Always update last_champion_id when a champion is locked
                         last_champion_id = Some(current_champion_id);
+                        
+                        // For ARAM and other modes: if champion changed, we need to send new share immediately
+                        // even if we already sent for a previous champion this phase
 
                         if champion_changed {
                           let config_dir = app_handle
@@ -585,25 +589,29 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
 
                                 // Send skin share to paired friends (sharing is now controlled per-friend)
                                 if !config.party_mode.paired_friends.is_empty() {
-                                  // Debounce rapid champion changes (ARAM rerolls): only share if 2+ seconds since last share for this champion
+                                  // Debounce rapid champion changes: only share if 1+ seconds since last share for ANY champion
+                                  // This prevents spam but allows champion changes (ARAM rerolls) to propagate quickly
                                   let should_share = {
                                     let mut last_shares = LAST_CHAMPION_SHARE_TIME.lock().unwrap();
-                                    if let Some(last_time) = last_shares.get(&current_champion_id) {
-                                      let elapsed = last_time.elapsed();
-                                      if elapsed.as_secs() < 2 {
-                                        println!("[Party Mode][ChampSelect] Skipping rapid share for champion {} (last shared {}ms ago)",
-                                                                                         current_champion_id, elapsed.as_millis());
-                                        false
-                                      } else {
-                                        last_shares
-                                          .insert(current_champion_id, std::time::Instant::now());
-                                        true
+                                    
+                                    // Check if we recently shared ANY champion (not just this specific one)
+                                    let mut can_share = true;
+                                    let now = std::time::Instant::now();
+                                    for (_champ_id, last_time) in last_shares.iter() {
+                                      if last_time.elapsed().as_millis() < 1000 {
+                                        println!("[Party Mode][ChampSelect] Debouncing: recent share {}ms ago",
+                                                                                         last_time.elapsed().as_millis());
+                                        can_share = false;
+                                        break;
                                       }
-                                    } else {
-                                      // First time sharing this champion
-                                      last_shares
-                                        .insert(current_champion_id, std::time::Instant::now());
+                                    }
+                                    
+                                    if can_share {
+                                      // Update timestamp for this champion
+                                      last_shares.insert(current_champion_id, now);
                                       true
+                                    } else {
+                                      false
                                     }
                                   };
 
@@ -1058,10 +1066,11 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                             }
                                         }
 
-                                        // Wait briefly for friends to share before injecting (up to ~8s)
+                                        // Wait briefly for friends to share before injecting (up to ~6s)
+                                        // Reduced from 8s to 6s for faster Swift Play experience
                                         let mut ready = false;
                                         let start = std::time::Instant::now();
-                                        while start.elapsed() < std::time::Duration::from_secs(8) {
+                                        while start.elapsed() < std::time::Duration::from_secs(6) {
                                             match crate::commands::party_mode::should_inject_now(&app_for_async, *champs_u32.get(0).unwrap_or(&0)).await {
                                                 Ok(true) => { ready = true; break; }
                                                 Ok(false) => {
@@ -1072,9 +1081,11 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                                                     break;
                                                 }
                                             }
-                                            std::thread::sleep(std::time::Duration::from_millis(750));
+                                            std::thread::sleep(std::time::Duration::from_millis(500));
                                         }
-                                        if !ready { println!("[Party Mode][instant-assign] Proceeding without all shares after timeout"); }
+                                        if !ready { 
+                                            println!("[Party Mode][instant-assign] Proceeding after {}s wait (friends may share shortly)", start.elapsed().as_secs_f32());
+                                        }
 
                                         // Now try to inject using party-mode logic (includes local + any received friend skins)
                                         if let Err(e) = trigger_party_mode_injection_for_champions(&app_for_async, &champs_u32).await {
