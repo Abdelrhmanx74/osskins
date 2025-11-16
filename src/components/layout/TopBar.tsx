@@ -27,10 +27,14 @@ import { useI18n } from "@/lib/i18n";
 import { type SkinTab, useGameStore } from "@/lib/store";
 import { usePartyModeStore } from "@/lib/store/party-mode";
 import type { Champion, DataUpdateProgress } from "@/lib/types";
-import { Menu, RefreshCw, Users2Icon, ArrowDownToLine, Sparkles, Check, Zap, Hand, ChevronDown } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Menu, RefreshCw, Users2Icon, ArrowDownToLine, Sparkles, Check, Zap, Hand, ChevronDown, Download, GitCommit } from "lucide-react";
+import { useState, useEffect } from "react";
 import CslolManagerModal from "@/components/CslolManagerModal";
 import { Badge } from "../ui/badge";
+import { AppUpdateDialog } from "@/components/AppUpdateDialog";
+import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
+import { useAppUpdaterStore } from "@/lib/store/updater";
+import { useSoftUpdater } from "@/lib/hooks/use-soft-updater";
 
 interface TopBarProps {
   champions: Champion[];
@@ -57,10 +61,15 @@ export function TopBar({
 }: TopBarProps) {
   const [showDownloadingModal, setShowDownloadingModal] = useState(false);
   const [showCslolModal, setShowCslolModal] = useState(false);
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   // Get tab state from the store
   const { activeTab, setActiveTab, manualInjectionMode, setManualInjectionMode } = useGameStore();
   const pairedFriendsCount = usePartyModeStore((s) => s.pairedFriends.length);
-  // Updater removed: no updater store or hook
+  
+  // Updater state and hooks
+  const { status: updateStatus, availableVersion, currentVersion } = useAppUpdaterStore();
+  useSoftUpdater({ autoCheck: true });
 
   // Load saved tab preference from localStorage
   useEffect(() => {
@@ -206,11 +215,37 @@ export function TopBar({
                 className="relative"
               >
                 <Menu className="h-5 w-5" />
-                {/* Updater removed */}
+                {/* Show update badge if available */}
+                {updateStatus === "available" && (
+                  <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-primary animate-pulse" />
+                )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="min-w-50" align="end">
               <PartyModeDialog />
+              <DropdownMenuItem
+                onSelect={(event: Event) => {
+                  event.preventDefault();
+                  setShowUpdateDialog(true);
+                }}
+              >
+                <Download className="h-4 w-4" />
+                {t("menu.checkAppUpdates") || "Check for App Updates"}
+                {updateStatus === "available" && (
+                  <Badge variant="default" className="ml-2 text-xs">
+                    New
+                  </Badge>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(event: Event) => {
+                  event.preventDefault();
+                  setShowReleaseNotes(true);
+                }}
+              >
+                <GitCommit className="h-4 w-4" />
+                Release Notes
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={(event: Event) => {
                   event.preventDefault();
@@ -230,7 +265,6 @@ export function TopBar({
                 <RefreshCw className="h-4 w-4" />
                 CSLOL Manager
               </DropdownMenuItem>
-              {/* Updater menu items removed */}
               <SettingsDialog />
             </DropdownMenuContent>
           </DropdownMenu>
@@ -248,6 +282,12 @@ export function TopBar({
         isUpdating={isUpdating}
       />
       <CslolManagerModal isOpen={showCslolModal} onClose={() => { setShowCslolModal(false); }} />
+      <AppUpdateDialog open={showUpdateDialog} onOpenChange={setShowUpdateDialog} />
+      <ReleaseNotesDialog 
+        open={showReleaseNotes} 
+        onOpenChange={setShowReleaseNotes}
+        currentVersion={currentVersion || undefined}
+      />
     </div >
   );
 }

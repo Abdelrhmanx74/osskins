@@ -1,7 +1,5 @@
 import { create } from "zustand";
-
-// Updater was removed. Provide a tiny no-op store to avoid breaking imports.
-type Update = unknown;
+import type { Update } from "@tauri-apps/plugin-updater";
 
 export type AppUpdateStatus =
     | "idle"
@@ -66,20 +64,24 @@ export const useAppUpdaterStore = create<AppUpdateState>((set, _get) => ({
     setStatus: (status) => {
         set({ status });
     },
-    setUpdateHandle: (_handle) => {
-        // no-op
+    setUpdateHandle: (handle) => {
+        set({ updateHandle: handle });
     },
-    setInfo: (_info) => {
-        // no-op
+    setInfo: (info) => {
+        set(info);
     },
-    setProgress: (_downloadedBytes, _totalBytes) => {
-        // no-op
+    setProgress: (downloadedBytes, totalBytes) => {
+        const progress = 
+            downloadedBytes !== null && totalBytes !== null && totalBytes > 0
+                ? Math.round((downloadedBytes / totalBytes) * 100)
+                : null;
+        set({ downloadedBytes, totalBytes, progress });
     },
-    setError: (_message) => {
-        // no-op
+    setError: (message) => {
+        set({ error: message, status: message ? "error" : _get().status });
     },
-    setBannerDismissed: (_dismissed) => {
-        // no-op
+    setBannerDismissed: (dismissed) => {
+        set({ bannerDismissed: dismissed });
     },
     reset: () => {
         set({ ...initialState });

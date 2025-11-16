@@ -74,6 +74,7 @@ fn main() {
       Ok(())
     })
     .plugin(tauri_plugin_shell::init())
+    .plugin(tauri_plugin_updater::Builder::new().build())
     .invoke_handler(tauri::generate_handler![
       check_champions_data,
       check_data_updates,
