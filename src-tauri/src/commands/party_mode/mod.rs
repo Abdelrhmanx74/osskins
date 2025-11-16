@@ -9,6 +9,9 @@ pub mod messaging;
 pub mod commands;
 pub mod handlers;
 
+#[cfg(test)]
+mod tests;
+
 // Re-export public types and functions
 pub use types::{
   RECEIVED_SKINS, 
