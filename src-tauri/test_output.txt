@@ -1,0 +1,171 @@
+ Downloading crates ...
+  Downloaded sdd v3.0.10
+  Downloaded serial_test v3.2.0
+  Downloaded serial_test_derive v3.2.0
+  Downloaded scc v2.4.0
+   Compiling futures-util v0.3.31
+   Compiling sdd v3.0.10
+   Compiling serial_test_derive v3.2.0
+   Compiling scc v2.4.0
+   Compiling tokio-util v0.7.17
+   Compiling futures-executor v0.3.31
+   Compiling tower v0.5.2
+   Compiling futures v0.3.31
+   Compiling serial_test v3.2.0
+   Compiling tower-http v0.6.6
+   Compiling h2 v0.4.12
+   Compiling hyper v1.8.0
+   Compiling hyper-util v0.1.17
+   Compiling hyper-tls v0.6.0
+   Compiling hyper-rustls v0.27.7
+   Compiling reqwest v0.12.24
+   Compiling osskins v1.5.2 (C:\Users\Mana\Documents\work-space\fuck-exalted\src-tauri)
+warning: unused imports: `HashMap` and `HashSet`
+ --> src\commands\party_mode\tests\test_helpers.rs:3:24
+  |
+3 | use std::collections::{HashMap, HashSet};
+  |                        ^^^^^^^  ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: variable does not need to be mutable
+   --> src\commands\download_manager.rs:278:7
+    |
+278 |   let mut map = tasks.lock().await;
+    |       ----^^^
+    |       |
+    |       help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: unused variable: `total_friends`
+   --> src\commands\party_mode\tests\test_aram_mode.rs:269:13
+    |
+269 |         let total_friends = 2;
+    |             ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_friends`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: value assigned to `current_phase` is never read
+  --> src\commands\party_mode\tests\test_race_conditions.rs:76:17
+   |
+76 |         let mut current_phase = "ChampSelect";
+   |                 ^^^^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` on by default
+
+warning: value assigned to `champion_id` is never read
+   --> src\commands\party_mode\tests\test_race_conditions.rs:237:17
+    |
+237 |         let mut champion_id: u32 = 0;
+    |                 ^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: fields `skin_name` and `timestamp` are never read
+  --> src\commands\party_mode\tests\test_helpers.rs:13:9
+   |
+8  | pub struct SkinShare {
+   |            --------- fields in this struct
+...
+13 |     pub skin_name: String,
+   |         ^^^^^^^^^
+...
+16 |     pub timestamp: u64,
+   |         ^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: fields `port` and `token` are never read
+  --> src\commands\party_mode\tests\test_helpers.rs:28:9
+   |
+27 | pub struct MockLcuConnection {
+   |            ----------------- fields in this struct
+28 |     pub port: String,
+   |         ^^^^
+29 |     pub token: String,
+   |         ^^^^^
+
+warning: `osskins` (lib test) generated 7 warnings (run `cargo fix --lib -p osskins --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 36.86s
+     Running unittests src\lib.rs (target\debug\deps\osskins_lib-5d378803bf655853.exe)
+
+running 74 tests
+test commands::party_mode::tests::test_aram_mode::aram_tests::test_aram_no_rerolls_normal_flow ... ok
+test commands::party_mode::tests::test_aram_mode::aram_tests::test_aram_partial_share_injection ... ok
+test commands::party_mode::tests::test_aram_mode::aram_tests::test_aram_reroll_same_champion ... ok
+test commands::party_mode::tests::test_aram_mode::aram_tests::test_champion_reroll_triggers_reshare ... ok
+test commands::party_mode::tests::test_aram_mode::aram_tests::test_champion_swap_between_friends ... ok
+test commands::party_mode::tests::test_aram_mode::aram_tests::test_multiple_rerolls_in_sequence ... ok
+test commands::party_mode::tests::test_aram_mode::aram_tests::test_reshare_after_champion_trade ... ok
+test commands::party_mode::tests::test_helpers::tests::test_mock_paired_friend_creation ... ok
+test commands::party_mode::tests::test_helpers::tests::test_mock_skin_share_creation ... ok
+test commands::party_mode::tests::test_helpers::tests::test_received_skins_cache_operations ... ok
+test commands::party_mode::tests::test_helpers::tests::test_sent_shares_deduplication ... ok
+test commands::party_mode::tests::test_helpers::tests::test_timestamp_helpers ... ok
+test commands::party_mode::tests::test_injection_logic::injection_logic_tests::test_custom_skin_handling ... ok
+test commands::party_mode::tests::test_injection_logic::injection_logic_tests::test_fallback_to_local_skin ... ok
+test commands::party_mode::tests::test_injection_logic::injection_logic_tests::test_injection_deduplication ... ok
+test commands::party_mode::tests::test_injection_logic::injection_logic_tests::test_injection_with_misc_items ... ok
+test commands::party_mode::tests::test_injection_logic::injection_logic_tests::test_local_and_friend_skin_batch ... ok
+test commands::party_mode::tests::test_injection_logic::injection_logic_tests::test_missing_skin_file_path ... ok
+test commands::party_mode::tests::test_injection_logic::injection_logic_tests::test_multiple_skins_same_champion ... ok
+test commands::party_mode::tests::test_injection_logic::injection_logic_tests::test_no_champion_locked ... ok
+test commands::party_mode::tests::test_injection_logic::injection_logic_tests::test_should_inject_all_friends_ready ... ok
+test commands::party_mode::tests::test_injection_logic::injection_logic_tests::test_should_inject_partial_readiness ... ok
+test commands::party_mode::tests::test_injection_logic::injection_logic_tests::test_skin_file_path_absolute ... ok
+test commands::party_mode::tests::test_injection_logic::injection_logic_tests::test_skin_file_path_relative ... ok
+test commands::party_mode::tests::test_injection_logic::injection_logic_tests::test_skin_with_chroma ... ok
+test commands::party_mode::tests::test_party_detection::party_detection_tests::test_all_paired_friends_in_party ... ok
+test commands::party_mode::tests::test_party_detection::party_detection_tests::test_empty_party_solo_queue ... ok
+test commands::party_mode::tests::test_party_detection::party_detection_tests::test_friend_in_party_vs_outside ... ok
+test commands::party_mode::tests::test_party_detection::party_detection_tests::test_large_party_five_players ... ok
+test commands::party_mode::tests::test_party_detection::party_detection_tests::test_multiple_friends_different_share_settings ... ok
+test commands::party_mode::tests::test_party_detection::party_detection_tests::test_no_paired_friends_in_party ... ok
+test commands::party_mode::tests::test_party_detection::party_detection_tests::test_partial_party_mixed_settings ... ok
+test commands::party_mode::tests::test_party_detection::party_detection_tests::test_party_detection_multiple_endpoints ... ok
+test commands::party_mode::tests::test_party_detection::party_detection_tests::test_party_member_id_normalization ... ok
+test commands::party_mode::tests::test_party_detection::party_detection_tests::test_party_member_leaves_during_select ... ok
+test commands::party_mode::tests::test_party_detection::party_detection_tests::test_party_membership_changes ... ok
+test commands::party_mode::tests::test_race_conditions::race_condition_tests::test_concurrent_cache_operations ... ok
+test commands::party_mode::tests::test_race_conditions::race_condition_tests::test_concurrent_sent_share_deduplication ... ok
+test commands::party_mode::tests::test_race_conditions::race_condition_tests::test_concurrent_skin_shares ... ok
+test commands::party_mode::tests::test_race_conditions::race_condition_tests::test_duplicate_message_id_handling ... ok
+test commands::party_mode::tests::test_race_conditions::race_condition_tests::test_injection_already_in_progress ... ok
+test commands::party_mode::tests::test_race_conditions::race_condition_tests::test_injection_trigger_race ... ok
+test commands::party_mode::tests::test_race_conditions::race_condition_tests::test_message_during_phase_transition ... ok
+test commands::party_mode::tests::test_race_conditions::race_condition_tests::test_party_query_during_share_processing ... ok
+test commands::party_mode::tests::test_race_conditions::race_condition_tests::test_phase_state_cache_consistency ... ok
+test commands::party_mode::tests::test_race_conditions::race_condition_tests::test_rapid_lock_unlock_cycles ... ok
+test commands::party_mode::tests::test_race_conditions::race_condition_tests::test_session_change_skin_receipt_race ... ok
+test commands::party_mode::tests::test_race_conditions::race_condition_tests::test_watcher_polling_interval_race ... ok
+test commands::party_mode::tests::test_session_state::session_state_tests::test_concurrent_state_access ... ok
+test commands::party_mode::tests::test_session_state::session_state_tests::test_max_share_age_boundary ... ok
+test commands::party_mode::tests::test_session_state::session_state_tests::test_multiple_shares_same_friend_different_champions ... ok
+test commands::party_mode::tests::test_session_state::session_state_tests::test_overwrite_skin_share_same_champion ... ok
+test commands::party_mode::tests::test_session_state::session_state_tests::test_phase_transition_reset ... ok
+test commands::party_mode::tests::test_session_state::session_state_tests::test_sent_shares_cleared_new_phase ... ok
+test commands::party_mode::tests::test_session_state::session_state_tests::test_sent_shares_deduplication ... ok
+test commands::party_mode::tests::test_session_state::session_state_tests::test_session_change_clears_skins ... ok
+test commands::party_mode::tests::test_session_state::session_state_tests::test_stale_skin_pruning ... ok
+test commands::party_mode::tests::test_session_state::session_state_tests::test_state_persistence_during_lock_changes ... ok
+test commands::party_mode::tests::test_swift_play::swift_play_tests::test_champion_selection_change_mid_phase ... ok
+test commands::party_mode::tests::test_swift_play::swift_play_tests::test_multiple_champions_multiple_friends ... ok
+test commands::party_mode::tests::test_swift_play::swift_play_tests::test_swift_play_50_percent_threshold ... ok
+test commands::party_mode::tests::test_swift_play::swift_play_tests::test_swift_play_all_friends_shared ... ok
+test commands::party_mode::tests::test_swift_play::swift_play_tests::test_swift_play_below_threshold ... ok
+test commands::party_mode::tests::test_swift_play::swift_play_tests::test_swift_play_champion_priority_assignment ... ok
+test commands::party_mode::tests::test_swift_play::swift_play_tests::test_swift_play_delayed_shares ... ok
+test commands::party_mode::tests::test_swift_play::swift_play_tests::test_swift_play_single_champion ... ok
+test commands::party_mode::tests::test_swift_play::swift_play_tests::test_two_skins_shared_before_matchmaking ... ok
+test commands::party_mode::tests::test_timing_edge_cases::timing_tests::test_both_fail_to_select_in_time ... ok
+test commands::party_mode::tests::test_timing_edge_cases::timing_tests::test_friend_shares_at_lobby_end ... ok
+test commands::party_mode::tests::test_timing_edge_cases::timing_tests::test_last_second_champion_lock ... ok
+test commands::party_mode::tests::test_timing_edge_cases::timing_tests::test_message_arrival_after_phase_change ... ok
+test commands::party_mode::tests::test_timing_edge_cases::timing_tests::test_multiple_timing_scenarios_sequence ... ok
+test commands::party_mode::tests::test_timing_edge_cases::timing_tests::test_race_between_share_and_lock ... ok
+test commands::party_mode::tests::test_timing_edge_cases::timing_tests::test_stale_share_pruning ... ok
+
+test result: ok. 74 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
