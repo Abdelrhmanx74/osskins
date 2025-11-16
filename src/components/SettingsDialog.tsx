@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import { Settings } from "lucide-react";
 import { DropdownMenuItem } from "./ui/dropdown-menu";
 import { Label } from "./ui/label";
-import { Terminal, Clipboard, Check } from "lucide-react";
+import { Terminal, Clipboard, Check, Download, GitCommit } from "lucide-react";
 import {
   Select,
   SelectTrigger,
@@ -31,8 +31,12 @@ import { Switch } from "@/components/ui/switch";
 import { useI18n } from "@/lib/i18n";
 import { useToolsStore } from "@/lib/store/tools";
 import { skinManagementApi } from "@/lib/api/skin-management";
-import { Upload, Download } from "lucide-react";
+import { Upload } from "lucide-react";
 import { useRef } from "react";
+import { AppUpdateDialog } from "@/components/AppUpdateDialog";
+import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
+import { useAppUpdaterStore } from "@/lib/store/updater";
+import { Badge } from "@/components/ui/badge";
 
 export function SettingsDialog() {
   const [isOpen, setIsOpen] = useState(false);
@@ -45,6 +49,9 @@ export function SettingsDialog() {
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [autoUpdate, setAutoUpdate] = useState<boolean>(true);
+  const [showAppUpdateDialog, setShowAppUpdateDialog] = useState(false);
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+  const { status: updateStatus, availableVersion, currentVersion } = useAppUpdaterStore();
   const {
     clearAllSelections,
     selectSkin,
@@ -293,20 +300,20 @@ export function SettingsDialog() {
             <div className="grid grid-cols-1 gap-2 mt-2">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label htmlFor="auto-updates">Allow automatic updates</Label>
+                  <Label htmlFor="auto-data-updates">Automatic Data Updates</Label>
                   <p className="text-xs text-muted-foreground">
-                    Check for data updates on start and download automatically.
+                    Check for champion data updates on start and download automatically.
                   </p>
                 </div>
                 <Switch
-                  id="auto-updates"
+                  id="auto-data-updates"
                   checked={autoUpdate}
                   onCheckedChange={(v) => {
                     setAutoUpdate(v);
                     void (async () => {
                       try {
                         await invoke("set_auto_update_data", { value: v });
-                        toast.success(v ? "Automatic updates enabled" : "Automatic updates disabled");
+                        toast.success(v ? "Automatic data updates enabled" : "Automatic data updates disabled");
                       } catch (e) {
                         console.error(e);
                         toast.error("Failed to save preference");
@@ -315,6 +322,49 @@ export function SettingsDialog() {
                   }}
                 />
               </div>
+            </div>
+            <Separator />
+
+            {/* App Updates Section */}
+            <div className="grid grid-cols-1 gap-3 mt-4">
+              <Label>Application Updates</Label>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between bg-muted/50 p-3 rounded-md">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Current Version</p>
+                    <p className="text-xs text-muted-foreground">
+                      {currentVersion || "Unknown"}
+                    </p>
+                  </div>
+                  {updateStatus === "available" && (
+                    <Badge variant="default" className="gap-1">
+                      <Download className="h-3 w-3" />
+                      Update Available
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    className="flex-1"
+                    onClick={() => setShowAppUpdateDialog(true)}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Check for Updates
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setShowReleaseNotes(true)}
+                  >
+                    <GitCommit className="h-4 w-4 mr-2" />
+                    Release Notes
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Updates are automatically checked when the app starts.
+              </p>
             </div>
             <Separator />
 
@@ -427,6 +477,16 @@ export function SettingsDialog() {
           </DialogClose>
         </DialogFooter>
       </DialogContent>
+      
+      {/* App Update Dialog */}
+      <AppUpdateDialog open={showAppUpdateDialog} onOpenChange={setShowAppUpdateDialog} />
+      
+      {/* Release Notes Dialog */}
+      <ReleaseNotesDialog 
+        open={showReleaseNotes} 
+        onOpenChange={setShowReleaseNotes}
+        currentVersion={currentVersion || undefined}
+      />
     </Dialog>
   );
 }

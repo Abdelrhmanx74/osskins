@@ -110,9 +110,27 @@ export function useSoftUpdater(options: UseSoftUpdaterOptions = {}) {
       setProgress(0, 100);
       setError(null);
 
-      await updateHandle.downloadAndInstall((progress) => {
-        console.log(`[Updater] Download progress: ${progress.downloaded}/${progress.total} bytes`);
-        setProgress(progress.downloaded, progress.total);
+      let totalBytes = 0;
+      let downloadedBytes = 0;
+
+      await updateHandle.downloadAndInstall((event) => {
+        switch (event.event) {
+          case "Started":
+            console.log(`[Updater] Download started. Total size: ${event.data.contentLength || "unknown"} bytes`);
+            totalBytes = event.data.contentLength || 0;
+            downloadedBytes = 0;
+            setProgress(0, totalBytes || 100);
+            break;
+          case "Progress":
+            downloadedBytes += event.data.chunkLength;
+            console.log(`[Updater] Download progress: ${downloadedBytes}/${totalBytes} bytes`);
+            setProgress(downloadedBytes, totalBytes || 100);
+            break;
+          case "Finished":
+            console.log("[Updater] Download finished");
+            setProgress(totalBytes, totalBytes || 100);
+            break;
+        }
       });
 
       console.log("[Updater] Download and installation complete");
