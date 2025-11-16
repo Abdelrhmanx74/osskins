@@ -38,7 +38,8 @@ export function DownloadingModal({
             progress={progress ? { value: progress.progress, processedChampions: progress.processedChampions, totalChampions: progress.totalChampions, currentChampion: progress.currentChampion } : null}
             items={modal.items}
             updatedSkins={modal.updatedSkins}
-            commit={modal.manifestCommit}
+            // Use displayCommit if we resolved a better head commit
+            commit={modal.displayCommit ?? modal.manifestCommit}
             pill={modal.pill}
             pillMeta={modal.pillMeta}
             tertiaryAction={{ label: "Refresh", onClick: modal.checkForUpdates, disabled: modal.checkingForUpdates || modal.modalBusy }}

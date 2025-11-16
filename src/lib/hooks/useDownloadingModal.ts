@@ -27,6 +27,8 @@ export function useDownloadingModal({
     const [manifestCommit, setManifestCommit] = useState<string | null>(null);
     const [manifestRepo, setManifestRepo] = useState<string | null>(null);
     const [manifestGeneratedAt, setManifestGeneratedAt] = useState<string | null>(null);
+    // Commit actually displayed in the modal (may differ from manifestCommit when we can infer a more relevant one)
+    const [displayCommit, setDisplayCommit] = useState<string | null>(null);
     const isBusy = isUpdating || updatingData || isReinstalling;
     const modalBusy = isBusy;
 
@@ -39,6 +41,7 @@ export function useDownloadingModal({
                     if (manifest) {
                         const commit = getLolSkinsManifestCommit(manifest);
                         setManifestCommit(commit);
+                        setDisplayCommit(commit); // initial displayed commit
                         try {
                             const repoParts = manifest.source_repo.split("@");
                             setManifestRepo(repoParts[0]);
@@ -47,6 +50,25 @@ export function useDownloadingModal({
                     }
                 } catch (err) {
                     console.debug("Failed to load manifest for commit info:", err);
+                }
+                // Fallback: fetch latest HEAD commit if manifest commit looks like an asset-level commit
+                try {
+                    // If we don't have a commit yet or it's very short / suspicious, attempt to fetch HEAD
+                    if (!displayCommit || (displayCommit && displayCommit.length < 12)) {
+                        const headRes = await fetch("https://api.github.com/repos/darkseal-org/lol-skins/commits/main", {
+                            headers: { "Accept": "application/vnd.github.v3+json" }, cache: "no-store"
+                        });
+                        if (headRes.ok) {
+                            const headData = await headRes.json() as Record<string, unknown>;
+                            const sha = typeof headData.sha === "string" ? headData.sha : null;
+                            if (sha) {
+                                setDisplayCommit(sha);
+                                if (!manifestRepo) setManifestRepo("darkseal-org/lol-skins");
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.debug("HEAD commit fetch failed (non-fatal)", e);
                 }
             })();
         }
@@ -203,7 +225,7 @@ export function useDownloadingModal({
 
     const upToDateBadge = updateResult && updateResult.success && updatedCount === 0 ? "Up to date" : null;
     const pill = {
-        label: shortCommit ?? "-",
+        label: (displayCommit ? displayCommit.slice(0, 8) : shortCommit) ?? "-",
         sub: undefined,
         loading: modalBusy || checkingForUpdates,
         badge: upToDateBadge ?? undefined,
@@ -221,6 +243,7 @@ export function useDownloadingModal({
         manifestRepo,
         manifestGeneratedAt,
         shortCommit,
+        displayCommit,
         allowCloseWhenDownloading,
         getStatusMessage,
         updatedSkins,
