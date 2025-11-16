@@ -175,8 +175,14 @@ jobs:
             fi
             
             # Calculate total size and fingerprint for champion
-            TOTAL_SIZE=$(echo "$SKINS_JSON" "$CHROMAS_JSON" | jq -s 'add | add | [.[]? | .size] | add // 0')
-            FINGERPRINT=$(echo "$SKINS_JSON" "$CHROMAS_JSON" | jq -s -r 'add | add | [.[]? | .sha256] | sort | join("|") | @base64')
+            TOTAL_SIZE=$(jq -n \
+              --argjson skins "$SKINS_JSON" \
+              --argjson chromas "$CHROMAS_JSON" \
+              '$skins + $chromas | map(.size) | add // 0')
+            FINGERPRINT=$(jq -n -r \
+              --argjson skins "$SKINS_JSON" \
+              --argjson chromas "$CHROMAS_JSON" \
+              '$skins + $chromas | map(.sha256) | sort | join("|") | if . == "" then "" else @base64 end')
             
             # Add champion to manifest
             TEMP_MANIFEST=$(mktemp)
