@@ -66,162 +66,102 @@ jobs:
           
           echo "External releases saved to $TMP_RELEASES"
       
-      - name: Clone lol-skins repository
-        run: |
-          git clone --depth=1 "https://github.com/darkseal-org/lol-skins.git" lol-skins
-      
-      - name: Build manifest v2
+      - name: Check upstream commit and skip build if unchanged
+        id: check_upstream
         run: |
           set -euo pipefail
-          cd lol-skins
-          
-          MANIFEST="manifest.json"
-          REPO_URL="https://github.com/darkseal-org/lol-skins"
-          BRANCH="main"
-          COMMIT=$(git rev-parse HEAD)
-          GENERATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          
-          echo "Building manifest v2..."
-          echo "Commit: $COMMIT"
-          echo "Generated: $GENERATED_AT"
-          
-          # Start JSON structure
-          jq -n \
-            --argjson schema 2 \
-            --arg generated "$GENERATED_AT" \
-            --arg source_repo "${REPO_URL}@${COMMIT}" \
-            --arg branch "$BRANCH" \
-            --arg license "MIT" \
-            --arg source "$REPO_URL" \
-            --arg attribution "League of Legends skins from darkseal-org/lol-skins" \
-            '{
-              schema: $schema,
-              generated_at: $generated,
-              source_repo: $source_repo,
-              branch: $branch,
-              license: $license,
-              source: $source,
-              attribution: $attribution,
-              champions: []
-            }' > "$MANIFEST"
-          
-          # Process each champion
-          for CHAMP_DIR in skins/*/; do
-            [ -d "$CHAMP_DIR" ] || continue
-            
-            CHAMP_NAME=$(basename "$CHAMP_DIR")
-            CHAMP_KEY=$(echo "$CHAMP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')
-            
-            echo "Processing champion: $CHAMP_NAME (key: $CHAMP_KEY)"
-            
-            # Build skins array
-            SKINS_JSON="[]"
-            for SKIN_FILE in "$CHAMP_DIR"*.zip; do
-              [ -f "$SKIN_FILE" ] || continue
-              
-              SKIN_NAME=$(basename "$SKIN_FILE" .zip)
-              SKIN_KEY=$(echo "$SKIN_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')
-              SKIN_SIZE=$(stat -c%s "$SKIN_FILE")
-              SKIN_HASH=$(sha256sum "$SKIN_FILE" | cut -d' ' -f1)
-              SKIN_PATH="skins/${CHAMP_NAME}/${SKIN_NAME}.zip"
-              SKIN_URL="https://raw.githubusercontent.com/darkseal-org/lol-skins/main/${SKIN_PATH}"
-              
-              SKINS_JSON=$(echo "$SKINS_JSON" | jq \
-                --arg key "$SKIN_KEY" \
-                --arg name "$SKIN_NAME" \
-                --arg url "$SKIN_URL" \
-                --argjson size "$SKIN_SIZE" \
-                --arg sha256 "$SKIN_HASH" \
-                --arg commit "$COMMIT" \
-                '. += [{
-                  key: $key,
-                  name: $name,
-                  url: $url,
-                  size: $size,
-                  sha256: $sha256,
-                  commit: $commit
-                }]')
-            done
-            
-            # Build chromas array
-            CHROMAS_JSON="[]"
-            if [ -d "$CHAMP_DIR/chromas" ]; then
-              for CHROMA_FILE in "$CHAMP_DIR/chromas/"*.zip; do
-                [ -f "$CHROMA_FILE" ] || continue
-                
-                CHROMA_NAME=$(basename "$CHROMA_FILE" .zip)
-                CHROMA_KEY=$(echo "$CHROMA_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')
-                CHROMA_SIZE=$(stat -c%s "$CHROMA_FILE")
-                CHROMA_HASH=$(sha256sum "$CHROMA_FILE" | cut -d' ' -f1)
-                CHROMA_PATH="skins/${CHAMP_NAME}/chromas/${CHROMA_NAME}.zip"
-                CHROMA_URL="https://raw.githubusercontent.com/darkseal-org/lol-skins/main/${CHROMA_PATH}"
-                
-                CHROMAS_JSON=$(echo "$CHROMAS_JSON" | jq \
-                  --arg key "$CHROMA_KEY" \
-                  --arg name "$CHROMA_NAME" \
-                  --arg url "$CHROMA_URL" \
-                  --argjson size "$CHROMA_SIZE" \
-                  --arg sha256 "$CHROMA_HASH" \
-                  --arg commit "$COMMIT" \
-                  '. += [{
-                    key: $key,
-                    name: $name,
-                    url: $url,
-                    size: $size,
-                    sha256: $sha256,
-                    commit: $commit
-                  }]')
-              done
-            fi
-            
-            # Calculate total size and fingerprint for champion
-            TOTAL_SIZE=$(jq -n \
-              --argjson skins "$SKINS_JSON" \
-              --argjson chromas "$CHROMAS_JSON" \
-              '$skins + $chromas | map(.size) | add // 0')
-            FINGERPRINT=$(jq -n -r \
-              --argjson skins "$SKINS_JSON" \
-              --argjson chromas "$CHROMAS_JSON" \
-              '$skins + $chromas | map(.sha256) | sort | join("|") | if . == "" then "" else @base64 end')
-            
-            # Add champion to manifest
-            TEMP_MANIFEST=$(mktemp)
-            jq \
-              --arg key "$CHAMP_KEY" \
-              --arg name "$CHAMP_NAME" \
-              --argjson skins "$SKINS_JSON" \
-              --argjson chromas "$CHROMAS_JSON" \
-              --argjson size "$TOTAL_SIZE" \
-              --arg fingerprint "$FINGERPRINT" \
-              '.champions += [{
-                key: $key,
-                name: $name,
-                fingerprint: $fingerprint,
-                size: $size,
-                assets: {
-                  skins: $skins,
-                  chromas: $chromas
-                }
-              }]' "$MANIFEST" > "$TEMP_MANIFEST"
-            mv "$TEMP_MANIFEST" "$MANIFEST"
-          done
-          
-          # Merge external releases
-          if [ -f "../app/tmp/external_releases.json" ]; then
-            echo "Merging external releases..."
-            EXTERNAL_RELEASES=$(cat "../app/tmp/external_releases.json")
-            TEMP_MANIFEST=$(mktemp)
-            jq --argjson releases "$EXTERNAL_RELEASES" \
-              '.external_releases = $releases' "$MANIFEST" > "$TEMP_MANIFEST"
-            mv "$TEMP_MANIFEST" "$MANIFEST"
+          current_commit=""
+          if [ -f app/docs/manifest.json ]; then
+            current_commit=$(jq -r '.source_repo' app/docs/manifest.json 2>/dev/null | sed -E 's/.*@(.+)$/\\1/' || true)
           fi
-          
-          echo "Manifest v2 build complete!"
-          echo "Total champions: $(jq '.champions | length' "$MANIFEST")"
-          
-          # Move to app output
-          mkdir -p ../app/public
-          cp "$MANIFEST" ../app/public/manifest.json
+          remote_commit=$(git ls-remote https://github.com/darkseal-org/lol-skins.git refs/heads/main | cut -f1 || true)
+          echo "current_commit=${current_commit} remote_commit=${remote_commit}"
+          if [ -n "$current_commit" ] && [ "$current_commit" = "$remote_commit" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No upstream changes (manifest already at ${current_commit})."
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Clone upstream lol-skins
+        if: steps.check_upstream.outputs.changed == 'true'
+        run: |
+          git clone --depth=1 --no-single-branch https://github.com/darkseal-org/lol-skins.git upstream
+
+      - name: Generate v2 manifest.json (champion grouped)
+        if: steps.check_upstream.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          cd upstream
+          SRC_SHA=$(git rev-parse HEAD)
+          SRC_BRANCH="main"
+
+          # Gather files
+          FILES_JSON=$(mktemp)
+          git ls-files | grep -E '\\.(zip|fantome)$' | jq -R -s -c 'split("\\n") | map(select(length>0))' > "$FILES_JSON"
+
+          # Build raw items with url/size/sha/commit
+          ITEMS_JSON=$(mktemp)
+          jq -r '.[]' "$FILES_JSON" | while read -r f; do
+            size=$(stat -c%s "$f")
+            sha256=$(sha256sum "$f" | cut -d' ' -f1)
+            last_commit=$(git log -1 --format=%H -- "$f")
+            url="https://raw.githubusercontent.com/darkseal-org/lol-skins/${SRC_BRANCH}/$f"
+            jq -n --arg path "$f" --arg url "$url" --arg size "$size" --arg sha "$sha256" --arg commit "$last_commit" \
+              '{path:$path, url:$url, size: ($size|tonumber), sha256:$sha, commit:$commit}' >> "$ITEMS_JSON"
+          done
+
+          # Group by champion folder (second segment under skins/)
+          CHAMPS_JSON=$(mktemp)
+          jq -cs 'group_by(.path | split("/")[1]) | map({
+             key: (.[0].path | split("/")[1] | ascii_downcase | gsub("['’`]|[^a-z0-9]"; "") ),
+             name: (.[0].path | split("/")[1]),
+             assets: {
+               skins: [ .[] | select( (.path | split("/") | length) >= 3 and ((.path | split("/")[2] // "") | ascii_downcase) != "chromas") | {key: ((.path | split("/") | last | sub("\\\\.zip$"; "") ) | ascii_downcase | gsub("['’`]|[^a-z0-9]"; "")), name: (.path | split("/") | last | sub("\\\\.zip$"; "")), url, size, sha256, commit} ],
+               chromas: [ .[] | select( (.path | split("/") | length) >= 4 and ((.path | split("/")[2] // "") | ascii_downcase) == "chromas") | {key: ((.path | split("/") | last | sub("\\\\.zip$"; "") ) | ascii_downcase | gsub("['’`]|[^a-z0-9]"; "")), name: (.path | split("/") | last | sub("\\\\.zip$"; "")), url, size, sha256, commit} ]
+             }
+           } | . + { size: ( (.[].size) // 0 | tonumber ) } )' "$ITEMS_JSON" > "$CHAMPS_JSON"
+
+          # Compute fingerprint per champion (sha256 of sorted asset sha256 values)
+          CHAMPS_FP_JSON=$(mktemp)
+          jq -c '.[]' "$CHAMPS_JSON" | while read -r champ; do
+            sha_list=$(echo "$champ" | jq -r '[ (.assets.skins // [])[], (.assets.chromas // [])[] ] | map(.sha256) | .[]')
+            sorted=$(printf "%s\\n" $sha_list | sort | tr '\\n' ':' | sed 's/:$//')
+            fp=$(printf "%s" "$sorted" | sha256sum | awk '{print $1}')
+            echo "$champ" | jq --arg fp "$fp" '. + { fingerprint: $fp }' >> "$CHAMPS_FP_JSON"
+          done
+          mv "$CHAMPS_FP_JSON" "$CHAMPS_JSON"
+
+          cd ../app
+          mkdir -p docs
+
+          # Build final manifest v2
+          jq -n \
+            --arg gen "$(date -u +%FT%TZ)" \
+            --arg repo "darkseal-org/lol-skins@${SRC_SHA}" \
+            --arg branch "${SRC_BRANCH}" \
+            --arg license_url "https://github.com/darkseal-org/lol-skins/blob/main/LICENSE" \
+            --arg source_url "https://github.com/darkseal-org/lol-skins" \
+            --arg attribution "Skins © their respective creators. DSCL license applies. Not affiliated with or endorsed by Dark Seal or Riot Games." \
+            --slurpfile champions "$CHAMPS_JSON" \
+            --slurpfile releases "../app/tmp/external_releases.json" \
+            '{schema:2, generated_at:$gen, source_repo:$repo, branch:$branch, license:$license_url, source:$source_url, attribution:$attribution, champions: $champions[0], external_releases: ($releases[0] // []) }' \
+            > docs/manifest.json
+
+      - name: Merge external_releases into existing manifest (if upstream unchanged)
+        if: steps.check_upstream.outputs.changed == 'false'
+        run: |
+          set -euo pipefail
+          cd app
+          if [ ! -f docs/manifest.json ]; then
+            echo "No existing manifest.json found; nothing to merge."
+            exit 0
+          fi
+          RELEASES_FILE="tmp/external_releases.json"
+          jq --slurpfile releases "${RELEASES_FILE}" \
+            '. + { external_releases: ($releases[0] // []) }' \
+            docs/manifest.json > docs/manifest.new.json
+          mv docs/manifest.new.json docs/manifest.json
       
       - name: Commit and push manifest
         run: |
