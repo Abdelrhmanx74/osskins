@@ -130,7 +130,7 @@ export default function UpdateModal({
                         </div>
                     )}
 
-                    {updatedSkins && updatedSkins.length > 0 && (
+                    {updatedSkins.length > 0 && (
                         <div className="rounded-md bg-muted/50 p-3 border border-border">
                             <p className="text-sm font-medium mb-1">Skins to be updated:</p>
                             <ul className="grid gap-1 pl-4 list-disc">

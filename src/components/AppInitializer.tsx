@@ -84,7 +84,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           });
         });
         // Unified download-progress listener
-        listen<any>("download-progress", (event) => {
+        void listen<any>("download-progress", (event) => {
           const p = event.payload as {
             id: string;
             status: string;
@@ -116,10 +116,10 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           // Toasts on terminal states
           if (p.status === "completed") {
             const name = (p as any).file_name ?? p.url;
-            try { toast.success(`Downloaded: ${name}`); } catch { }
+            try { toast.success(`Downloaded: ${name}`); } catch { /* ignore toast errors */ }
           } else if (p.status === "failed") {
             const name = (p as any).file_name ?? p.url;
-            try { toast.error(`Download failed: ${name}`); } catch { }
+            try { toast.error(`Download failed: ${name}`); } catch { /* ignore toast errors */ }
           }
         });
       })

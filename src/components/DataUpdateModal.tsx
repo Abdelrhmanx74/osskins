@@ -1,5 +1,3 @@
-export { DataUpdateModal } from "./download/DataUpdateModal";
-
 import {
   Dialog,
   DialogContent,

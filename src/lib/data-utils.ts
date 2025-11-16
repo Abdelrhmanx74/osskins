@@ -186,7 +186,7 @@ export function getLolSkinsManifestCommit(
 
   if (manifest.champions && manifest.champions.length > 0) {
     const first = manifest.champions[0];
-    const asset = first.assets?.skins?.[0] || first.assets?.chromas?.[0];
+    const asset = first.assets.skins[0] || first.assets.chromas[0];
     if (asset?.commit) return asset.commit;
   }
 
@@ -211,6 +211,8 @@ function findManifestEntry(
 
   let bestCandidate: { item: LolSkinsManifestItem; score: number } | null =
     null;
+
+  if (!manifest.items) return null;
 
   for (const item of manifest.items) {
     const segments = item.path.split("/");

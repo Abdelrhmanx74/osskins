@@ -56,14 +56,12 @@ export function SettingsDialog() {
   useEffect(() => {
     if (!isOpen) return;
     let mounted = true;
-    (async () => {
+    void (async () => {
       try {
         const cfg = (await invoke<unknown>("load_config")) as { auto_update_data?: boolean };
-        if (!mounted) return;
-        setAutoUpdate(cfg.auto_update_data !== false);
+        if (mounted) setAutoUpdate(cfg.auto_update_data !== false);
       } catch {
-        if (!mounted) return;
-        setAutoUpdate(true);
+        if (mounted) setAutoUpdate(true);
       }
     })();
     return () => {
@@ -303,15 +301,17 @@ export function SettingsDialog() {
                 <Switch
                   id="auto-updates"
                   checked={autoUpdate}
-                  onCheckedChange={async (v) => {
+                  onCheckedChange={(v) => {
                     setAutoUpdate(v);
-                    try {
-                      await invoke("set_auto_update_data", { value: v });
-                      toast.success(v ? "Automatic updates enabled" : "Automatic updates disabled");
-                    } catch (e) {
-                      console.error(e);
-                      toast.error("Failed to save preference");
-                    }
+                    void (async () => {
+                      try {
+                        await invoke("set_auto_update_data", { value: v });
+                        toast.success(v ? "Automatic updates enabled" : "Automatic updates disabled");
+                      } catch (e) {
+                        console.error(e);
+                        toast.error("Failed to save preference");
+                      }
+                    })();
                   }}
                 />
               </div>

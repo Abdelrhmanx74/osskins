@@ -55,11 +55,11 @@ const createManifestIndex = (
         index.set(championKey, { skins: new Map(), chromas: new Map() });
       }
       const entry = index.get(championKey)!;
-      for (const s of champ.assets.skins || []) {
+      for (const s of champ.assets.skins) {
         const key = normalizeManifestKey(s.key ?? "");
         if (!entry.skins.has(key)) entry.skins.set(key, { url: s.url, size: s.size, sha256: s.sha256, commit: s.commit });
       }
-      for (const c of champ.assets.chromas || []) {
+      for (const c of champ.assets.chromas) {
         const key = normalizeManifestKey(c.key ?? "");
         if (!entry.chromas.has(key)) entry.chromas.set(key, { url: c.url, size: c.size, sha256: c.sha256, commit: c.commit });
       }
@@ -215,7 +215,7 @@ export function useDataUpdate() {
 
       const manifest = await getLolSkinsManifest();
       const manifestIndex = manifest
-        ? createManifestIndex(manifest as any)
+        ? createManifestIndex(manifest)
         : null;
       const manifestCommit = manifest
         ? getLolSkinsManifestCommit(manifest)

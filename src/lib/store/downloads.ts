@@ -37,13 +37,13 @@ export const useDownloadsStore = create<DownloadsStore>((set, get) => ({
                 url: partial.url ?? prev?.url ?? "",
                 category: (partial.category as DownloadCategory) ?? prev?.category ?? "misc",
                 status: (partial.status as DownloadStatus) ?? prev?.status ?? "queued",
-                downloaded: partial.downloaded ?? prev?.downloaded,
-                total: partial.total ?? prev?.total,
-                speed: partial.speed ?? prev?.speed,
-                championName: partial.championName ?? prev?.championName ?? null,
-                fileName: partial.fileName ?? prev?.fileName ?? null,
-                destPath: partial.destPath ?? prev?.destPath ?? null,
-                error: partial.error ?? (partial.status === "failed" ? (partial as any).error ?? null : prev?.error) ?? null,
+                downloaded: partial.downloaded ?? (prev?.downloaded ?? undefined),
+                total: partial.total ?? (prev?.total ?? undefined),
+                speed: partial.speed ?? (prev?.speed ?? undefined),
+                championName: partial.championName ?? (prev?.championName ?? null),
+                fileName: partial.fileName ?? (prev?.fileName ?? null),
+                destPath: partial.destPath ?? (prev?.destPath ?? null),
+                error: partial.error ?? (partial.status === "failed" ? (partial as any).error ?? null : (prev?.error ?? null)),
                 updatedAt: Date.now(),
             };
 
@@ -59,8 +59,7 @@ export const useDownloadsStore = create<DownloadsStore>((set, get) => ({
             const order: string[] = [];
             for (const id of state.order) {
                 const item = state.items[id];
-                if (!item) continue;
-                if (item.status === "completed" || item.status === "canceled") continue;
+                if (!item || item.status === "completed" || item.status === "canceled") continue;
                 items[id] = item;
                 order.push(id);
             }
@@ -69,8 +68,7 @@ export const useDownloadsStore = create<DownloadsStore>((set, get) => ({
     },
     remove: (id) => {
         set((state) => {
-            const items = { ...state.items };
-            delete items[id];
+            const { [id]: _, ...items } = state.items;
             const order = state.order.filter((x) => x !== id);
             return { items, order };
         });

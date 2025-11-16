@@ -27,7 +27,9 @@ export default function DownloadCenter({ isOpen, onClose }: DownloadCenterProps)
     };
 
     return (
-        <Dialog open={isOpen} onOpenChange={(v) => !v && onClose()}>
+        <Dialog open={isOpen} onOpenChange={(v) => {
+            if (!v) onClose();
+        }}>
             <DialogContent className="max-w-2xl">
                 <DialogHeader>
                     <DialogTitle>Downloads</DialogTitle>
@@ -53,19 +55,23 @@ export default function DownloadCenter({ isOpen, onClose }: DownloadCenterProps)
                                                 <Button
                                                     size="sm"
                                                     variant="ghost"
-                                                    onClick={async () => {
-                                                        try {
-                                                            await invoke("cancel_download", { id: item.id });
-                                                        } catch {
-                                                            /* ignore */
-                                                        }
+                                                    onClick={() => {
+                                                        void (async () => {
+                                                            try {
+                                                                await invoke("cancel_download", { id: item.id });
+                                                            } catch {
+                                                                /* ignore */
+                                                            }
+                                                        })();
                                                     }}
                                                 >
                                                     Cancel
                                                 </Button>
                                             )}
                                             {(item.status === "completed" || item.status === "failed" || item.status === "canceled") && (
-                                                <Button size="sm" variant="ghost" onClick={() => remove(item.id)}>
+                                                <Button size="sm" variant="ghost" onClick={() => {
+                                                    remove(item.id);
+                                                }}>
                                                     Dismiss
                                                 </Button>
                                             )}
@@ -95,7 +101,9 @@ export default function DownloadCenter({ isOpen, onClose }: DownloadCenterProps)
                 </div>
 
                 <div className="flex justify-between">
-                    <Button variant="secondary" onClick={() => clearCompleted()}>
+                    <Button variant="secondary" onClick={() => {
+                        clearCompleted();
+                    }}>
                         Clear completed
                     </Button>
                     <Button onClick={onClose}>Close</Button>

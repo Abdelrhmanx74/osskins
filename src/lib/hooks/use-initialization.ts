@@ -142,7 +142,7 @@ export function useInitialization() {
             const result = await invoke<{ success: boolean; updated_champions: string[]; error?: string }>(
               "check_data_updates"
             );
-            if (result?.success && Array.isArray(result.updated_champions) && result.updated_champions.length > 0) {
+            if (result.success && Array.isArray(result.updated_champions) && result.updated_champions.length > 0) {
               setHasStartedUpdate(true);
               // Start update silently; UI DownloadingModal can still be opened by the user
               void updateData();
