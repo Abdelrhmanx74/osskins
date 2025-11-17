@@ -368,14 +368,16 @@ fn handle_phase_change(
     ("InProgress", "None") => true,
     ("InProgress", "Lobby") => true,
     ("InProgress", "Matchmaking") => true,
-    // Don't cleanup on Matchmaking->Lobby (Swift Play flow when match found)
-    ("Matchmaking", "Lobby") => false,
+    // Cleanup if Matchmaking -> Lobby (returning to lobby after matchmaking or a dodge)
+    ("Matchmaking", "Lobby") => true,
     ("Reconnect", "None") => true,
     ("Reconnect", "Lobby") => true,
     ("Reconnect", "Matchmaking") => true,
     ("ChampSelect", "None") => true,
     ("ChampSelect", "Lobby") => true,
     ("ChampSelect", "Matchmaking") => true,
+    // Do not cleanup when going from Lobby -> None (closing client while in lobby)
+    ("Lobby", "None") => false,
     (_, "None") if last_phase != "None" => true,
     ("ChampSelect", "InProgress") => false,
     ("ChampSelect", "Reconnect") => false,
