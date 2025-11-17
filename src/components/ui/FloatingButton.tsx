@@ -1,7 +1,18 @@
 "use client";
 
 import React, { ReactNode, useEffect } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, MotionProps } from "framer-motion";
+
+type MotionUlProps = React.HTMLAttributes<HTMLUListElement> & MotionProps;
+const MotionUl = motion.ul as React.FC<MotionUlProps>;
+type MotionDivProps = React.HTMLAttributes<HTMLDivElement> & MotionProps;
+const MotionDiv = React.forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
+    <motion.div ref={ref} {...props} />
+));
+type MotionLiProps = React.HTMLAttributes<HTMLLIElement> & MotionProps;
+const MotionLi = React.forwardRef<HTMLLIElement, MotionLiProps>((props, ref) => (
+    <motion.li ref={ref} {...props} />
+));
 
 type FloatingButtonProps = {
     className?: string;
@@ -65,18 +76,18 @@ function FloatingButton({ children, triggerContent, className }: FloatingButtonP
     return (
         <div className={`flex flex-col items-center relative ${className ?? ""}`}>
             <AnimatePresence>
-                <motion.ul
+                <MotionUl
                     key="list"
-                    className="flex flex-col items-center absolute bottom-10 gap-1"
                     initial="hidden"
                     animate={isOpen ? "visible" : "hidden"}
                     variants={list}
+                    className="flex flex-col items-center absolute bottom-10 gap-1"
                     role="list"
                     style={{ willChange: "transform, opacity" }}
                 >
                     {children}
-                </motion.ul>
-                <motion.div
+                </MotionUl>
+                <MotionDiv
                     key="button"
                     variants={btn}
                     animate={isOpen ? "visible" : "hidden"}
@@ -87,7 +98,7 @@ function FloatingButton({ children, triggerContent, className }: FloatingButtonP
                     aria-label="Open chroma menu"
                 >
                     {triggerContent}
-                </motion.div>
+                </MotionDiv>
             </AnimatePresence>
         </div>
     );
@@ -95,9 +106,9 @@ function FloatingButton({ children, triggerContent, className }: FloatingButtonP
 
 function FloatingButtonItem({ children }: FloatingButtonItemProps) {
     return (
-        <motion.li variants={item} role="listitem">
+        <MotionLi variants={item} role="listitem">
             {children}
-        </motion.li>
+        </MotionLi>
     );
 }
 

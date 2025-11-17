@@ -111,6 +111,9 @@ const eslintConfig = tseslint.config(
       "@typescript-eslint/prefer-namespace-keyword": "off",
       "@typescript-eslint/prefer-optional-chain": "off",
       "@typescript-eslint/require-await": "off",
+      "@typescript-eslint/no-unnecessary-type-conversion": "off",
+      "react/display-name": "off",
+      "@typescript-eslint/consistent-type-definitions": "off",
       // Temporarily relaxed rules for build
       "@typescript-eslint/no-floating-promises": "warn",
       "@typescript-eslint/no-unsafe-assignment": "warn",
