@@ -55,6 +55,13 @@ copypasta = "0.8"
 futures-util = "0.3"
 notify = "6.1" # For file system watching - provides instant lockfile detection
 
+# WebSocket for LCU event stream
+tungstenite = { version = "0.23", features = ["native-tls"] }
+native-tls = "0.2"
+url = "2.5"
+http = "1.1"
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+
 [features]
 # by default Tauri runs in production mode
 # when `tauri dev` runs it is executed with `cargo run --no-default-features` if `devPath` is an URL

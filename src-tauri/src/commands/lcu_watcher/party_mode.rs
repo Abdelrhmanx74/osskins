@@ -3,7 +3,9 @@
 use base64::{engine::general_purpose, Engine};
 use tauri::AppHandle;
 use serde_json;
+use std::sync::atomic::Ordering;
 
+use crate::commands::party_mode::PARTY_MODE_VERBOSE;
 use super::utils::get_lcu_client;
 
 // Start monitoring LCU chat messages for party mode
@@ -26,10 +28,12 @@ pub fn check_for_party_mode_messages_with_connection(
   let url = format!("https://127.0.0.1:{}/lol-chat/v1/conversations", port);
   let auth = general_purpose::STANDARD.encode(format!("riot:{}", token));
 
-  println!(
-    "[Party Mode][DEBUG] Fetching conversations for OSS scan: {}",
-    url
-  );
+  if PARTY_MODE_VERBOSE.load(Ordering::Relaxed) {
+    println!(
+      "[Party Mode][DEBUG] Fetching conversations for OSS scan: {}",
+      url
+    );
+  }
   let response = client
     .get(&url)
     .header("Authorization", format!("Basic {}", auth))
@@ -45,20 +49,24 @@ pub fn check_for_party_mode_messages_with_connection(
     .map_err(|e| format!("Failed to parse conversations: {}", e))?;
 
   if let Some(conversations_array) = conversations.as_array() {
-    println!(
-      "[Party Mode][DEBUG] Conversations found: {}",
-      conversations_array.len()
-    );
+    if PARTY_MODE_VERBOSE.load(Ordering::Relaxed) {
+      println!(
+        "[Party Mode][DEBUG] Conversations found: {}",
+        conversations_array.len()
+      );
+    }
     for conversation in conversations_array {
       if let Some(conversation_id) = conversation.get("id").and_then(|id| id.as_str()) {
         let pid = conversation
           .get("pid")
           .and_then(|v| v.as_str())
           .unwrap_or("");
-        println!(
-          "[Party Mode][DEBUG] Scanning conversation id={} pid={}",
-          conversation_id, pid
-        );
+        if PARTY_MODE_VERBOSE.load(Ordering::Relaxed) {
+          println!(
+            "[Party Mode][DEBUG] Scanning conversation id={} pid={}",
+            conversation_id, pid
+          );
+        }
         if let Err(e) = check_conversation_for_party_messages(
           app,
           &client,
@@ -91,10 +99,12 @@ pub fn check_conversation_for_party_messages(
   );
   let auth = general_purpose::STANDARD.encode(format!("riot:{}", token));
 
-  println!(
-    "[Party Mode][DEBUG] Fetching messages for conversation: {}",
-    url
-  );
+  if PARTY_MODE_VERBOSE.load(Ordering::Relaxed) {
+    println!(
+      "[Party Mode][DEBUG] Fetching messages for conversation: {}",
+      url
+    );
+  }
   let response = client
     .get(&url)
     .header("Authorization", format!("Basic {}", auth))
@@ -110,10 +120,12 @@ pub fn check_conversation_for_party_messages(
     .map_err(|e| format!("Failed to parse messages: {}", e))?;
 
   if let Some(messages_array) = messages.as_array() {
-    println!(
-      "[Party Mode][DEBUG] Messages count in conversation: {}",
-      messages_array.len()
-    );
+    if PARTY_MODE_VERBOSE.load(Ordering::Relaxed) {
+      println!(
+        "[Party Mode][DEBUG] Messages count in conversation: {}",
+        messages_array.len()
+      );
+    }
     // Check all messages, not just recent ones, but skip already processed messages
     for message in messages_array.iter() {
       // Get message ID to track processed messages (support string or numeric IDs)
