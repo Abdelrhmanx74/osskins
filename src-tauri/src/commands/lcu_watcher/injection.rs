@@ -8,6 +8,8 @@ use serde_json;
 use crate::commands::misc_items::get_selected_misc_items;
 use crate::commands::types::SavedConfig;
 use crate::commands::party_mode::RECEIVED_SKINS;
+use crate::commands::party_mode::messaging::delete_conversation_messages;
+use crate::commands::party_mode::lcu::get_lcu_connection;
 use crate::injection::Skin;
 use super::utils::is_in_champ_select;
 
@@ -160,6 +162,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
 
   // Collect friend skins from received skins; keep friend identity alongside skin
   let mut skins_with_source: Vec<(Skin, Option<String>)> = Vec::new();
+  let mut friends_to_clear: std::collections::HashSet<String> = std::collections::HashSet::new();
   let mut local_skin_added = false;
   let received_skins_map = RECEIVED_SKINS.lock().unwrap();
 
@@ -484,6 +487,7 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
           },
           Some(received_skin.from_summoner_id.clone()),
         ));
+        friends_to_clear.insert(received_skin.from_summoner_id.clone());
         println!(
           "[Party Mode] Adding friend skin from {} for injection: Champion {}, Skin {}",
           received_skin.from_summoner_name, received_skin.champion_id, received_skin.skin_id
@@ -568,6 +572,30 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
 
       // Emit success once for the whole batch
       let _ = app.emit("injection-status", "completed");
+      // Attempt to delete conversation messages for each contributing friend
+      if let Ok(lcu_conn) = get_lcu_connection(app).await {
+        for friend_id in friends_to_clear.iter() {
+          if let Err(e) = delete_conversation_messages(app, &lcu_conn, friend_id).await {
+            println!("[Party Mode][CLEANUP] Failed to delete messages for {}: {}", friend_id, e);
+          } else {
+            println!("[Party Mode][CLEANUP] Deleted conversation messages for {}", friend_id);
+          }
+        }
+      } else {
+        println!("[Party Mode][CLEANUP] Could not connect to LCU to delete partner conversation messages");
+      }
+      // After injection completes, attempt to delete conversation messages from the LCU for each friend that contributed
+      if let Ok(lcu_conn) = get_lcu_connection(app).await {
+        for friend_id in friends_to_clear.iter() {
+          if let Err(e) = delete_conversation_messages(app, &lcu_conn, friend_id).await {
+            println!("[Party Mode][CLEANUP] Failed to delete messages for {}: {}", friend_id, e);
+          } else {
+            println!("[Party Mode][CLEANUP] Deleted conversation messages for {}", friend_id);
+          }
+        }
+      } else {
+        println!("[Party Mode][CLEANUP] Could not connect to LCU to delete partner conversation messages");
+      }
       Ok(())
     }
     Err(e) => {
@@ -623,6 +651,7 @@ pub async fn trigger_party_mode_injection_for_champions(
 
   // Keep friend identity so we don't collapse multiple friends sharing the same skin/path
   let mut skins_with_source: Vec<(Skin, Option<String>)> = Vec::new();
+  let mut friends_to_clear: std::collections::HashSet<String> = std::collections::HashSet::new();
   let mut local_added_count = 0usize;
 
   // Add local skins for each champion (official preferred, fallback to custom)
@@ -829,6 +858,7 @@ pub async fn trigger_party_mode_injection_for_champions(
           },
           Some(received_skin.from_summoner_id.clone()),
         ));
+        friends_to_clear.insert(received_skin.from_summoner_id.clone());
       } else {
         println!(
           "[Party Mode] Skipping friend skin from {} (missing skin_file: {})",

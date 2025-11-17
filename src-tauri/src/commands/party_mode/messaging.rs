@@ -62,3 +62,44 @@ pub async fn send_chat_message(
   println!("[DEBUG] Message sent successfully!");
   Ok(())
 }
+
+// Delete all messages in a conversation (cleans both sides in a 1:1 chat)
+pub async fn delete_conversation_messages(
+  app: &tauri::AppHandle,
+  lcu_connection: &LcuConnection,
+  friend_summoner_id: &str,
+) -> Result<(), String> {
+  println!(
+    "[DEBUG] delete_conversation_messages called for friend_summoner_id: {}",
+    friend_summoner_id
+  );
+
+  // Resolve conversation ID (may create one as a fallback, but deletion will work only if conversation exists)
+  let conversation_id = get_conversation_id(app, lcu_connection, friend_summoner_id).await?;
+
+  let client = reqwest::Client::builder()
+    .danger_accept_invalid_certs(true)
+    .build()
+    .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+  let url = format!(
+    "https://127.0.0.1:{}/lol-chat/v1/conversations/{}/messages",
+    lcu_connection.port, conversation_id
+  );
+  let auth = general_purpose::STANDARD.encode(format!("riot:{}", lcu_connection.token));
+
+  println!("[DEBUG] Deleting messages at URL: {}", url);
+  let response = client
+    .delete(&url)
+    .header("Authorization", format!("Basic {}", auth))
+    .send()
+    .await
+    .map_err(|e| format!("Failed to delete messages: {}", e))?;
+
+  if !response.status().is_success() {
+    return Err(format!("Failed to delete messages: {}", response.status()));
+  }
+
+  println!("[DEBUG] Messages deleted successfully for conversation: {}", conversation_id);
+  Ok(())
+}

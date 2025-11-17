@@ -11,7 +11,7 @@ use crate::commands::types::{
   PartyModeMessage, PairedFriend, SavedConfig, SkinShare,
 };
 use super::types::{RECEIVED_SKINS, SENT_SKIN_SHARES, PARTY_MODE_MESSAGE_PREFIX, CurrentSummoner, InMemoryReceivedSkin};
-use super::utils::{received_skin_key, sent_share_key, get_configured_max_share_age_secs, get_skin_name_from_config};
+use super::utils::{received_skin_key, sent_share_key, get_skin_name_from_config};
 use super::lcu::{get_lcu_connection, get_current_summoner};
 use super::messaging::send_chat_message;
 use super::party_detection::{get_current_party_member_summoner_ids, get_gameflow_party_member_summoner_ids};
@@ -27,7 +27,6 @@ pub async fn handle_party_mode_message(
   if !message_body.starts_with(PARTY_MODE_MESSAGE_PREFIX) {
     return Ok(()); // Not a party mode message
   }
-
   let message_json = &message_body[PARTY_MODE_MESSAGE_PREFIX.len()..];
   verbose_log!("[Party Mode][INBOUND][RAW] {}", message_json);
   let message: PartyModeMessage = serde_json::from_str(message_json)
@@ -66,10 +65,6 @@ pub async fn handle_party_mode_message(
         return Ok(());
       }
 
-  let now_secs = SystemTime::now()
-    .duration_since(UNIX_EPOCH)
-    .unwrap_or_default()
-    .as_secs() as i64;
   let share_ts = match i64::try_from(skin_share.timestamp) {
     Ok(ts) => ts,
     Err(_) => {
@@ -80,50 +75,18 @@ pub async fn handle_party_mode_message(
       return Ok(());
     }
   };
-  let age_secs = (now_secs - share_ts).max(0) as u64;
-  
-  // Session-based staleness check: messages older than current session should be ignored
-  let current_session_id = {
-    let guard = super::types::CURRENT_SESSION_ID.lock().unwrap();
-    guard.clone()
-  };
-  
-  // If we have a session ID and the message is older than 60 seconds, check if it's from a previous session
-  if current_session_id.is_some() && age_secs > 60 {
-    verbose_log!(
-      "[Party Mode][INBOUND][SKIP] message from {} is >60s old ({}s), likely from previous session",
-      skin_share.from_summoner_name,
-      age_secs
-    );
-    return Ok(());
-  }
-  
-  let max_age = get_configured_max_share_age_secs(app);
-  if age_secs > max_age {
-    verbose_log!(
-      "[Party Mode][INBOUND][SKIP] stale share age={}s (> {}s) from {}",
-      age_secs,
-      max_age,
-      skin_share.from_summoner_name
-    );
-    return Ok(());
-  }      if !crate::commands::lcu_watcher::is_in_champ_select() {
-        normal_log!(
-          "[Party Mode] Received skin share from {} while not in ChampSelect; storing for later",
-          skin_share.from_summoner_name
-        );
-      }
 
-      verbose_log!(
-        "[Party Mode][INBOUND][STORE] {}({}) champ={} skin={} chroma={:?} skin_file={:?} age={}s",
-        skin_share.from_summoner_name,
-        skin_share.from_summoner_id,
-        skin_share.champion_id,
-        skin_share.skin_id,
-        skin_share.chroma_id,
-        skin_share.skin_file_path,
-        age_secs
-      );
+  // Note: Previous implementation enforced message staleness checks here and skipped
+  // messages older than a configured maximum or a previous session. That logic has been
+  // removed in favour of explicit cleanup via the LCU API DELETE endpoint after
+  // friend skin injections. Keep receiving all messages (it's up to other logic to
+  // handle session transitions / pruning).
+
+  // Still compute message age for logging purposes but do not skip messages
+  let age_secs: u64 = (SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .unwrap_or_default()
+    .as_secs() as i64 - share_ts).max(0) as u64;
 
       let key = received_skin_key(&skin_share.from_summoner_id, skin_share.champion_id);
       let mut map = RECEIVED_SKINS.lock().unwrap();

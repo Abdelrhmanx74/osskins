@@ -389,23 +389,24 @@ mod issue_fix_tests {
         // Message from 70 seconds ago (previous game)
         let old_message_time = get_timestamp_seconds_ago(70);
         
-        // In the real implementation, the handler checks:
-        // if current_session_id.is_some() && age_secs > 60 { reject }
-        
         let current_time_ms = get_current_timestamp_ms();
         let message_age_secs = (current_time_ms - old_message_time) / 1000;
         
-        let has_session = true; // Simulating active session
-        let should_reject = has_session && message_age_secs > 60;
-        
-        assert!(should_reject, 
-            "Message older than 60s should be rejected when in session");
-        assert!(message_age_secs >= 70, 
-            "Test message is from previous session (70+ seconds ago)");
+        // Old messages used to be rejected when a session existed; new logic keeps the message
+        // and relies on explicit cleanup instead. Ensure message can be cached instead.
+        add_received_skin_to_cache(
+            "friend_old_reject",
+            "OldFriend",
+            266,
+            1,
+            None,
+            Some("/path/to/skin.zip".to_string()),
+            old_message_time,
+        );
 
-        // Verify the message would NOT be added to cache
-        // (In real code, the handler returns early before adding)
-        assert_eq!(get_received_skins_count(), 0);
+        assert!(message_age_secs >= 70, "Test message is from previous session (70+ seconds ago)");
+        assert!(is_skin_in_cache("friend_old_reject", 266), "Old message should now be accepted and cached");
+        assert_eq!(get_received_skins_count(), 1);
     }
 
     /// Test: Recent messages within 60 seconds are accepted
@@ -469,11 +470,17 @@ mod issue_fix_tests {
             new_lobby_time,
         );
 
-        let has_session = true;
-        let old_should_reject = has_session && old_lobby_age_secs > 60;
-        
-        assert!(old_should_reject, 
-            "Old lobby message should be rejected");
+        // We now accept messages from previous lobbies too (will be pruned later). Add them to cache
+        add_received_skin_to_cache(
+            "friend_old_lobby",
+            "OldLobbyFriend",
+            103,
+            12,
+            None,
+            Some("/path/to/ahri_old.zip".to_string()),
+            old_lobby_time,
+        );
+        assert!(is_skin_in_cache("friend_old_lobby", 103), "Old lobby message should now be cached");
         assert!(is_skin_in_cache("friend_new_lobby", 103),
             "New lobby message should be accepted");
 
@@ -532,11 +539,17 @@ mod issue_fix_tests {
         // New session just started
         let has_session = true;
         
-        // Session-based check catches this
-        let should_reject = has_session && message_age_secs > 60;
-        
-        assert!(should_reject,
-            "Message from previous session should be rejected even during transition");
+        // The message would be cached now; ensure it's present
+        add_received_skin_to_cache(
+            "friend_transition",
+            "TransitionFriend",
+            157,
+            2,
+            None,
+            Some("/path/to/transition.zip".to_string()),
+            transition_message_time,
+        );
+        assert!(is_skin_in_cache("friend_transition", 157), "Message should be present during session transition");
 
         clear_received_skins_cache();
     }
@@ -593,7 +606,7 @@ mod issue_fix_tests {
     fn test_multiple_friends_after_pause() {
         clear_received_skins_cache();
 
-        // Old message from 120 seconds ago (should be rejected)
+        // Old message from 120 seconds ago (should be accepted now)
         let old_time = get_timestamp_seconds_ago(120);
         let old_age = (get_current_timestamp_ms() - old_time) / 1000;
         
@@ -633,10 +646,17 @@ mod issue_fix_tests {
         // All 3 recent messages accepted
         assert_eq!(get_received_skins_count(), 3);
         
-        // Old message logic
-        let has_session = true;
-        let old_should_reject = has_session && old_age > 60;
-        assert!(old_should_reject, "Old message should be rejected");
+        // New behavior: the old message is now accepted and will be pruned later
+        add_received_skin_to_cache(
+            "friend_very_old",
+            "VeryOldFriend",
+            64,
+            5,
+            None,
+            Some("/path/to/old.zip".to_string()),
+            old_time,
+        );
+        assert!(is_skin_in_cache("friend_very_old", 64), "Old messages are cached and will be pruned later");
 
         clear_received_skins_cache();
     }
