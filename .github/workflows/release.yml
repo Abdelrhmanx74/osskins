@@ -82,14 +82,13 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           
-          # Debug: List directory content to ensure files are there
-          echo "Listing directory content for debug:"
-          ls -la src-tauri/target/release/bundle/msi/ || echo "MSI directory listing failed"
+          echo "Searching for build artifacts..."
           
-          # --- FIX: Use 'find' instead of 'ls' for reliable file selection ---
+          # Debug: list current directory recursively to verify where files are
+          ls -R
           
-          # Find the .sig file
-          SIG_FILE=$(find src-tauri/target/release/bundle/msi -maxdepth 1 -name "*.msi.sig" | head -n 1)
+          # Find the .sig file (recursively starting from current dir)
+          SIG_FILE=$(find . -name "*.msi.sig" | head -n 1)
           
           echo "Debug: Detected SIG_FILE path: '$SIG_FILE'"
           
@@ -101,8 +100,8 @@ jobs:
           echo "Found signature file: $SIG_FILE"
           SIGNATURE=$(cat "$SIG_FILE")
           
-          # Find the .msi file
-          MSI_FILE=$(find src-tauri/target/release/bundle/msi -maxdepth 1 -name "*.msi" | head -n 1)
+          # Find the .msi file (recursively starting from current dir)
+          MSI_FILE=$(find . -name "*.msi" | head -n 1)
           
           echo "Debug: Detected MSI_FILE path: '$MSI_FILE'"
           
@@ -148,8 +147,8 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/msi/*.msi.sig
+            **/*.msi
+            **/*.msi.sig
             updates.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -159,7 +158,7 @@ jobs:
         with:
           name: windows-build-${{ steps.version.outputs.version }}
           path: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/msi/*.msi.sig
+            **/*.msi
+            **/*.msi.sig
             updates.json
           retention-days: 30
