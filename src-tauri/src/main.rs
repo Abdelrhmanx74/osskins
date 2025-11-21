@@ -12,6 +12,9 @@ use tauri::Manager;
 fn main() {
   tauri::Builder::default()
     .setup(|app| {
+      // Initialize ConfigLock
+      app.manage(commands::ConfigLock::new());
+
       // Native injection is now used - no need to check for mod-tools.exe
       // Preload overlays during startup for better performance
       #[cfg(not(debug_assertions))]

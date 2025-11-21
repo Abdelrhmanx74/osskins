@@ -89,7 +89,7 @@ pub async fn handle_party_mode_message(
     .as_secs() as i64 - share_ts).max(0) as u64;
 
       let key = received_skin_key(&skin_share.from_summoner_id, skin_share.champion_id);
-      let mut map = RECEIVED_SKINS.lock().unwrap();
+      let mut map = RECEIVED_SKINS.lock().map_err(|e| format!("Failed to lock RECEIVED_SKINS: {}", e))?;
       let before = map.len();
       map.insert(
         key,
@@ -308,7 +308,7 @@ pub async fn send_skin_share_to_paired_friends(
   for friend in target_friends {
     let key = sent_share_key(&friend.summoner_id, champion_id, skin_id, chroma_id);
     {
-      let mut sent = SENT_SKIN_SHARES.lock().unwrap();
+      let mut sent = SENT_SKIN_SHARES.lock().map_err(|e| format!("Failed to lock SENT_SKIN_SHARES: {}", e))?;
       if sent.contains(&key) {
         verbose_log!(
           "[Party Mode][OUTBOUND] Skipping {} (already sent this phase)",
@@ -325,7 +325,7 @@ pub async fn send_skin_share_to_paired_friends(
       friend.summoner_id
     );
     if let Err(e) = send_chat_message(app, &lcu_conn, &friend.summoner_id, &message).await {
-      let mut sent = SENT_SKIN_SHARES.lock().unwrap();
+      let mut sent = SENT_SKIN_SHARES.lock().map_err(|e| format!("Failed to lock SENT_SKIN_SHARES: {}", e))?;
       sent.remove(&key);
       eprintln!(
         "[Party Mode][OUTBOUND][ERROR] Failed to send to {}({}): {}",
@@ -527,7 +527,7 @@ pub async fn should_inject_now(app: &AppHandle, champion_id: u32) -> Result<bool
 
   let mut friends_who_shared: HashSet<String> = HashSet::new();
   {
-    let map = RECEIVED_SKINS.lock().unwrap();
+    let map = RECEIVED_SKINS.lock().map_err(|e| format!("Failed to lock RECEIVED_SKINS: {}", e))?;
     for value in map.values() {
       friends_who_shared.insert(value.from_summoner_id.clone());
     }

@@ -35,6 +35,31 @@ pub async fn get_lcu_connection(app: &AppHandle) -> Result<LcuConnection, String
       std::path::PathBuf::from("C:\\Program Files\\Riot Games\\League of Legends"),
       std::path::PathBuf::from("C:\\Program Files (x86)\\Riot Games\\League of Legends"),
     ];
+
+    // Try to find running LeagueClient process dynamically
+    #[cfg(target_os = "windows")]
+    {
+      use std::os::windows::process::CommandExt;
+      const CREATE_NO_WINDOW: u32 = 0x08000000;
+      
+      if let Ok(output) = std::process::Command::new("wmic")
+        .args(&["process", "where", "name='LeagueClient.exe'", "get", "ExecutablePath"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output() 
+      {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+          let line = line.trim();
+          if line.is_empty() || line.to_lowercase().contains("executablepath") {
+            continue;
+          }
+          // line is the full path to exe, we need the directory
+          if let Some(path) = std::path::PathBuf::from(line).parent() {
+             search_dirs.push(path.to_path_buf());
+          }
+        }
+      }
+    }
   }
 
   // Search for lockfile in the directories

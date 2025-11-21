@@ -47,35 +47,6 @@ export default function PartyModeDialog() {
 
   // Set up global event listeners that work even when dialog is closed
   useEffect(() => {
-    let unsubscribeFunctions: (() => void)[] = [];
-
-    const setupGlobalEventListeners = async () => {
-      try {
-        // Set up global event listeners that persist even when dialog is closed
-        const unsubscribeSkinReceived = await partyModeApi.onSkinReceived(
-          (skinShare) => {
-            // The provider now handles skin received notifications
-            console.log(
-              "[PartyModeDialog] Skin received from provider:",
-              skinShare
-            );
-          }
-        );
-
-        // Store unsubscribe functions for cleanup
-        unsubscribeFunctions = [
-          unsubscribeSkinReceived,
-          ...unsubscribeFunctions,
-        ];
-      } catch (error) {
-        console.error("Failed to initialize party mode:", error);
-        toast.error("Failed to initialize party mode");
-      }
-    };
-
-    // Set up global listeners on component mount, not just when dialog opens
-    void setupGlobalEventListeners();
-
     // Listen for custom event to open dialog
     const handleOpenDialog = () => {
       setIsOpen(true);
@@ -85,13 +56,6 @@ export default function PartyModeDialog() {
     // Return synchronous cleanup function
     return () => {
       document.removeEventListener("open-party-mode-dialog", handleOpenDialog);
-      unsubscribeFunctions.forEach((unsub) => {
-        try {
-          unsub();
-        } catch (error) {
-          console.error("Error during cleanup:", error);
-        }
-      });
     };
   }, []);
 

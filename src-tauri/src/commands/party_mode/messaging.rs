@@ -74,6 +74,13 @@ pub async fn delete_conversation_messages(
     friend_summoner_id
   );
 
+  // SAFETY: The previous implementation deleted ALL messages in the conversation,
+  // which wipes out legitimate user chat history.
+  // For now, we disable this automatic cleanup until we can implement a safer
+  // version that only deletes messages with the "OSS:" prefix.
+  println!("[Party Mode] Automatic message cleanup is currently disabled for safety.");
+  
+  /* 
   // Resolve conversation ID (may create one as a fallback, but deletion will work only if conversation exists)
   let conversation_id = get_conversation_id(app, lcu_connection, friend_summoner_id).await?;
 
@@ -99,7 +106,7 @@ pub async fn delete_conversation_messages(
   if !response.status().is_success() {
     return Err(format!("Failed to delete messages: {}", response.status()));
   }
+  */
 
-  println!("[DEBUG] Messages deleted successfully for conversation: {}", conversation_id);
   Ok(())
 }

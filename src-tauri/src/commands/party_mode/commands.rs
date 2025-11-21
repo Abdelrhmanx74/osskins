@@ -1,11 +1,12 @@
 // Tauri commands for party mode
 
 use std::path::PathBuf;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
 use serde_json;
 use crate::commands::types::{
   FriendInfo, PairedFriend, PartyModeConfig, SavedConfig,
 };
+use crate::commands::ConfigLock;
 use super::types::PARTY_MODE_VERBOSE;
 use super::lcu::{get_lcu_connection, get_friends_with_connection, get_friend_display_name};
 use std::sync::atomic::Ordering;
@@ -21,6 +22,7 @@ pub async fn get_lcu_friends(app: AppHandle) -> Result<Vec<FriendInfo>, String> 
 #[tauri::command]
 pub async fn add_party_friend(
   app: AppHandle,
+  config_lock: State<'_, ConfigLock>,
   friend_summoner_id: String,
 ) -> Result<String, String> {
   println!(
@@ -34,7 +36,7 @@ pub async fn add_party_friend(
     .unwrap_or_else(|_| format!("User {}", friend_summoner_id));
 
   // Add to paired friends with sharing enabled by default - NO CHAT MESSAGE SENT
-  add_paired_friend(&app, &friend_summoner_id, &friend_display_name, true).await?;
+  add_paired_friend(&app, &config_lock, &friend_summoner_id, &friend_display_name, true).await?;
 
   println!("[DEBUG] Successfully added friend to party mode silently!");
   Ok(friend_summoner_id)
@@ -44,8 +46,11 @@ pub async fn add_party_friend(
 #[tauri::command]
 pub async fn remove_paired_friend(
   app: AppHandle,
+  config_lock: State<'_, ConfigLock>,
   friend_summoner_id: String,
 ) -> Result<(), String> {
+  let _lock = config_lock.0.lock().map_err(|_| "Failed to lock config".to_string())?;
+
   let config_dir = app
     .path()
     .app_data_dir()
@@ -81,7 +86,9 @@ pub async fn remove_paired_friend(
 }
 
 #[tauri::command]
-pub async fn set_party_mode_verbose_logging(app: AppHandle, enabled: bool) -> Result<bool, String> {
+pub async fn set_party_mode_verbose_logging(app: AppHandle, config_lock: State<'_, ConfigLock>, enabled: bool) -> Result<bool, String> {
+  let _lock = config_lock.0.lock().map_err(|_| "Failed to lock config".to_string())?;
+
   let config_dir = app
     .path()
     .app_data_dir()
@@ -131,7 +138,9 @@ pub async fn get_party_mode_verbose_logging(_app: AppHandle) -> Result<bool, Str
 }
 
 #[tauri::command]
-pub async fn set_party_mode_max_share_age(app: AppHandle, seconds: u64) -> Result<u64, String> {
+pub async fn set_party_mode_max_share_age(app: AppHandle, config_lock: State<'_, ConfigLock>, seconds: u64) -> Result<u64, String> {
+  let _lock = config_lock.0.lock().map_err(|_| "Failed to lock config".to_string())?;
+
   let config_dir = app
     .path()
     .app_data_dir()
@@ -176,7 +185,9 @@ pub async fn set_party_mode_max_share_age(app: AppHandle, seconds: u64) -> Resul
 
 // Tauri command to get paired friends
 #[tauri::command]
-pub async fn get_paired_friends(app: AppHandle) -> Result<Vec<PairedFriend>, String> {
+pub async fn get_paired_friends(app: AppHandle, config_lock: State<'_, ConfigLock>) -> Result<Vec<PairedFriend>, String> {
+  let _lock = config_lock.0.lock().map_err(|_| "Failed to lock config".to_string())?;
+
   let config_dir = app
     .path()
     .app_data_dir()
@@ -216,7 +227,9 @@ pub async fn get_paired_friends(app: AppHandle) -> Result<Vec<PairedFriend>, Str
 
 
 #[tauri::command]
-pub async fn get_party_mode_settings(app: AppHandle) -> Result<bool, String> {
+pub async fn get_party_mode_settings(app: AppHandle, config_lock: State<'_, ConfigLock>) -> Result<bool, String> {
+  let _lock = config_lock.0.lock().map_err(|_| "Failed to lock config".to_string())?;
+
   let config_dir = app
     .path()
     .app_data_dir()
@@ -238,7 +251,9 @@ pub async fn get_party_mode_settings(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn update_party_mode_settings(app: AppHandle, notifications: bool) -> Result<(), String> {
+pub async fn update_party_mode_settings(app: AppHandle, config_lock: State<'_, ConfigLock>, notifications: bool) -> Result<(), String> {
+  let _lock = config_lock.0.lock().map_err(|_| "Failed to lock config".to_string())?;
+
   let config_dir = app
     .path()
     .app_data_dir()
@@ -282,10 +297,13 @@ pub async fn update_party_mode_settings(app: AppHandle, notifications: bool) -> 
 // Internal function to add paired friend
 async fn add_paired_friend(
   app: &AppHandle,
+  config_lock: &ConfigLock,
   friend_summoner_id: &str,
   friend_name: &str,
   share_enabled: bool,
 ) -> Result<(), String> {
+  let _lock = config_lock.0.lock().map_err(|_| "Failed to lock config".to_string())?;
+
   let config_dir = app
     .path()
     .app_data_dir()
