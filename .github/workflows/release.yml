@@ -82,26 +82,68 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           
-          echo "Searching for build artifacts..."
-          ls -la src-tauri/target/release/bundle/msi/ || echo "MSI directory not found"
+          echo "::group::🔍 DEBUG: File System Diagnostics"
+          echo "Current Directory: $(pwd)"
+          echo "Listing ALL files in 'src-tauri/target' to locate artifacts:"
+          # This command will print the entire directory structure so we can't miss the file
+          ls -R src-tauri/target || echo "❌ Could not list target dir"
+          echo "::endgroup::"
           
-          # Find the .sig file
-          SIG_FILE=$(find src-tauri/target/release/bundle/msi -name "*.msi.zip.sig" | head -n 1)
-          if [ -z "$SIG_FILE" ]; then
-            echo "Error: No .sig file found!"
-            exit 1
+          echo "----------------------------------------"
+          echo "🚀 Starting Robust Artifact Search..."
+          
+          # Enable recursive globbing (globstar) to find files anywhere
+          shopt -s globstar nullglob
+          
+          # --- FIND SIGNATURE (.sig) ---
+          # Look for .msi.sig recursively in the target folder
+          SIG_FILES=(src-tauri/target/**/*.msi.sig)
+          
+          echo "DEBUG: Found ${#SIG_FILES[@]} signature candidates: ${SIG_FILES[*]}"
+          
+          if [ ${#SIG_FILES[@]} -eq 0 ]; then
+            echo "❌ CRITICAL ERROR: No .sig file found in src-tauri/target/**"
+            # Fallback check in current dir just in case
+            SIG_FILES_ROOT=(*.msi.sig)
+            if [ ${#SIG_FILES_ROOT[@]} -gt 0 ]; then
+               echo "⚠️ Found file in root instead: ${SIG_FILES_ROOT[0]}"
+               SIG_FILES=("${SIG_FILES_ROOT[@]}")
+            else
+               exit 1
+            fi
           fi
-          echo "Found signature file: $SIG_FILE"
+          
+          SIG_FILE="${SIG_FILES[0]}"
+          echo "✅ Selected signature file: $SIG_FILE"
           SIGNATURE=$(cat "$SIG_FILE")
           
-          # Find the .msi.zip file
-          MSI_ZIP=$(find src-tauri/target/release/bundle/msi -name "*.msi.zip" | head -n 1)
-          if [ -z "$MSI_ZIP" ]; then
-            echo "Error: No .msi.zip file found!"
-            exit 1
+          if [ -z "$SIGNATURE" ]; then
+             echo "❌ Error: Signature file is empty!"
+             exit 1
           fi
-          echo "Found MSI zip file: $MSI_ZIP"
-          MSI_FILENAME=$(basename "$MSI_ZIP")
+
+          # --- FIND INSTALLER (.msi) ---
+          MSI_FILES=(src-tauri/target/**/*.msi)
+          
+          echo "DEBUG: Found ${#MSI_FILES[@]} MSI candidates: ${MSI_FILES[*]}"
+          
+          if [ ${#MSI_FILES[@]} -eq 0 ]; then
+            echo "❌ CRITICAL ERROR: No .msi file found in src-tauri/target/**"
+             # Fallback check in current dir
+            MSI_FILES_ROOT=(*.msi)
+            if [ ${#MSI_FILES_ROOT[@]} -gt 0 ]; then
+               echo "⚠️ Found file in root instead: ${MSI_FILES_ROOT[0]}"
+               MSI_FILES=("${MSI_FILES_ROOT[@]}")
+            else
+               exit 1
+            fi
+          fi
+          
+          MSI_FILE="${MSI_FILES[0]}"
+          echo "✅ Selected MSI file: $MSI_FILE"
+          MSI_FILENAME=$(basename "$MSI_FILE")
+          
+          echo "----------------------------------------"
           
           # Create updates.json
           cat > updates.json << EOF
@@ -118,15 +160,8 @@ jobs:
           }
           EOF
           
-          echo "Created updates.json:"
+          echo "Created updates.json content:"
           cat updates.json
-          
-          echo "Verifying signature is not empty..."
-          if [ -z "$SIGNATURE" ]; then
-            echo "Error: Signature is empty!"
-            exit 1
-          fi
-          echo "Signature verification passed."
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -137,9 +172,8 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/msi/*.msi.zip
-            src-tauri/target/release/bundle/msi/*.msi.zip.sig
+            **/*.msi
+            **/*.msi.sig
             updates.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -149,8 +183,7 @@ jobs:
         with:
           name: windows-build-${{ steps.version.outputs.version }}
           path: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/msi/*.msi.zip
-            src-tauri/target/release/bundle/msi/*.msi.zip.sig
+            **/*.msi
+            **/*.msi.sig
             updates.json
           retention-days: 30
