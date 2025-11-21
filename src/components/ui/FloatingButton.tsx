@@ -94,7 +94,12 @@ function FloatingButton({ children, triggerContent, className }: FloatingButtonP
                     key="button"
                     variants={btn}
                     animate={isOpen ? "visible" : "hidden"}
-                    onClick={() => setIsOpen((s) => !s)}
+                    onClick={(e: React.MouseEvent<HTMLDivElement>) => {
+                        // Prevent the click bubbling up to parents (e.g., the Card) which may
+                        // interpret the click as a select/deselect action.
+                        e.stopPropagation();
+                        setIsOpen((s) => !s);
+                    }}
                     className="cursor-pointer"
                     aria-expanded={isOpen}
                     aria-label="Open chroma menu"
