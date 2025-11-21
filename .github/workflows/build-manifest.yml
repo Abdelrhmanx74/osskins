@@ -1,4 +1,4 @@
-name: Build and publish lol-skins manifest (v2)
+name: Build and publish lol-skins manifest
 
 on:
   workflow_dispatch:
@@ -40,10 +40,17 @@ jobs:
           RELEASE_JSON=$(gh release view --repo "$REPO" --json tagName,assets)
           
           TAG_NAME=$(echo "$RELEASE_JSON" | jq -r '.tagName')
-          ASSET=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | endswith(".zip")) | select(.name | contains("cslol-manager")) | .')
+          
+          # Robust asset finding: look for zip containing cslol-manager, case insensitive
+          ASSET=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("cslol-manager.*\\.zip$"; "i")) | .')
+          
+          # Handle multiple matches by taking the first one
+          ASSET=$(echo "$ASSET" | jq -s '.[0]')
           
           if [ -z "$ASSET" ] || [ "$ASSET" = "null" ]; then
             echo "Error: Could not find cslol-manager zip asset"
+            echo "Available assets:"
+            echo "$RELEASE_JSON" | jq -r '.assets[].name'
             exit 1
           fi
           
@@ -71,11 +78,18 @@ jobs:
         run: |
           set -euo pipefail
           current_commit=""
-          if [ -f app/docs/manifest.json ]; then
-            current_commit=$(jq -r '.source_repo' app/docs/manifest.json 2>/dev/null | sed -E 's/.*@(.+)$/\\1/' || true)
+          # Try to fetch current manifest from gh-pages to check last commit
+          # We can't check local file easily since we are in a fresh clone/runner
+          # But we can check the deployed manifest if it exists
+          
+          REMOTE_MANIFEST_URL="https://raw.githubusercontent.com/${{ github.repository }}/gh-pages/manifest.json"
+          if curl --output /dev/null --silent --head --fail "$REMOTE_MANIFEST_URL"; then
+             current_commit=$(curl -s "$REMOTE_MANIFEST_URL" | jq -r '.source_repo' 2>/dev/null | sed -E 's/.*@(.+)$/\1/' || true)
           fi
+          
           remote_commit=$(git ls-remote https://github.com/darkseal-org/lol-skins.git refs/heads/main | cut -f1 || true)
           echo "current_commit=${current_commit} remote_commit=${remote_commit}"
+          
           if [ -n "$current_commit" ] && [ "$current_commit" = "$remote_commit" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
             echo "No upstream changes (manifest already at ${current_commit})."
@@ -98,7 +112,7 @@ jobs:
 
           # Gather files
           FILES_JSON=$(mktemp)
-          git ls-files | grep -E '\\.(zip|fantome)$' | jq -R -s -c 'split("\\n") | map(select(length>0))' > "$FILES_JSON"
+          git ls-files | grep -E '\.(zip|fantome)$' | jq -R -s -c 'split("\n") | map(select(length>0))' > "$FILES_JSON"
 
           # Build raw items with url/size/sha/commit
           ITEMS_JSON=$(mktemp)
@@ -117,8 +131,8 @@ jobs:
              key: (.[0].path | split("/")[1] | ascii_downcase | gsub("['’`]|[^a-z0-9]"; "") ),
              name: (.[0].path | split("/")[1]),
              assets: {
-               skins: [ .[] | select( (.path | split("/") | length) >= 3 and ((.path | split("/")[2] // "") | ascii_downcase) != "chromas") | {key: ((.path | split("/") | last | sub("\\\\.zip$"; "") ) | ascii_downcase | gsub("['’`]|[^a-z0-9]"; "")), name: (.path | split("/") | last | sub("\\\\.zip$"; "")), url, size, sha256, commit} ],
-               chromas: [ .[] | select( (.path | split("/") | length) >= 4 and ((.path | split("/")[2] // "") | ascii_downcase) == "chromas") | {key: ((.path | split("/") | last | sub("\\\\.zip$"; "") ) | ascii_downcase | gsub("['’`]|[^a-z0-9]"; "")), name: (.path | split("/") | last | sub("\\\\.zip$"; "")), url, size, sha256, commit} ]
+               skins: [ .[] | select( (.path | split("/") | length) >= 3 and ((.path | split("/")[2] // "") | ascii_downcase) != "chromas") | {key: ((.path | split("/") | last | sub("\\.zip$"; "") ) | ascii_downcase | gsub("['’`]|[^a-z0-9]"; "")), name: (.path | split("/") | last | sub("\\.zip$"; "")), url, size, sha256, commit} ],
+               chromas: [ .[] | select( (.path | split("/") | length) >= 4 and ((.path | split("/")[2] // "") | ascii_downcase) == "chromas") | {key: ((.path | split("/") | last | sub("\\.zip$"; "") ) | ascii_downcase | gsub("['’`]|[^a-z0-9]"; "")), name: (.path | split("/") | last | sub("\\.zip$"; "")), url, size, sha256, commit} ]
              }
            } | . + { size: ( (.[].size) // 0 | tonumber ) } )' "$ITEMS_JSON" > "$CHAMPS_JSON"
 
@@ -126,7 +140,7 @@ jobs:
           CHAMPS_FP_JSON=$(mktemp)
           jq -c '.[]' "$CHAMPS_JSON" | while read -r champ; do
             sha_list=$(echo "$champ" | jq -r '[ (.assets.skins // [])[], (.assets.chromas // [])[] ] | map(.sha256) | .[]')
-            sorted=$(printf "%s\\n" $sha_list | sort | tr '\\n' ':' | sed 's/:$//')
+            sorted=$(printf "%s\n" $sha_list | sort | tr '\n' ':' | sed 's/:$//')
             fp=$(printf "%s" "$sorted" | sha256sum | awk '{print $1}')
             echo "$champ" | jq --arg fp "$fp" '. + { fingerprint: $fp }' >> "$CHAMPS_FP_JSON"
           done
@@ -152,30 +166,30 @@ jobs:
         if: steps.check_upstream.outputs.changed == 'false'
         run: |
           set -euo pipefail
+          # Fetch existing manifest from gh-pages
+          curl -s "https://raw.githubusercontent.com/${{ github.repository }}/gh-pages/manifest.json" > app/docs/manifest.json || echo "{}" > app/docs/manifest.json
+          
           cd app
-          if [ ! -f docs/manifest.json ]; then
-            echo "No existing manifest.json found; nothing to merge."
-            exit 0
-          fi
           RELEASES_FILE="tmp/external_releases.json"
           jq --slurpfile releases "${RELEASES_FILE}" \
             '. + { external_releases: ($releases[0] // []) }' \
             docs/manifest.json > docs/manifest.new.json
           mv docs/manifest.new.json docs/manifest.json
       
-      - name: Commit and push manifest
+      - name: Deploy manifest to gh-pages
         run: |
-          cd app
-          git add public/manifest.json
+          # Create a clean deployment directory
+          mkdir -p deploy
+          cp app/docs/manifest.json deploy/manifest.json
           
-          if git diff --staged --quiet; then
-            echo "No changes to manifest"
-            exit 0
-          fi
+          cd deploy
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b gh-pages
+          git add manifest.json
+          git commit -m "Update manifest.json [skip ci]"
           
-          git commit -m "chore: update lol-skins manifest v2 [skip ci]"
-          git push origin HEAD:gh-pages || {
-            echo "Creating gh-pages branch..."
-            git checkout -b gh-pages
-            git push origin gh-pages
-          }
+          # Force push to gh-pages branch
+          git push --force "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
+
