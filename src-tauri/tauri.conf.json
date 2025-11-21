@@ -44,7 +44,7 @@
       "endpoints": [
         "https://github.com/Abdelrhmanx74/osskins/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ0MzMxNUE3N0U1Q0FDQTcKUldTbnJGeCtweFV6UkQ0T2FVQk1QUmpKc1RyV0hDSDVtRjNDd2c0NUUxRnhwck1KWGVoOFh0UGoK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRBQTRFREJBNzJGNjM5NDAKUldSQU9mWnl1dTJrU3NCcHB4QzQzZjdwU1QxNS9OeGZyc1BjOGZFR3BVZFI5TFJNbXM4UzRySHkK"
     },
     "fs": {
       "requireLiteralLeadingDot": false
