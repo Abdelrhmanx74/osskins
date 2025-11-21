@@ -82,36 +82,47 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           
-          echo "Searching for build artifacts..."
+          echo "----------------------------------------"
+          echo "DEBUG: Starting artifact search..."
+          echo "Current working directory: $(pwd)"
           
-          # Debug: list current directory recursively to verify where files are
-          ls -R
+          # Enable recursive globbing
+          shopt -s globstar nullglob
           
-          # Find the .sig file (recursively starting from current dir)
-          SIG_FILE=$(find . -name "*.msi.sig" | head -n 1)
+          # --- FIND SIGNATURE ---
+          echo "DEBUG: Looking for .msi.sig files..."
+          # This finds any .msi.sig file in the current dir or subdirs
+          SIG_FILES=(**/*.msi.sig)
           
-          echo "Debug: Detected SIG_FILE path: '$SIG_FILE'"
+          echo "DEBUG: Found ${#SIG_FILES[@]} signature files: ${SIG_FILES[*]}"
           
-          if [ -z "$SIG_FILE" ]; then
-            echo "Error: No .sig file found!"
+          if [ ${#SIG_FILES[@]} -eq 0 ]; then
+            echo "Error: No .sig file found in $(pwd) or subdirectories!"
+            # List files to help debug if it fails again
+            ls -R
             exit 1
           fi
           
-          echo "Found signature file: $SIG_FILE"
+          SIG_FILE="${SIG_FILES[0]}"
+          echo "DEBUG: Selected signature file: $SIG_FILE"
           SIGNATURE=$(cat "$SIG_FILE")
           
-          # Find the .msi file (recursively starting from current dir)
-          MSI_FILE=$(find . -name "*.msi" | head -n 1)
+          # --- FIND INSTALLER ---
+          echo "DEBUG: Looking for .msi files..."
+          MSI_FILES=(**/*.msi)
           
-          echo "Debug: Detected MSI_FILE path: '$MSI_FILE'"
+          echo "DEBUG: Found ${#MSI_FILES[@]} msi files: ${MSI_FILES[*]}"
           
-          if [ -z "$MSI_FILE" ]; then
+          if [ ${#MSI_FILES[@]} -eq 0 ]; then
             echo "Error: No .msi file found!"
             exit 1
           fi
           
-          echo "Found MSI file: $MSI_FILE"
+          MSI_FILE="${MSI_FILES[0]}"
+          echo "DEBUG: Selected MSI file: $MSI_FILE"
           MSI_FILENAME=$(basename "$MSI_FILE")
+          
+          echo "----------------------------------------"
           
           # Create updates.json
           cat > updates.json << EOF
@@ -128,7 +139,7 @@ jobs:
           }
           EOF
           
-          echo "Created updates.json:"
+          echo "Created updates.json content:"
           cat updates.json
           
           echo "Verifying signature is not empty..."
