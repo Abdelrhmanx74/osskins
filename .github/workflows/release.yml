@@ -62,6 +62,95 @@ jobs:
       - name: Build the app
         run: pnpm tauri build
 
+      - name: Collect build artifacts (guarantee known location)
+        id: collect
+        shell: bash
+        run: |
+          echo "----------------------------------------"
+          echo "🔎 Collecting build artifacts into ./release-artifacts"
+          # ensure globstar works and missing matches don't expand
+          shopt -s globstar nullglob
+          
+          # Candidate searches (prefer the standard tauri bundle path first)
+          SIG_CANDIDATES=(src-tauri/target/release/bundle/**/*.msi.sig src-tauri/target/release/**/*.msi.sig **/*.msi.sig)
+          MSI_CANDIDATES=(src-tauri/target/release/bundle/**/*.msi src-tauri/target/release/**/*.msi **/*.msi)
+          
+          echo "DEBUG: SIG search patterns:"
+          printf '  %s\n' "${SIG_CANDIDATES[@]}"
+          echo "DEBUG: MSI search patterns:"
+          printf '  %s\n' "${MSI_CANDIDATES[@]}"
+          
+          # Expand the patterns into real file lists (first non-empty set)
+          SIG_FILES=()
+          for p in "${SIG_CANDIDATES[@]}"; do
+            files=( $p )
+            if [ ${#files[@]} -gt 0 ]; then
+              SIG_FILES=( "${files[@]}" )
+              break
+            fi
+          done
+          
+          MSI_FILES=()
+          for p in "${MSI_CANDIDATES[@]}"; do
+            files=( $p )
+            if [ ${#files[@]} -gt 0 ]; then
+              MSI_FILES=( "${files[@]}" )
+              break
+            fi
+          done
+          
+          echo "DEBUG: Found SIG files: ${SIG_FILES[*]:-<none>}"
+          echo "DEBUG: Found MSI files: ${MSI_FILES[*]:-<none>}"
+          
+          mkdir -p release-artifacts
+          
+          # Copy any found signature(s) and installer(s) into release-artifacts
+          copied=0
+          for f in "${SIG_FILES[@]}"; do
+            echo "Copying signature: $f -> release-artifacts/"
+            cp -v "$f" release-artifacts/ || { echo "Failed to copy $f"; exit 1; }
+            copied=$((copied+1))
+          done
+          for f in "${MSI_FILES[@]}"; do
+            echo "Copying installer: $f -> release-artifacts/"
+            cp -v "$f" release-artifacts/ || { echo "Failed to copy $f"; exit 1; }
+            copied=$((copied+1))
+          done
+          
+          # Fallback: if none found, also try top-level directory (some tools output there)
+          if [ $copied -eq 0 ]; then
+            echo "⚠️ No artifacts copied yet. Trying root and current dir fallback..."
+            fallback_sig=(./*.msi.sig)
+            fallback_msi=(./*.msi)
+            echo "DEBUG: fallback_sig=${fallback_sig[*]}"
+            echo "DEBUG: fallback_msi=${fallback_msi[*]}"
+            for f in "${fallback_sig[@]}"; do
+              if [ -f "$f" ]; then cp -v "$f" release-artifacts/ && copied=$((copied+1)); fi
+            done
+            for f in "${fallback_msi[@]}"; do
+              if [ -f "$f" ]; then cp -v "$f" release-artifacts/ && copied=$((copied+1)); fi
+            done
+          fi
+          
+          echo "----------------------------------------"
+          if [ $copied -eq 0 ]; then
+            echo "❌ CRITICAL: No .msi or .msi.sig found after all searches."
+            echo "Workspace listing (top-level):"
+            ls -la || true
+            echo "src-tauri bundle listing (if present):"
+            ls -la src-tauri/target/release/bundle || true
+            exit 1
+          fi
+          
+          echo "✅ Files copied to release-artifacts:"
+          ls -la release-artifacts || true
+          
+          # expose paths as outputs (first matches)
+          FIRST_SIG=$(ls release-artifacts/*.msi.sig 2>/dev/null | head -n1 || true)
+          FIRST_MSI=$(ls release-artifacts/*.msi 2>/dev/null | head -n1 || true)
+          echo "sig=${FIRST_SIG:-}" >> $GITHUB_OUTPUT
+          echo "msi=${FIRST_MSI:-}" >> $GITHUB_OUTPUT
+
       - name: Get version from tag or input
         id: version
         shell: bash
@@ -75,65 +164,47 @@ jobs:
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create updates.json
+      - name: Create updates.json (use release-artifacts)
+        id: create_updates
         shell: bash
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           TAG="${{ steps.version.outputs.tag }}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           
-          echo "::group::🔍 DEBUG: File System Diagnostics"
-          echo "Current Directory: $(pwd)"
-          echo "Listing recursive files to locate artifacts:"
-          # This command will print the entire directory structure so we can't miss the file
-          ls -R || echo "❌ Could not list files"
-          echo "::endgroup::"
+          echo "🚀 Creating updates.json using files in ./release-artifacts"
+          echo "Contents of release-artifacts:"
+          ls -la release-artifacts || true
           
-          echo "----------------------------------------"
-          echo "🚀 Starting Robust Artifact Search..."
+          # Read the signature file we copied earlier (use step output if present)
+          SIG_PATH="${{ steps.collect.outputs.sig }}"
+          MSI_PATH="${{ steps.collect.outputs.msi }}"
           
-          # Enable recursive globbing (globstar) to find files anywhere
-          shopt -s globstar nullglob
+          # Fallback to any file in release-artifacts
+          if [ -z "$SIG_PATH" ]; then
+            SIG_PATH=$(ls release-artifacts/*.msi.sig 2>/dev/null | head -n1 || true)
+          fi
+          if [ -z "$MSI_PATH" ]; then
+            MSI_PATH=$(ls release-artifacts/*.msi 2>/dev/null | head -n1 || true)
+          fi
           
-          # --- FIND SIGNATURE (.sig) ---
-          # We look for ANY .msi.sig file in the entire workspace
-          SIG_FILES=(**/*.msi.sig)
+          echo "DEBUG: Using SIG_PATH=$SIG_PATH"
+          echo "DEBUG: Using MSI_PATH=$MSI_PATH"
           
-          echo "DEBUG: Found ${#SIG_FILES[@]} signature candidates: ${SIG_FILES[*]}"
-          
-          if [ ${#SIG_FILES[@]} -eq 0 ]; then
-            echo "❌ CRITICAL ERROR: No .sig file found anywhere in the workspace."
+          if [ -z "$SIG_PATH" ] || [ ! -f "$SIG_PATH" ]; then
+            echo "❌ No signature file found at $SIG_PATH"
+            ls -la release-artifacts || true
+            exit 1
+          fi
+          if [ -z "$MSI_PATH" ] || [ ! -f "$MSI_PATH" ]; then
+            echo "❌ No MSI file found at $MSI_PATH"
+            ls -la release-artifacts || true
             exit 1
           fi
           
-          # Use the first match found
-          SIG_FILE="${SIG_FILES[0]}"
-          echo "✅ Selected signature file: $SIG_FILE"
+          SIGNATURE=$(cat "$SIG_PATH")
+          MSI_FILENAME=$(basename "$MSI_PATH")
           
-          SIGNATURE=$(cat "$SIG_FILE")
-          if [ -z "$SIGNATURE" ]; then
-             echo "❌ Error: Signature file is empty!"
-             exit 1
-          fi
-
-          # --- FIND INSTALLER (.msi) ---
-          # We look for ANY .msi file in the entire workspace
-          MSI_FILES=(**/*.msi)
-          
-          echo "DEBUG: Found ${#MSI_FILES[@]} MSI candidates: ${MSI_FILES[*]}"
-          
-          if [ ${#MSI_FILES[@]} -eq 0 ]; then
-            echo "❌ CRITICAL ERROR: No .msi file found anywhere in the workspace."
-            exit 1
-          fi
-          
-          MSI_FILE="${MSI_FILES[0]}"
-          echo "✅ Selected MSI file: $MSI_FILE"
-          MSI_FILENAME=$(basename "$MSI_FILE")
-          
-          echo "----------------------------------------"
-          
-          # Create updates.json
           cat > updates.json << EOF
           {
             "version": "$VERSION",
@@ -148,7 +219,7 @@ jobs:
           }
           EOF
           
-          echo "Created updates.json content:"
+          echo "Created updates.json:"
           cat updates.json
 
       - name: Create Release
@@ -160,8 +231,8 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            **/*.msi
-            **/*.msi.sig
+            release-artifacts/*.msi
+            release-artifacts/*.msi.sig
             updates.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -171,7 +242,7 @@ jobs:
         with:
           name: windows-build-${{ steps.version.outputs.version }}
           path: |
-            **/*.msi
-            **/*.msi.sig
+            release-artifacts/*.msi
+            release-artifacts/*.msi.sig
             updates.json
           retention-days: 30
