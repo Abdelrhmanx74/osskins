@@ -82,44 +82,58 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           
-          echo "----------------------------------------"
-          echo "DEBUG: Starting artifact search..."
-          echo "Current working directory: $(pwd)"
+          echo "::group::🔍 DIAGNOSTICS: File System Search"
+          echo "Current Working Directory: $(pwd)"
           
-          # Enable recursive globbing
+          echo "---------------------------------------------------"
+          echo "Listing contents of 'src-tauri/target/release' (recursive):"
+          ls -R src-tauri/target/release || echo "❌ Could not list src-tauri/target/release"
+          
+          echo "---------------------------------------------------"
+          echo "Running exhaustive search for .msi and .sig files:"
+          find . -type f \( -name "*.msi" -o -name "*.sig" \) -print || echo "❌ 'find' command failed"
+          echo "::endgroup::"
+
+          # Enable recursive globbing (globstar) and handle no matches (nullglob)
           shopt -s globstar nullglob
           
-          # --- FIND SIGNATURE ---
-          echo "DEBUG: Looking for .msi.sig files..."
-          # This finds any .msi.sig file in the current dir or subdirs
-          SIG_FILES=(**/*.msi.sig)
+          echo "----------------------------------------"
+          echo "🚀 Starting Variable Assignment..."
+
+          # --- FIND SIGNATURE (.sig) ---
+          # Search recursively using glob patterns (safer than 'find' on Windows runners)
+          # We prioritize the standard path, then fallback to anywhere
+          SIG_FILES=(src-tauri/target/release/bundle/msi/*.msi.sig **/*.msi.sig)
           
-          echo "DEBUG: Found ${#SIG_FILES[@]} signature files: ${SIG_FILES[*]}"
+          echo "DEBUG: Found ${#SIG_FILES[@]} signature candidates: ${SIG_FILES[*]}"
           
           if [ ${#SIG_FILES[@]} -eq 0 ]; then
-            echo "Error: No .sig file found in $(pwd) or subdirectories!"
-            # List files to help debug if it fails again
-            ls -R
+            echo "❌ CRITICAL ERROR: No .sig file found anywhere in the workspace."
             exit 1
           fi
           
+          # Use the first match found
           SIG_FILE="${SIG_FILES[0]}"
-          echo "DEBUG: Selected signature file: $SIG_FILE"
+          echo "✅ Selected signature file: $SIG_FILE"
+          
           SIGNATURE=$(cat "$SIG_FILE")
+          if [ -z "$SIGNATURE" ]; then
+             echo "❌ Error: Signature file is empty!"
+             exit 1
+          fi
           
-          # --- FIND INSTALLER ---
-          echo "DEBUG: Looking for .msi files..."
-          MSI_FILES=(**/*.msi)
+          # --- FIND INSTALLER (.msi) ---
+          MSI_FILES=(src-tauri/target/release/bundle/msi/*.msi **/*.msi)
           
-          echo "DEBUG: Found ${#MSI_FILES[@]} msi files: ${MSI_FILES[*]}"
+          echo "DEBUG: Found ${#MSI_FILES[@]} MSI candidates: ${MSI_FILES[*]}"
           
           if [ ${#MSI_FILES[@]} -eq 0 ]; then
-            echo "Error: No .msi file found!"
+            echo "❌ CRITICAL ERROR: No .msi file found anywhere in the workspace."
             exit 1
           fi
           
           MSI_FILE="${MSI_FILES[0]}"
-          echo "DEBUG: Selected MSI file: $MSI_FILE"
+          echo "✅ Selected MSI file: $MSI_FILE"
           MSI_FILENAME=$(basename "$MSI_FILE")
           
           echo "----------------------------------------"
@@ -141,13 +155,6 @@ jobs:
           
           echo "Created updates.json content:"
           cat updates.json
-          
-          echo "Verifying signature is not empty..."
-          if [ -z "$SIGNATURE" ]; then
-            echo "Error: Signature is empty!"
-            exit 1
-          fi
-          echo "Signature verification passed."
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
