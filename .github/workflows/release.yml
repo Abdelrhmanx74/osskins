@@ -82,9 +82,15 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           
+          echo "::group::🔍 DEBUG: File System Diagnostics"
+          echo "Current Directory: $(pwd)"
+          echo "Listing recursive files to locate artifacts:"
+          # This command will print the entire directory structure so we can't miss the file
+          ls -R || echo "❌ Could not list files"
+          echo "::endgroup::"
+          
           echo "----------------------------------------"
           echo "🚀 Starting Robust Artifact Search..."
-          echo "Current Directory: $(pwd)"
           
           # Enable recursive globbing (globstar) to find files anywhere
           shopt -s globstar nullglob
@@ -97,9 +103,6 @@ jobs:
           
           if [ ${#SIG_FILES[@]} -eq 0 ]; then
             echo "❌ CRITICAL ERROR: No .sig file found anywhere in the workspace."
-            # List all files to debug
-            echo "File listing:"
-            ls -R
             exit 1
           fi
           
@@ -112,7 +115,7 @@ jobs:
              echo "❌ Error: Signature file is empty!"
              exit 1
           fi
-          
+
           # --- FIND INSTALLER (.msi) ---
           # We look for ANY .msi file in the entire workspace
           MSI_FILES=(**/*.msi)
