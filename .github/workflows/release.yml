@@ -82,24 +82,35 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           
-          echo "Searching for build artifacts..."
-          ls -la src-tauri/target/release/bundle/msi/ || echo "MSI directory not found"
+          # Debug: List directory content to ensure files are there
+          echo "Listing directory content for debug:"
+          ls -la src-tauri/target/release/bundle/msi/ || echo "MSI directory listing failed"
+          
+          # --- FIX: Use 'find' instead of 'ls' for reliable file selection ---
           
           # Find the .sig file
-          SIG_FILE=$(ls src-tauri/target/release/bundle/msi/*.msi.sig | head -n 1)
+          SIG_FILE=$(find src-tauri/target/release/bundle/msi -maxdepth 1 -name "*.msi.sig" | head -n 1)
+          
+          echo "Debug: Detected SIG_FILE path: '$SIG_FILE'"
+          
           if [ -z "$SIG_FILE" ]; then
             echo "Error: No .sig file found!"
             exit 1
           fi
+          
           echo "Found signature file: $SIG_FILE"
           SIGNATURE=$(cat "$SIG_FILE")
           
           # Find the .msi file
-          MSI_FILE=$(ls src-tauri/target/release/bundle/msi/*.msi | head -n 1)
+          MSI_FILE=$(find src-tauri/target/release/bundle/msi -maxdepth 1 -name "*.msi" | head -n 1)
+          
+          echo "Debug: Detected MSI_FILE path: '$MSI_FILE'"
+          
           if [ -z "$MSI_FILE" ]; then
             echo "Error: No .msi file found!"
             exit 1
           fi
+          
           echo "Found MSI file: $MSI_FILE"
           MSI_FILENAME=$(basename "$MSI_FILE")
           
