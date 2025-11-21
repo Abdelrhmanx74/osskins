@@ -71,10 +71,13 @@ function FloatingButton({ children, triggerContent, className }: FloatingButtonP
     const ref = React.useRef<HTMLDivElement | null>(null);
     const [isOpen, setIsOpen] = React.useState(false);
 
+    // Ensure the click outside detection covers the *entire* floating button (trigger and items)
+    // By attaching the ref to the wrapper container instead of the trigger element, clicks
+    // on the children won't be considered "outside" and therefore won't close the menu.
     useOnClickOutside(ref as React.RefObject<HTMLDivElement>, () => setIsOpen(false));
 
     return (
-        <div className={`flex flex-col items-center relative ${className ?? ""}`}>
+        <div ref={ref} className={`flex flex-col items-center relative ${className ?? ""}`}>
             <AnimatePresence>
                 <MotionUl
                     key="list"
@@ -91,7 +94,6 @@ function FloatingButton({ children, triggerContent, className }: FloatingButtonP
                     key="button"
                     variants={btn}
                     animate={isOpen ? "visible" : "hidden"}
-                    ref={ref}
                     onClick={() => setIsOpen((s) => !s)}
                     className="cursor-pointer"
                     aria-expanded={isOpen}
