@@ -1,163 +1,164 @@
-use crate::commands::types::*;
-use tauri::{Manager};
-use std::fs;
-use serde_json;
+use futures_util::StreamExt;
+use once_cell::sync::Lazy;
+use std::sync::Arc;
+use std::time::Duration;
+use tauri::Manager;
+use tokio::fs as async_fs;
+use tokio::io::AsyncWriteExt;
+
+// File operations for skin_file and ZIP files
+
+// Reusable HTTP client with connection pooling for better performance
+// This reduces connection overhead and improves download speed
+static HTTP_CLIENT: Lazy<Arc<reqwest::Client>> = Lazy::new(|| {
+  Arc::new(
+    reqwest::Client::builder()
+      .user_agent("osskins-downloader/1.0")
+      .timeout(Duration::from_secs(300)) // 5 minute timeout for large files
+      .tcp_keepalive(Duration::from_secs(60)) // Keep connections alive
+      .pool_max_idle_per_host(10) // Connection pooling - reuse connections
+      .pool_idle_timeout(Duration::from_secs(90)) // Reuse connections for 90s
+      .build()
+      .expect("Failed to build HTTP client"),
+  )
+});
 
 #[tauri::command]
-pub async fn save_fantome_file(
-    app: tauri::AppHandle,
-    champion_name: String,
-    skin_name: String,
-    is_chroma: bool,
-    chroma_id: Option<u32>,
-    content: Vec<u8>,
+/// Save a skin ZIP file to the champions directory
+pub async fn save_zip_file(
+  app: tauri::AppHandle,
+  champion_name: String,
+  file_name: String,
+  content: Vec<u8>,
 ) -> Result<(), String> {
-    let app_data_dir = app.path().app_data_dir()
-        .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
-    
-    // Create champions directory if it doesn't exist
-    let champions_dir = app_data_dir.join("champions");
-    fs::create_dir_all(&champions_dir)
-        .map_err(|e| format!("Failed to create champions directory: {}", e))?;
-    
-    // Create champion directory if it doesn't exist
-    let champion_dir = champions_dir.join(&champion_name);
-    fs::create_dir_all(&champion_dir)
-        .map_err(|e| format!("Failed to create champion directory: {}", e))?;
-    
-    let fantome_file = if is_chroma {
-        champion_dir.join(format!("{}_chroma_{}.fantome", skin_name, chroma_id.unwrap_or(0)))
-    } else {
-        champion_dir.join(format!("{}.fantome", skin_name))
-    };
-    
-    // Ensure parent directory exists
-    if let Some(parent) = fantome_file.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
-    }
-    
-    fs::write(&fantome_file, content)
-        .map_err(|e| format!("Failed to write fantome file: {}", e))?;
+  let app_data_dir = app
+    .path()
+    .app_data_dir()
+    .map_err(|e| format!("Failed to get app data directory: {}", e))?;
 
-    Ok(())
+  let champions_dir = app_data_dir.join("champions");
+  std::fs::create_dir_all(&champions_dir)
+    .map_err(|e| format!("Failed to create champions directory: {}", e))?;
+
+  let champion_dir = champions_dir.join(&champion_name);
+  std::fs::create_dir_all(&champion_dir)
+    .map_err(|e| format!("Failed to create champion directory: {}", e))?;
+
+  let zip_path = champion_dir.join(&file_name);
+  if let Some(parent) = zip_path.parent() {
+    std::fs::create_dir_all(parent)
+      .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+  }
+
+  std::fs::write(&zip_path, &content).map_err(|e| format!("Failed to write ZIP file: {}", e))?;
+
+  Ok(())
 }
 
+/// Downloads a file directly from URL and saves it to disk, streaming to avoid loading entire file into memory
+/// This is memory-efficient and prevents crashes on lower-tier PCs
 #[tauri::command]
-pub async fn get_champion_data(
-    app: tauri::AppHandle,
-    champion_id: u32,
-) -> Result<String, String> {
-    let app_data_dir = app.path().app_data_dir()
-        .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
-    
-    let champions_dir = app_data_dir.join("champions");
-    if !champions_dir.exists() {
-        return Ok("[]".to_string()); // Return empty array if no champions directory exists
-    }
-
-    // If champion_id is 0, return all champions
-    if champion_id == 0 {
-        let mut all_champions = Vec::new();
-        for entry in fs::read_dir(champions_dir)
-            .map_err(|e| format!("Failed to read champions directory: {}", e))? {
-            let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-            let path = entry.path();
-            if path.is_dir() {
-                // Look for JSON files in the champion directory
-                for champion_file in fs::read_dir(path)
-                    .map_err(|e| format!("Failed to read champion directory: {}", e))? {
-                    let champion_file = champion_file.map_err(|e| format!("Failed to read champion file: {}", e))?;
-                    let file_path = champion_file.path();
-                    if file_path.extension().and_then(|s| s.to_str()) == Some("json") {
-                        let data = fs::read_to_string(&file_path)
-                            .map_err(|e| format!("Failed to read champion file: {}", e))?;
-                        all_champions.push(data);
-                    }
-                }
-            }
-        }
-        return Ok(format!("[{}]", all_champions.join(",")));
-    }
-
-    // Otherwise, return data for specific champion
-    // We need to search through all champion directories to find the one with matching ID
-    for entry in fs::read_dir(champions_dir)
-        .map_err(|e| format!("Failed to read champions directory: {}", e))? {
-        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-        let path = entry.path();
-        if path.is_dir() {
-            let champion_name = path.file_name()
-                .and_then(|n| n.to_str())
-                .ok_or_else(|| format!("Invalid champion directory name"))?;
-            let champion_file = path.join(format!("{}.json", champion_name));
-            if champion_file.exists() {
-                return fs::read_to_string(champion_file)
-                    .map_err(|e| format!("Failed to read champion data: {}", e));
-            }
-        }
-    }
-
-    Err(format!("Champion data not found for ID: {}", champion_id))
-}
-
-#[tauri::command]
-pub async fn delete_champions_cache(app: tauri::AppHandle) -> Result<(), String> {
-    let app_data_dir = app.path().app_data_dir()
-        .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
-    
-    let champions_dir = app_data_dir.join("champions");
-    
-    // If the directory exists, remove it and all its contents
-    if champions_dir.exists() {
-        fs::remove_dir_all(&champions_dir)
-            .map_err(|e| format!("Failed to delete champions cache: {}", e))?;
-    }
-    
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn save_selected_skins(
-    app: tauri::AppHandle, 
-    league_path: String, 
-    skins: Vec<SkinData>, 
-    favorites: Vec<u32>,
-    theme: Option<ThemePreferences>
+pub async fn download_and_save_file(
+  app: tauri::AppHandle,
+  url: String,
+  champion_name: String,
+  file_name: String,
 ) -> Result<(), String> {
-    let config_dir = app.path().app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {}", e))?
-        .join("config");
-    std::fs::create_dir_all(&config_dir)
-        .map_err(|e| format!("Failed to create config dir: {}", e))?;
-    let file = config_dir.join("config.json");
-    // build combined JSON
-    let config_json = serde_json::json!({
-        "league_path": league_path,
-        "skins": skins,
-        "favorites": favorites,
-        "theme": theme
-    });
-    let data = serde_json::to_string_pretty(&config_json)
-        .map_err(|e| format!("Failed to serialize config: {}", e))?;
-    std::fs::write(&file, data)
-        .map_err(|e| format!("Failed to write config.json: {}", e))?;
-    Ok(())
+  let app_data_dir = app
+    .path()
+    .app_data_dir()
+    .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+  let champions_dir = app_data_dir.join("champions");
+  async_fs::create_dir_all(&champions_dir)
+    .await
+    .map_err(|e| format!("Failed to create champions directory: {}", e))?;
+
+  let champion_dir = champions_dir.join(&champion_name);
+  async_fs::create_dir_all(&champion_dir)
+    .await
+    .map_err(|e| format!("Failed to create champion directory: {}", e))?;
+
+  let file_path = champion_dir.join(&file_name);
+  if let Some(parent) = file_path.parent() {
+    async_fs::create_dir_all(parent)
+      .await
+      .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+  }
+
+  // Use shared HTTP client with connection pooling for better performance
+  let client = HTTP_CLIENT.clone();
+
+  // Retry logic for transient failures (network issues, timeouts, etc.)
+  const MAX_RETRIES: u32 = 3;
+  let mut last_error = None;
+
+  for attempt in 0..=MAX_RETRIES {
+    // Exponential backoff for retries
+    if attempt > 0 {
+      let delay_ms = 1000 * (1u64 << (attempt - 1)); // 1s, 2s, 4s
+      tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+    }
+
+    match download_with_retry(client.clone(), &url, &file_path).await {
+      Ok(()) => return Ok(()),
+      Err(e) => {
+        last_error = Some(e);
+        if attempt < MAX_RETRIES {
+          continue; // Retry
+        }
+      }
+    }
+  }
+
+  Err(format!(
+    "Download failed after {} attempts: {}",
+    MAX_RETRIES + 1,
+    last_error.unwrap_or_else(|| "Unknown error".to_string())
+  ))
 }
 
-// New command to load config.json (league path + skins)
-#[tauri::command]
-pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
-    let config_dir = app.path().app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {}", e))?
-        .join("config");
-    let file = config_dir.join("config.json");
-    if !file.exists() {
-        return Ok(SavedConfig { league_path: None, skins: Vec::new(), favorites: Vec::new(), theme: None });
-    }
-    let content = std::fs::read_to_string(&file)
-        .map_err(|e| format!("Failed to read config.json: {}", e))?;
-    let cfg: SavedConfig = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse config.json: {}", e))?;
-    Ok(cfg)
+/// Internal function that performs a single download attempt
+async fn download_with_retry(
+  client: Arc<reqwest::Client>,
+  url: &str,
+  file_path: &std::path::Path,
+) -> Result<(), String> {
+  // Start download
+  let response = client
+    .get(url)
+    .send()
+    .await
+    .map_err(|e| format!("Failed to start download: {}", e))?;
+
+  if !response.status().is_success() {
+    return Err(format!(
+      "Download failed with status: {}",
+      response.status()
+    ));
+  }
+
+  // Create file and stream download directly to disk
+  let mut file = async_fs::File::create(file_path)
+    .await
+    .map_err(|e| format!("Failed to create file: {}", e))?;
+
+  let mut stream = response.bytes_stream();
+
+  // Stream chunks directly to disk - never loads entire file into memory
+  // This prevents crashes on lower-tier PCs by avoiding memory exhaustion
+  while let Some(chunk) = stream.next().await {
+    let bytes = chunk.map_err(|e| format!("Download stream error: {}", e))?;
+    file
+      .write_all(&bytes)
+      .await
+      .map_err(|e| format!("Failed to write chunk: {}", e))?;
+  }
+
+  file
+    .flush()
+    .await
+    .map_err(|e| format!("Failed to finalize file: {}", e))?;
+
+  Ok(())
 }

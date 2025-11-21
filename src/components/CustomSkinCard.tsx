@@ -31,7 +31,7 @@ export const CustomSkinCard = React.memo(function CustomSkinCard({
 
   // Check if this skin is selected
   const isSelected =
-    selectedSkins.get(skin.champion_id)?.fantome === skin.file_path;
+    selectedSkins.get(skin.champion_id)?.skin_file === skin.file_path;
 
   // Generate a fake skin ID for custom skins (used for selection tracking)
   const fakeSkinId = parseInt(skin.id.replace(/\D/g, "").slice(0, 8)) || 999999;

@@ -1,0 +1,17 @@
+# Ignore git files in build dependencies to prevent unnecessary rebuilds
+cslol-tools/build/_deps/**/.git
+cslol-tools/build/_deps/**/.gitignore
+cslol-tools/build/_deps/**/.gitmodules
+
+# Ignore all build artifacts and temp files
+target/
+build/
+*.tmp
+*.temp
+
+# Ignore other common files that shouldn't trigger rebuilds
+**/.DS_Store
+**/Thumbs.db
+**/*.swp
+**/*.swo
+**/.*~

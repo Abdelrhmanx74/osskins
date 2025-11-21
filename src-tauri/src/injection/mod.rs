@@ -1,12 +1,22 @@
-// Main injection module that re-exports all components
-mod error;
-mod injector;
-mod types;
-mod utils;
+// Injection module - Re-exports all injection functionalities
+pub mod core;
+pub mod error;
+pub mod game_config;
+pub mod mod_tools;
+pub mod skin_file;
 
-pub use injector::{SkinInjector, cleanup_injection};
-pub use types::*;
-pub use utils::*;
+// Re-export all public types and functions
+pub use core::*;
+pub use error::*;
 
-// Re-export the main public functions directly
-pub use injector::inject_skins;
+// Additional helper function for multi-champion injections without event emission
+pub fn inject_skins_and_misc_no_events(
+  app: &tauri::AppHandle,
+  league_path: &str,
+  skins: &[Skin],
+  misc_items: &[MiscItem],
+  skin_file_files_dir: &std::path::Path,
+) -> Result<(), InjectionError> {
+  let mut injector = core::SkinInjector::new(app, league_path)?;
+  injector.inject_skins_and_misc_no_events(skins, misc_items, skin_file_files_dir)
+}

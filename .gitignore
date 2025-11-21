@@ -38,5 +38,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 
+# tauri
+/src-tauri/target/
+/src-tauri/gen/
+/src-tauri/cslol-tools/build/
+
 # cslol manager
 /cslol-manager-2024-10-27-401067d-prerelease

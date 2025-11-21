@@ -39,6 +39,7 @@
     "src/app/api/champions/route.bak"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "src-tauri"
   ]
 }

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useGameStore } from "../store";
 import { CustomSkin } from "../types";
+import { toast } from "sonner";
 
 export function useCustomSkins() {
   const [isLoading, setIsLoading] = useState(true);
@@ -51,6 +52,34 @@ export function useCustomSkins() {
     }
   };
 
+  // Function to upload multiple custom skins
+  const uploadMultipleCustomSkins = async (championId: number) => {
+    try {
+      const newSkins = await invoke<CustomSkin[]>(
+        "upload_multiple_custom_skins",
+        {
+          championId,
+        }
+      );
+
+      // Add each new skin to the store
+      newSkins.forEach((skin) => {
+        addCustomSkin(skin);
+      });
+
+      toast.success(`Successfully uploaded ${newSkins.length} custom skin(s)`);
+      return newSkins;
+    } catch (err) {
+      console.error("Failed to upload multiple custom skins:", err);
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : "Failed to upload multiple custom skins";
+      toast.error(errorMessage);
+      return null;
+    }
+  };
+
   // Function to delete a custom skin
   const deleteCustomSkin = async (skinId: string) => {
     try {
@@ -69,6 +98,7 @@ export function useCustomSkins() {
     isLoading,
     error,
     uploadCustomSkin,
+    uploadMultipleCustomSkins,
     deleteCustomSkin,
   };
 }

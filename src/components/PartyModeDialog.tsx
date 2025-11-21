@@ -1,314 +1,365 @@
+import { useI18n } from "@/lib/i18n";
 import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogTrigger,
-  DialogFooter,
-  DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { DropdownMenuItem, DropdownMenuSeparator } from "./ui/dropdown-menu";
-import { useGameStore } from "@/lib/store";
-import { invoke } from "@tauri-apps/api/core";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { Users, UserCheck, UserX, RefreshCw, MailCheck } from "lucide-react";
-import { Label } from "./ui/label";
-import { Separator } from "./ui/separator";
-import { ScrollArea } from "./ui/scroll-area";
-import { useSkinSync } from "@/lib/hooks/use-skin-sync";
+import { Users, UserPlus, UserMinus, RefreshCcw } from "lucide-react";
+import { DropdownMenuItem } from "./ui/dropdown-menu";
 import {
-  AlertDialog,
-  AlertDialogDescription,
-  AlertDialogTitle,
-} from "./ui/alert-dialog";
-import { shallow } from "zustand/shallow";
-import { usePartyFriends } from "@/lib/hooks/use-party-friends";
+  partyModeApi,
+  getStatusColor,
+  getStatusText,
+} from "@/lib/api/party-mode";
+import { usePartyModeStore } from "@/lib/store/party-mode";
+import type {
+  FriendInfo,
+  PairedFriend,
+  SkinShare,
+} from "@/lib/types/party-mode";
+import { useGameStore } from "@/lib/store";
 
-interface Friend {
-  name: string;
-  id: string;
-  availability: "online" | "away" | "offline" | "in-game";
-  game?: string;
-  inParty?: boolean;
-}
-
-function PartyMemberList({
-  members,
-  onRemove,
-  getAvailabilityColor,
-}: {
-  members: { id: string; name: string; availability: string }[];
-  onRemove: (id: string) => void;
-  getAvailabilityColor: (availability: string) => string;
-}) {
-  return (
-    <>
-      <p className="text-sm font-medium">Active Party ({members.length}/5)</p>
-      {members.map((member) => (
-        <div
-          key={member.id}
-          className="flex items-center justify-between p-2 rounded-lg bg-primary/10"
-        >
-          <div className="flex items-center gap-2">
-            <div
-              className={`h-3 w-3 rounded-full ${getAvailabilityColor(
-                member.availability
-              )}`}
-            ></div>
-            <span>{member.name}</span>
-          </div>
-          <Button
-            size="sm"
-            variant="destructive"
-            onClick={() => onRemove(member.id)}
-          >
-            Remove
-          </Button>
-        </div>
-      ))}
-      <Separator className="my-2" />
-    </>
-  );
-}
-
-function FriendList({
-  friends,
-  activePartyMembers,
-  onSync,
-  getAvailabilityColor,
-}: {
-  friends: { id: string; name: string; availability: string; game?: string }[];
-  activePartyMembers: { id: string }[];
-  onSync: (id: string, name: string) => void;
-  getAvailabilityColor: (availability: string) => string;
-}) {
-  return (
-    <>
-      <p className="text-sm font-medium">Available Friends</p>
-      {friends
-        .filter((friend) => !activePartyMembers.some((m) => m.id === friend.id))
-        .map((friend) => (
-          <div
-            key={friend.id}
-            className="flex items-center justify-between p-2 rounded-lg hover:bg-primary/5"
-          >
-            <div className="flex items-center gap-2">
-              <div
-                className={`h-3 w-3 rounded-full ${getAvailabilityColor(
-                  friend.availability
-                )}`}
-              ></div>
-              <span>{friend.name}</span>
-              {friend.game && (
-                <span className="text-xs text-muted-foreground ml-1">
-                  {friend.game}
-                </span>
-              )}
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onSync(friend.id, friend.name)}
-            >
-              Sync
-            </Button>
-          </div>
-        ))}
-    </>
-  );
-}
-
-export const PartyModeDialog = React.memo(function PartyModeDialog() {
+export default function PartyModeDialog() {
   const [isOpen, setIsOpen] = useState(false);
-  const [checkingRequests, setCheckingRequests] = useState(false);
-  const leaguePath = useGameStore((s) => s.leaguePath);
-  const selectedSkins = useGameStore((s) => s.selectedSkins);
-  const {
-    sendSyncRequest,
-    acceptSync,
-    rejectSync,
-    pendingSyncRequest,
-    activePartyMembers,
-    checkPendingSyncRequests,
-  } = useSkinSync();
-  const { friends, isLoading, fetchFriends } = usePartyFriends(leaguePath);
+  const [isLoading, setIsLoading] = useState(false);
+  const { t } = useI18n();
+  const [selectedTab, setSelectedTab] = useState("connect");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
-  // Fetch friends when the dialog opens
+  // Real data from backend
+  const [friends, setFriends] = useState<FriendInfo[]>([]);
+
+  // Use Zustand store for paired friends
+  const pairedFriends = usePartyModeStore((s) => s.pairedFriends);
+  const manualInjectionMode = useGameStore((s) => s.manualInjectionMode);
+
+  // Set up global event listeners that work even when dialog is closed
+  useEffect(() => {
+    // Listen for custom event to open dialog
+    const handleOpenDialog = () => {
+      setIsOpen(true);
+    };
+    document.addEventListener("open-party-mode-dialog", handleOpenDialog);
+
+    // Return synchronous cleanup function
+    return () => {
+      document.removeEventListener("open-party-mode-dialog", handleOpenDialog);
+    };
+  }, []);
+
+  // Load data when dialog opens
   useEffect(() => {
     if (isOpen) {
-      fetchFriends();
-      // Also check for pending sync requests when dialog opens
-      handleCheckPendingRequests();
+      void loadFriends();
+      void loadSettings();
     }
   }, [isOpen]);
 
-  const handleCheckPendingRequests = async () => {
-    if (!leaguePath) {
-      toast.error(
-        "League path not set. Please configure your League of Legends path in settings."
-      );
-      return;
-    }
-
-    setCheckingRequests(true);
+  const loadFriends = async () => {
     try {
-      await checkPendingSyncRequests(true);
-      toast.info("Checked for pending sync requests");
+      const friendsList = await partyModeApi.getFriends();
+      setFriends(friendsList);
     } catch (error) {
-      console.error("Error checking for pending requests:", error);
-    } finally {
-      setCheckingRequests(false);
+      console.error("Failed to load friends:", error);
+      toast.error("Failed to load friends list");
     }
   };
 
-  const handleSyncRequest = async (friendId: string, friendName: string) => {
+  const loadSettings = async () => {
     try {
-      await sendSyncRequest(friendId, friendName);
-      toast.success(`Sync request sent to ${friendName}`);
-    } catch (err) {
-      console.error(`Failed to send sync request to ${friendName}:`, err);
-      toast.error(`Failed to send sync request to ${friendName}`);
+      const settings = await partyModeApi.getSettings();
+      setNotificationsEnabled(settings.notifications);
+    } catch (error) {
+      console.error("Failed to load settings:", error);
+      // Don't show toast for this as it's not critical
     }
   };
 
-  const getAvailabilityColor = (availability: string) => {
-    switch (availability) {
-      case "online":
-        return "bg-green-500";
-      case "away":
-        return "bg-yellow-500";
-      case "in-game":
-        return "bg-blue-500";
-      default:
-        return "bg-gray-500";
+  // Helper functions for UI
+  const getStatusColorForFriend = (friend: FriendInfo) => {
+    return getStatusColor(friend.availability, friend.is_online);
+  };
+
+  const getStatusTextForFriend = (friend: FriendInfo) => {
+    return getStatusText(friend.availability, friend.is_online);
+  };
+
+  const filterFriends = (searchTerm: string) => {
+    return friends.filter(
+      (friend) =>
+        friend.summoner_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        friend.display_name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  };
+
+  // Handlers for UI
+  const handleLoadFriendsList = async () => {
+    setIsLoading(true);
+    try {
+      await loadFriends();
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  const handleAddFriend = async (friendSummonerId: string) => {
+    console.log(
+      "[DEBUG] handleAddFriend called with friendSummonerId:",
+      friendSummonerId
+    );
+    setIsLoading(true);
+    try {
+      console.log("[DEBUG] About to call partyModeApi.addPartyFriend...");
+      await partyModeApi.addPartyFriend(friendSummonerId);
+      console.log("[DEBUG] Successfully added friend to party mode");
+      toast.success("Friend added to party mode!");
+    } catch (error) {
+      console.error("Failed to add friend:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to add friend";
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const removeFriend = async (friendSummonerId: string) => {
+    try {
+      await partyModeApi.removePairedFriend(friendSummonerId);
+      toast.success("Friend removed successfully");
+    } catch (error) {
+      console.error("Failed to remove friend:", error);
+      toast.error("Failed to remove friend");
+    }
+  };
+
+  const toggleNotifications = async (checked: boolean) => {
+    try {
+      await partyModeApi.updateSettings(checked);
+      setNotificationsEnabled(checked);
+    } catch (error) {
+      console.error("Failed to update notifications setting:", error);
+      toast.error("Failed to update settings");
+    }
+  };
+
+  const filteredFriends = filterFriends(searchTerm);
+
+  // If manual injection mode is enabled, render a disabled menu item instead of the full dialog
+  if (manualInjectionMode) {
+    return (
+      <DropdownMenuItem
+        onSelect={(e) => {
+          e.preventDefault();
+        }}
+        // visually muted and unselectable
+        className="opacity-50 pointer-events-none"
+      >
+        <Users className="h-4 w-4" />
+        {t("party.mode")}
+      </DropdownMenuItem>
+    );
+  }
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <DropdownMenuItem
-          onSelect={(e) => {
-            e.preventDefault();
-            setIsOpen(true);
-          }}
-        >
-          <Users className="h-4 w-4" />
-          Party Mode
-        </DropdownMenuItem>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center justify-between">
-            <span>Party Mode</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCheckPendingRequests}
-              disabled={checkingRequests || !leaguePath}
-            >
-              <MailCheck
-                className={`h-4 w-4 mr-2 ${
-                  checkingRequests ? "animate-spin" : ""
-                }`}
-              />
-              Check Invites
-            </Button>
-          </DialogTitle>
-          <DialogDescription>
-            Share your skin selections with friends. When in a party, each
-            player will see the others' selected skins.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogTrigger asChild>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+            }}
+          >
+            <Users className="h-4 w-4" />
+            {t("party.mode")}
+          </DropdownMenuItem>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              {t("party.mode")}
+            </DialogTitle>
+          </DialogHeader>
 
-        {pendingSyncRequest && (
-          <AlertDialog>
-            <AlertDialogTitle>
-              Sync Request from{" "}
-              {pendingSyncRequest.memberName || pendingSyncRequest.memberId}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingSyncRequest.memberName || pendingSyncRequest.memberId}{" "}
-              wants to sync skin selections with you. Accept to see each other's
-              skins in game.
-            </AlertDialogDescription>
-            <div className="flex gap-2 mt-2">
-              <Button
-                onClick={() =>
-                  acceptSync(
-                    pendingSyncRequest.memberId,
-                    pendingSyncRequest.memberName || pendingSyncRequest.memberId
-                  )
-                }
-                size="sm"
-              >
-                <UserCheck className="mr-2 h-4 w-4" />
-                Accept
-              </Button>
-              <Button
-                onClick={() => rejectSync(pendingSyncRequest.memberId)}
-                variant="outline"
-                size="sm"
-              >
-                <UserX className="mr-2 h-4 w-4" />
-                Decline
-              </Button>
-            </div>
-          </AlertDialog>
-        )}
+          <Tabs value={selectedTab} onValueChange={setSelectedTab}>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="connect">{t("friends.label")}</TabsTrigger>
+              <TabsTrigger value="connected">
+                {t("friends.connected")} ({pairedFriends.length})
+              </TabsTrigger>
+              <TabsTrigger value="settings">{t("settings.title")}</TabsTrigger>
+            </TabsList>
 
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-1 gap-2">
-            <div className="flex items-center justify-between">
-              <Label>Friends ({friends.length})</Label>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={fetchFriends}
-                disabled={isLoading}
-              >
-                <RefreshCw
-                  className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-                />
-              </Button>
-            </div>
-
-            <ScrollArea className="h-72 rounded-md border">
-              {friends.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4">
-                  {isLoading ? "Loading friends..." : "No friends found"}
-                </div>
-              ) : (
-                <div className="p-4 space-y-2">
-                  {activePartyMembers.length > 0 && (
-                    <PartyMemberList
-                      members={activePartyMembers}
-                      onRemove={rejectSync}
-                      getAvailabilityColor={getAvailabilityColor}
-                    />
-                  )}
-
-                  <FriendList
-                    friends={friends}
-                    activePartyMembers={activePartyMembers}
-                    onSync={handleSyncRequest}
-                    getAvailabilityColor={getAvailabilityColor}
+            <TabsContent value="connect" className="space-y-4">
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder={t("party.search_placeholder")}
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                    }}
+                    className="flex-1"
                   />
+                  <Button
+                    onClick={() => {
+                      void handleLoadFriendsList();
+                    }}
+                    disabled={isLoading}
+                    variant={"ghost"}
+                    size="icon"
+                  >
+                    <RefreshCcw className="h-4 w-4" />
+                  </Button>
                 </div>
-              )}
-            </ScrollArea>
-          </div>
-        </div>
 
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="default">Close</Button>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {isLoading ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        {
+                          t(
+                            "loading.champions_data"
+                          ) /* reuse a loading key; consider dedicated key if needed */
+                        }
+                      </p>
+                    </div>
+                  ) : filteredFriends.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground">
+                        {t("friends.no_friends")}
+                      </p>
+                    </div>
+                  ) : (
+                    filteredFriends.map((friend) => {
+                      const pairedFriend = pairedFriends.find(
+                        (cf) =>
+                          String(cf.summoner_id) === String(friend.summoner_id)
+                      );
+                      const isConnected = !!pairedFriend;
+
+                      return (
+                        <div
+                          key={friend.summoner_id}
+                          className="flex items-center justify-between p-3 border rounded-lg"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`w-3 h-3 rounded-full ${getStatusColorForFriend(
+                                friend
+                              )}`}
+                            ></div>
+                            <div>
+                              <p className="font-medium">
+                                {friend.display_name}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {getStatusTextForFriend(friend)}
+                              </p>
+                            </div>
+                          </div>
+                          <Switch
+                            checked={isConnected}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                void handleAddFriend(friend.summoner_id);
+                              } else {
+                                void removeFriend(friend.summoner_id);
+                              }
+                            }}
+                            disabled={isLoading}
+                          />
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="connected" className="space-y-4">
+              <div>
+                {pairedFriends.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">
+                      {t("friends.no_friends")}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      {t("party.search_placeholder")}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {pairedFriends.map((friend) => (
+                      <div
+                        key={friend.summoner_id}
+                        className="flex items-center justify-between p-3 border rounded-lg"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                          <div>
+                            <p className="font-medium">{friend.display_name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {t("friends.connected")}{" "}
+                              {new Date(friend.paired_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          onClick={() => {
+                            void removeFriend(friend.summoner_id);
+                          }}
+                          size="sm"
+                          variant="destructive"
+                        >
+                          <UserMinus className="h-4 w-4 mr-2" />
+                          {t("misc.delete")}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="settings" className="space-y-4">
+              <Card>
+                <CardContent className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <Label>{t("notifications.label")}</Label>
+                      <p className="text-sm text-muted-foreground">
+                        {t("notifications.show_on_share")}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={notificationsEnabled}
+                      onCheckedChange={(checked) =>
+                        void toggleNotifications(checked)
+                      }
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+    </>
   );
-});
+}

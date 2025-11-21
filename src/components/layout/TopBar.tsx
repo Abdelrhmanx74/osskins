@@ -1,26 +1,36 @@
 "use client";
 
-import { invoke } from "@tauri-apps/api/core";
-import { Button } from "@/components/ui/button";
-import { RefreshCw, Menu, Zap } from "lucide-react";
-import { toast } from "sonner";
-import { InjectionStatusDot } from "@/components/InjectionStatusDot";
-import { TitleBar } from "@/components/ui/titlebar/TitleBar";
 import { ChampionSearch } from "@/components/ChampionSearch";
+import { DownloadingModal } from "@/components/download/DownloadingModal";
+import { InjectionStatusDot } from "@/components/InjectionStatusDot";
+import { ButtonInjection } from "@/components/button-injection";
+import PartyModeDialog from "@/components/PartyModeDialog";
+// Print logs moved into Settings dialog
+import { SettingsDialog } from "@/components/SettingsDialog";
+// manual injection control is accessible from the official tab select
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { TerminalLogsDialog } from "@/components/TerminalLogsDialog";
-import { SettingsDialog } from "@/components/SettingsDialog";
-import { PartyModeDialog } from "@/components/PartyModeDialog";
-import { useGameStore, SkinTab } from "@/lib/store";
-import { useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Champion } from "@/lib/types";
-import React from "react";
+import { TitleBar } from "@/components/ui/titlebar/TitleBar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useI18n } from "@/lib/i18n";
+import { type SkinTab, useGameStore } from "@/lib/store";
+import { usePartyModeStore } from "@/lib/store/party-mode";
+import type { Champion, DataUpdateProgress } from "@/lib/types";
+import { Menu, RefreshCw, Users2Icon, ArrowDownToLine, Sparkles, Check, Zap, Hand, ChevronDown } from "lucide-react";
+import { useEffect, useState } from "react";
+import CslolManagerModal from "@/components/CslolManagerModal";
+import { Badge } from "../ui/badge";
 
 interface TopBarProps {
   champions: Champion[];
@@ -28,21 +38,29 @@ interface TopBarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onChampionSelect: (id: number) => void;
-  onUpdateData: () => void;
+  onUpdateData: () => Promise<void>;
+  onReinstallData: () => Promise<void>;
+  isUpdating?: boolean;
+  progress: DataUpdateProgress | null;
 }
 
-export const TopBar = React.memo(function TopBar({
+export function TopBar({
   champions,
   selectedChampionId,
   searchQuery,
   onSearchChange,
   onChampionSelect,
   onUpdateData,
+  onReinstallData,
+  isUpdating = false,
+  progress,
 }: TopBarProps) {
-  // Only subscribe to the specific state needed
-  const activeTab = useGameStore((s) => s.activeTab);
-  const setActiveTab = useGameStore((s) => s.setActiveTab);
-  const selectedSkins = useGameStore((s) => s.selectedSkins);
+  const [showDownloadingModal, setShowDownloadingModal] = useState(false);
+  const [showCslolModal, setShowCslolModal] = useState(false);
+  // Get tab state from the store
+  const { activeTab, setActiveTab, manualInjectionMode, setManualInjectionMode } = useGameStore();
+  const pairedFriendsCount = usePartyModeStore((s) => s.pairedFriends.length);
+  // Updater removed: no updater store or hook
 
   // Load saved tab preference from localStorage
   useEffect(() => {
@@ -54,48 +72,13 @@ export const TopBar = React.memo(function TopBar({
     }
   }, [setActiveTab]);
 
-  // Force update by deleting cache and updating
-  async function handleForceUpdateData() {
-    try {
-      toast.promise(
-        async () => {
-          // Delete champion cache first
-          await invoke("delete_champions_cache");
-          // Then run update
-          onUpdateData();
-        },
-        {
-          loading: "Clearing cached data...",
-          success: "Cache cleared successfully, updating champion data",
-          error: "Failed to clear champion cache",
-        }
-      );
-    } catch (error) {
-      console.error("Error during force update:", error);
-    }
-  }
+  // Load paired friends count
+  useEffect(() => {
+    // Party mode is now handled by the provider, no need for manual loading
+  }, []);
 
-  function handleForceInject() {
-    if (!selectedChampionId) {
-      toast.error("No champion selected for force injection");
-      return;
-    }
-    const selectedSkin = selectedSkins.get(selectedChampionId);
-    if (!selectedSkin) {
-      toast.error("No skin selected for this champion");
-      return;
-    }
-    toast.promise(
-      invoke("force_inject_selected_skin", {
-        championId: selectedChampionId,
-      }),
-      {
-        loading: "Injecting skin...",
-        success: "Skin injected successfully!",
-        error: "Failed to inject skin",
-      }
-    );
-  }
+  const updateDisabled = isUpdating;
+  const { t } = useI18n();
 
   return (
     <div
@@ -104,7 +87,7 @@ export const TopBar = React.memo(function TopBar({
         if (
           (e.target as HTMLElement).closest("[data-tauri-drag-region]") &&
           !(e.target as HTMLElement).closest(
-            "button, input, [role='button'], [role='combobox']"
+            "button, input, [role='button'], [role='combobox']",
           )
         ) {
           // Use the WebviewWindow API for window dragging
@@ -141,56 +124,130 @@ export const TopBar = React.memo(function TopBar({
             className="w-full justify-center items-center"
           >
             <TabsList>
-              <TabsTrigger value="official">Official</TabsTrigger>
-              <TabsTrigger value="custom">Custom</TabsTrigger>
+              <div className="relative flex items-center group">
+                <TabsTrigger value="official" className="relative pr-8">
+                  {t("tabs.official")}
+                </TabsTrigger>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      disabled={activeTab !== "official"}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-5 w-5 p-2 text-white hover:bg-primary dark:hover:bg-primary group-hover:bg-primary"
+                    >
+                      <ChevronDown className="size-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-40">
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setManualInjectionMode(false);
+                      }}
+                    >
+                      <Zap className="h-4 w-4 mr-2" />
+                      Auto
+                      {!manualInjectionMode && <Check className="h-4 w-4 ml-auto" />}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setManualInjectionMode(true);
+                      }}
+                    >
+                      <Hand className="h-4 w-4 mr-2" />
+                      Manual
+                      {manualInjectionMode && <Check className="h-4 w-4 ml-auto" />}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              <TabsTrigger value="custom">{t("tabs.custom")}</TabsTrigger>
             </TabsList>
           </Tabs>
+          {/* Show status dot in auto mode, injection button in manual mode */}
+          {manualInjectionMode ? (
+            <ButtonInjection />
+          ) : (
+            <InjectionStatusDot showLabel bordered />
+          )}
+          {/* Party Mode indicator */}
+          {pairedFriendsCount > 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="default"
+                    className="gap-2 text-sm font-bold cursor-default"
+                  >
+                    {pairedFriendsCount}
+                    <Users2Icon className="size-4" />
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    {pairedFriendsCount}{" "}
+                    {pairedFriendsCount === 1
+                      ? t("party.pairedFriend")
+                      : t("party.pairedFriends")}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {/* actions are available inside the menu only (no external buttons) */}
 
-          <InjectionStatusDot />
-
-          {/* Update Data button always visible but disabled in custom tab */}
+          {/* dropdown opens on hover */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" aria-label="Menu">
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="Menu"
+                className="relative"
+              >
                 <Menu className="h-5 w-5" />
+                {/* Updater removed */}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="min-w-50" align="end">
               <PartyModeDialog />
               <DropdownMenuItem
-                onClick={() => {
-                  onUpdateData();
+                onSelect={(event: Event) => {
+                  event.preventDefault();
+                  setShowDownloadingModal(true);
                 }}
-                className="flex items-center gap-2"
-              >
-                <RefreshCw />
-                Check for Updates
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  void handleForceUpdateData();
-                }}
-                className="flex items-center gap-2"
-                disabled={activeTab === "custom"}
+                disabled={updateDisabled}
               >
                 <RefreshCw className="h-4 w-4" />
-                Force Update Data
+                {t("menu.checkDataUpdates")}
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={handleForceInject}
-                className="flex items-center gap-2"
-                disabled={!selectedChampionId}
+                onSelect={(event: Event) => {
+                  event.preventDefault();
+                  setShowCslolModal(true);
+                }}
               >
-                <Zap className="h-4 w-4 text-yellow-500" />
-                Force Inject Selected Skin
+                <RefreshCw className="h-4 w-4" />
+                CSLOL Manager
               </DropdownMenuItem>
-              <TerminalLogsDialog />
+              {/* Updater menu items removed */}
               <SettingsDialog />
             </DropdownMenuContent>
           </DropdownMenu>
           <TitleBar />
         </div>
       </div>
-    </div>
+      <DownloadingModal
+        isOpen={showDownloadingModal}
+        onClose={() => {
+          setShowDownloadingModal(false);
+        }}
+        progress={progress}
+        onUpdateData={onUpdateData}
+        onReinstallData={onReinstallData}
+        isUpdating={isUpdating}
+      />
+      <CslolManagerModal isOpen={showCslolModal} onClose={() => { setShowCslolModal(false); }} />
+    </div >
   );
-});
+}

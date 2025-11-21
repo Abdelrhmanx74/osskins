@@ -1,10 +1,10 @@
 "use client";
 
-import React from "react";
 import { Champion } from "@/lib/types";
-import { Card, CardContent } from "./ui/card";
-import { Skeleton } from "./ui/skeleton";
-import { ChampionCard } from "@/components/ChampionCard";
+import { ChampionCard } from "./ChampionCard";
+import { MiscCard } from "./MiscCard";
+import { Map, Languages, Shapes, Package } from "lucide-react";
+import { MiscItemType } from "@/lib/store";
 
 interface ChampionGridProps {
   champions: Champion[];
@@ -12,39 +12,74 @@ interface ChampionGridProps {
   favorites: Set<number>;
   onSelectChampion: (id: number) => void;
   onToggleFavorite: (id: number) => void;
+  isCustomMode?: boolean;
+  onMiscItemClick?: (type: MiscItemType) => void;
 }
 
-function ChampionGridLoading() {
-  return (
-    <div className="w-full h-fit mx-auto grid grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2">
-      {Array.from({ length: 45 }).map((_, i) => (
-        <Skeleton key={i} className="aspect-square size-[64px]" />
-      ))}
-    </div>
-  );
-}
-
-export default function ChampionGrid({
+export function ChampionGrid({
   champions,
   selectedChampion,
   favorites,
   onSelectChampion,
   onToggleFavorite,
+  isCustomMode = false,
+  onMiscItemClick,
 }: ChampionGridProps) {
+  // Misc card handlers
+  const handleMapClick = () => {
+    console.log("Map misc card clicked");
+    onMiscItemClick?.("map");
+  };
+
+  const handleFontClick = () => {
+    console.log("Font misc card clicked");
+    onMiscItemClick?.("font");
+  };
+
+  const handleHudClick = () => {
+    console.log("HUD misc card clicked");
+    onMiscItemClick?.("hud");
+  };
+
+  const handleMiscClick = () => {
+    console.log("Misc misc card clicked");
+    onMiscItemClick?.("misc");
+  };
+
   if (champions.length === 0) {
-    return <ChampionGridLoading />;
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+        <p>No champions found</p>
+      </div>
+    );
   }
 
-  // Sort champions so favorites are on top
-  const sortedChampions = [...champions].sort((a, b) => {
-    const aFav = favorites.has(a.id) ? 1 : 0;
-    const bFav = favorites.has(b.id) ? 1 : 0;
-    return bFav - aFav;
-  });
-
   return (
-    <div className="w-fit mx-auto grid grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2">
-      {sortedChampions.map((champion: Champion) => (
+    <div className="w-fit mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-2">
+      {/* Misc cards - available in both official and custom tabs */}
+      <>
+        <MiscCard icon={Map} type="map" onClick={handleMapClick} title="Map" />
+        <MiscCard
+          icon={Languages}
+          type="font"
+          onClick={handleFontClick}
+          title="Font"
+        />
+        <MiscCard
+          icon={Shapes}
+          type="hud"
+          onClick={handleHudClick}
+          title="HUD"
+        />
+        <MiscCard
+          icon={Package}
+          type="misc"
+          onClick={handleMiscClick}
+          title="Misc"
+        />
+      </>
+
+      {champions.map((champion) => (
         <ChampionCard
           key={champion.id}
           champion={champion}
@@ -54,8 +89,12 @@ export default function ChampionGrid({
             onToggleFavorite(champion.id);
           }}
           onClick={() => {
+            console.log(
+              `Selected champion: ${champion.name} (ID: ${champion.id})`
+            );
             onSelectChampion(champion.id);
           }}
+          className="champion-card"
         />
       ))}
     </div>

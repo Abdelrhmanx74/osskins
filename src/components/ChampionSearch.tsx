@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Search } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 import { Input } from "./ui/input";
 import { Champion } from "@/lib/types";
 
@@ -11,26 +12,6 @@ interface ChampionSearchProps {
   onSearchChange: (query: string) => void;
 }
 
-function getMatchScore(championName: string, query: string): number {
-  const normalizedName = championName.toLowerCase();
-  const normalizedQuery = query.toLowerCase();
-
-  // Exact match gets highest score
-  if (normalizedName === normalizedQuery) return 100;
-
-  // Starts with query gets high score
-  if (normalizedName.startsWith(normalizedQuery)) return 80;
-
-  // Contains query as a word gets medium score
-  if (normalizedName.includes(` ${normalizedQuery}`)) return 60;
-
-  // Contains query gets low score
-  if (normalizedName.includes(normalizedQuery)) return 40;
-
-  // No match
-  return 0;
-}
-
 export function ChampionSearch({
   champions,
   onSelect,
@@ -40,6 +21,7 @@ export function ChampionSearch({
 }: ChampionSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [hasFocus, setHasFocus] = useState(false);
+  const { t } = useI18n();
 
   // Handle keyboard input when not focused on input
   useEffect(() => {
@@ -86,7 +68,7 @@ export function ChampionSearch({
       ref={inputRef}
       type="search"
       icon={<Search size={16} />}
-      placeholder="Search champions..."
+      placeholder={t("search.placeholder")}
       value={searchQuery}
       onFocus={() => {
         setHasFocus(true);

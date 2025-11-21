@@ -20,7 +20,7 @@ export interface Chroma {
   colors: string[];
   description?: string;
   rarity?: string;
-  fantome?: string;
+  skin_file?: string;
 }
 
 export interface Skin {
@@ -32,7 +32,7 @@ export interface Skin {
   rarity: string;
   featuresText: string | null;
   chromas: Chroma[];
-  fantome?: string;
+  skin_file?: string;
 }
 
 export interface Champion {
@@ -48,6 +48,7 @@ export interface Champion {
 
 export interface DataUpdateProgress {
   currentChampion: string;
+  currentSkin?: string;
   totalChampions: number;
   processedChampions: number;
   status: "checking" | "downloading" | "processing";
@@ -62,6 +63,24 @@ export interface DataUpdateResult {
   current_version?: string;
   available_version?: string;
   update_message?: string;
+}
+
+export interface EnsureModToolsResult {
+  installed: boolean;
+  updated: boolean;
+  skipped: boolean;
+  version?: string;
+  latestVersion?: string;
+  path?: string;
+}
+
+export interface CslolManagerStatus {
+  installed: boolean;
+  version?: string;
+  latestVersion?: string;
+  hasUpdate: boolean;
+  path?: string;
+  downloadSize?: number;
 }
 
 // Custom skin type for user uploaded skins
