@@ -165,15 +165,16 @@ export function useDataUpdate() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [progress, setProgress] = useState<DataUpdateProgress | null>(null);
 
-  const updateData = useCallback(async () => {
+  const updateData = useCallback(async (options?: { force?: boolean }) => {
     if (isUpdating) {
       return;
     }
+    const force = options?.force ?? false;
 
     // Progress is shown in the DataUpdateModal; avoid toast notifications during download
 
     try {
-      console.log("[Update] Starting data update flow");
+      console.log(`[Update] Starting data update flow (force=${force})`);
       setIsUpdating(true);
       resetLolSkinsManifestCache();
       setProgress({
@@ -190,7 +191,7 @@ export function useDataUpdate() {
       const toolsResult = await (async () => {
         try {
           return await invoke<EnsureModToolsResult>("ensure_mod_tools", {
-            force: false,
+            force: force,
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -231,6 +232,21 @@ export function useDataUpdate() {
         );
       }
 
+      // Check if we are already up to date (skip if not forced)
+      if (!force && manifestCommit) {
+        try {
+          const config = await invoke<{ last_data_commit?: string }>("load_config");
+          if (config.last_data_commit === manifestCommit) {
+            console.log("[Update] Local data is up to date with manifest commit. Skipping update.");
+            setIsUpdating(false);
+            setProgress(null);
+            return;
+          }
+        } catch (e) {
+          console.warn("[Update] Failed to check local config for commit comparison", e);
+        }
+      }
+
       // Proceed with update unconditionally when triggered (commit-based gating removed)
       // Fetch champion summaries
       const summaries = await fetchChampionSummaries();
@@ -244,30 +260,35 @@ export function useDataUpdate() {
 
       // If we have last commit, get changed champions to narrow updates
       let targetSummaries = validSummaries;
-      try {
-        const changed = await invoke<string[]>(
-          "get_changed_champions_from_config",
-        );
-        console.log("[Update] Changed champions from config:", changed);
-        if (changed.length > 0) {
-          const changedSet = new Set(
-            changed.map((n) => n.toLowerCase().replace(/%20/g, " ")),
+
+      if (!force) {
+        try {
+          const changed = await invoke<string[]>(
+            "get_changed_champions_from_config",
           );
-          targetSummaries = validSummaries.filter((s) =>
-            changedSet.has(s.name.toLowerCase()),
-          );
-          if (targetSummaries.length === 0) {
-            console.warn(
-              "[Update] Mapping changed champions to summaries yielded 0; falling back to full update",
+          console.log("[Update] Changed champions from config:", changed);
+          if (changed.length > 0) {
+            const changedSet = new Set(
+              changed.map((n) => n.toLowerCase().replace(/%20/g, " ")),
             );
-            targetSummaries = validSummaries;
+            targetSummaries = validSummaries.filter((s) =>
+              changedSet.has(s.name.toLowerCase()),
+            );
+            if (targetSummaries.length === 0) {
+              console.warn(
+                "[Update] Mapping changed champions to summaries yielded 0; falling back to full update",
+              );
+              targetSummaries = validSummaries;
+            }
           }
+        } catch (e) {
+          console.warn(
+            "[Update] Failed to get changed champions from config; defaulting to full update",
+            e,
+          );
         }
-      } catch (e) {
-        console.warn(
-          "[Update] Failed to get changed champions from config; defaulting to full update",
-          e,
-        );
+      } else {
+        console.log("[Update] Force update requested; skipping incremental check");
       }
 
       console.log(

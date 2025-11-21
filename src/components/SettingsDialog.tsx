@@ -31,6 +31,7 @@ import { Switch } from "@/components/ui/switch";
 import { useI18n } from "@/lib/i18n";
 import { useToolsStore } from "@/lib/store/tools";
 import { skinManagementApi } from "@/lib/api/skin-management";
+import { useDataUpdate } from "@/lib/hooks/use-data-update";
 import { Upload, Download } from "lucide-react";
 import { useRef } from "react";
 
@@ -51,6 +52,7 @@ export function SettingsDialog() {
     manualInjectionMode,
     setManualInjectionMode,
   } = useGameStore();
+  const { updateData, isUpdating } = useDataUpdate();
 
   // Load current auto update preference when dialog opens
   useEffect(() => {
@@ -316,6 +318,27 @@ export function SettingsDialog() {
                 />
               </div>
             </div>
+
+            {/* Force Update Button */}
+            <div className="grid grid-cols-1 gap-2 mt-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Force Data Update</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Re-download all data and fix potential issues.
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={isUpdating}
+                  onClick={() => updateData({ force: true })}
+                >
+                  {isUpdating ? "Updating..." : "Update Now"}
+                </Button>
+              </div>
+            </div>
+
             <Separator />
 
             {/* Manual Injection Mode Toggle */}

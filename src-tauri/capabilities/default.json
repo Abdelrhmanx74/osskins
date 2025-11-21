@@ -12,6 +12,8 @@
   ],
   "permissions": [
     "fs:default",
+    "updater:default",
+    "process:default",
     {
       "identifier": "fs:allow-exists",
       "allow": [

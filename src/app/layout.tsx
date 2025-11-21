@@ -6,6 +6,7 @@ import { ThemeInitializer } from "@/components/providers/ThemeInitializer";
 import { PartyModeProvider } from "@/components/providers/PartyModeProvider";
 import { I18nProvider } from "@/lib/i18n";
 import { AppInitializer } from "@/components/AppInitializer";
+import { AppUpdateBanner } from "@/components/AppUpdateBanner";
 
 const poppins = Poppins({
   weight: ["400", "500", "600", "700"],
@@ -27,6 +28,7 @@ export default function RootLayout({
           <I18nProvider>
             <ThemeInitializer />
             <AppInitializer>
+              <AppUpdateBanner />
               <PartyModeProvider>{children}</PartyModeProvider>
             </AppInitializer>
             <Toaster richColors position="bottom-center" />

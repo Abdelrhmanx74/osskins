@@ -139,17 +139,14 @@ export function useInitialization() {
         try {
           const auto = auto_update_data !== false;
           if (auto && !hasStartedUpdate) {
-            const result = await invoke<{ success: boolean; updated_champions: string[]; error?: string }>(
-              "check_data_updates"
-            );
-            if (result.success && Array.isArray(result.updated_champions) && result.updated_champions.length > 0) {
-              setHasStartedUpdate(true);
-              // Start update silently; UI DownloadingModal can still be opened by the user
-              void updateData();
-            }
+            console.log("[Init] Auto-update enabled, triggering update check...");
+            setHasStartedUpdate(true);
+            // Start update silently; UI DownloadingModal can still be opened by the user
+            // The updateData function now handles "up-to-date" checks internally
+            void updateData();
           }
         } catch (e) {
-          console.warn("[Init] Auto-update check failed", e);
+          console.warn("[Init] Auto-update trigger failed", e);
         }
 
         if (mounted) {
