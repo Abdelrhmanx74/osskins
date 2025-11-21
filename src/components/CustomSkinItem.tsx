@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { CustomSkin } from "@/lib/types";
-import { shallow } from "zustand/shallow";
 
 import { Trash2, Play, Check } from "lucide-react";
 import { useGameStore } from "@/lib/store";
@@ -18,10 +17,7 @@ interface CustomSkinCardProps {
 export function CustomSkinItem({ skin, onDelete }: CustomSkinCardProps) {
   const [isHovering, setIsHovering] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  // Only subscribe to the specific state/actions needed
-  const selectedSkins = useGameStore((s) => s.selectedSkins);
-  const selectSkin = useGameStore((s) => s.selectSkin);
-  const clearSelection = useGameStore((s) => s.clearSelection);
+  const { selectedSkins, selectSkin, clearSelection } = useGameStore();
 
   // Check if this skin is selected
   const isSelected =

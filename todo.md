@@ -16,23 +16,12 @@
 - [x] The terminals that opens!! it should not!
 - [x] Handle game modes (arena, swift play)
 - [x] Better injection error handling and cleaning cases not just at the end of a game
-- [x] Run in background in system tray
-- [ ] Custom Misc support
-- [ ] Aram support
-- [ ] Simultaneously use two files in the custom skin
-- [ ] Test the cleaning function
-- [ ] Make the injection status work till the end of the game
-- [x] Refactor the command & injection files to be around ~500 each
-- [ ] Implement git-like feature so the user doesn't have to update manually
-- [ ] Check for better injection structure ways
-- [ ] Checking for messages doesn't work lcu shit...
-- [ ] Force injection button
 
 # Front End ---------------------
 
 - [x] Better front-end code
 - [x] Logical loading/stale state
-- [ ] Change the chroma selector indicator UI
+
 - [x] Add Theming
 - [x] All contexts should be zustand or react not both at the same time
 

@@ -34,9 +34,7 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    "dist/types/**/*.ts",
-    "src/app/api/custom-skins/route.ts.bak",
-    "src/app/api/champions/route.bak"
+    "dist/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

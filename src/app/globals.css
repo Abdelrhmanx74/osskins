@@ -117,3 +117,9 @@
   scrollbar-width: none;
   /* Firefox */
 }
+
+
+/* Add this after the existing base styles to enable smooth theme transitions */
+html.transitioning-theme * {
+  transition: none !important;
+}

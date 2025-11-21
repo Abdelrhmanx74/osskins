@@ -1,12 +1,4 @@
-export interface ChromaInSummary {
-  id: number;
-  name: string;
-  colors: string[];
-  skinChromaPath: string;
-  fantome?: string; // Path to the chroma's fantome file
-}
-
-export interface ChampionInSummary {
+export interface ChampionSummary {
   id: number;
   name: string;
   alias: string;
@@ -40,8 +32,6 @@ export interface Champion {
   name: string;
   alias: string;
   iconSrc: string;
-  splashImage?: string;
-  squareImage?: string;
   skins: Skin[];
   lastUpdated: number;
 }
@@ -59,10 +49,6 @@ export interface DataUpdateResult {
   success: boolean;
   error?: string;
   updatedChampions?: string[];
-  has_update: boolean;
-  current_version?: string;
-  available_version?: string;
-  update_message?: string;
 }
 
 export interface EnsureModToolsResult {
@@ -92,10 +78,4 @@ export interface CustomSkin {
   file_path: string;
   created_at: number;
   preview_image?: string;
-}
-
-export interface ThemePreferences {
-  tone?: string;
-  isDark?: boolean;
-  autoUpdateChampionData?: boolean;
 }
