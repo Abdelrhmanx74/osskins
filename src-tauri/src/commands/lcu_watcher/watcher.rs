@@ -530,19 +530,22 @@ fn handle_champ_select_event_data(
           {
             let should_share = {
               let mut last_shares = LAST_CHAMPION_SHARE_TIME.lock().unwrap();
-              let mut can_share = true;
-              let now = Instant::now();
-              for (_champ_id, last_time) in last_shares.iter() {
-                if last_time.elapsed().as_millis() < 1000 {
-                  can_share = false;
-                  break;
+              if let Some(last_time) = last_shares.get(&current_champion_id) {
+                let elapsed = last_time.elapsed();
+                if elapsed.as_secs() < 2 {
+                  println!(
+                    "[Party Mode][ChampSelect] Skipping rapid share for champion {} (last shared {}ms ago)",
+                    current_champion_id,
+                    elapsed.as_millis()
+                  );
+                  false
+                } else {
+                  last_shares.insert(current_champion_id, std::time::Instant::now());
+                  true
                 }
-              }
-              if can_share {
-                last_shares.insert(current_champion_id, now);
-                true
               } else {
-                false
+                last_shares.insert(current_champion_id, std::time::Instant::now());
+                true
               }
             };
             if should_share {
@@ -551,12 +554,13 @@ fn handle_champ_select_event_data(
               std::thread::spawn(move || {
                 let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async move {
-                  let _ = crate::commands::party_mode::send_skin_share_to_paired_friends(
+                    let _ = crate::commands::party_mode::send_skin_share_to_paired_friends(
                     &app_handle_clone,
                     skin_clone.champion_id,
                     skin_clone.skin_id,
                     skin_clone.chroma_id,
                     skin_clone.skin_file.clone(),
+                    false,
                   )
                   .await;
                 });
@@ -865,6 +869,7 @@ fn handle_instant_assign_injection(
                   skin.skin_id,
                   skin.chroma_id,
                   skin.skin_file.clone(),
+                  true,
                 )
                 .await
                 .map(|_| {
@@ -879,6 +884,7 @@ fn handle_instant_assign_injection(
                   0,
                   None,
                   Some(custom.file_path.clone()),
+                  true,
                 )
                 .await
                 .map(|_| {
@@ -895,10 +901,10 @@ fn handle_instant_assign_injection(
           }
         }
 
-        // Wait briefly
+        // Wait briefly for friends to share before injecting (up to ~8s)
         let mut ready = false;
         let start = Instant::now();
-        while start.elapsed() < Duration::from_secs(6) {
+        while start.elapsed() < std::time::Duration::from_secs(8) {
           match crate::commands::party_mode::should_inject_now(&app_for_async, *champs_u32
             .get(0)
             .unwrap_or(&0))
@@ -921,12 +927,11 @@ fn handle_instant_assign_injection(
               break;
             }
           }
-          std::thread::sleep(Duration::from_millis(500));
+          std::thread::sleep(std::time::Duration::from_millis(750));
         }
         if !ready {
           println!(
-            "[Party Mode][instant-assign] Proceeding after {}s wait (friends may share shortly)",
-            start.elapsed().as_secs_f32()
+            "[Party Mode][instant-assign] Proceeding without all shares after timeout",
           );
         }
         if let Err(e) = trigger_party_mode_injection_for_champions(&app_for_async, &champs_u32)

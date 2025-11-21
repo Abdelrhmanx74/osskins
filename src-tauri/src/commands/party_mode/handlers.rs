@@ -147,6 +147,7 @@ pub async fn send_skin_share_to_paired_friends(
   skin_id: u32,
   chroma_id: Option<u32>,
   skin_file_path: Option<String>,
+  force_send_to_all: bool,
 ) -> Result<(), String> {
   let config_dir = app
     .path()
@@ -213,7 +214,9 @@ pub async fn send_skin_share_to_paired_friends(
 
   if party_member_ids.is_empty() {
     normal_log!("[Party Mode][OUTBOUND] No party membership data available; skipping skin_share to avoid spamming unrelated friends. Enable verbose logging for diagnostics.");
-    return Ok(());
+    if !force_send_to_all {
+      return Ok(());
+    }
   }
 
   verbose_log!(
@@ -233,19 +236,46 @@ pub async fn send_skin_share_to_paired_friends(
     }
   }
 
-  if sharing_friends_in_party.is_empty() {
+  let sharing_in_party_count = sharing_friends_in_party.len();
+  let sharing_outside_count = sharing_friends_outside.len();
+
+  if sharing_in_party_count == 0 && !force_send_to_all {
     normal_log!("[Party Mode] Sharing enabled but none of the paired friends are in your confirmed party; not sending skin_share.");
+    if sharing_outside_count > 0 {
+      normal_log!(
+        "[Party Mode][INFO] Not sending to {} paired friend(s) outside your party: {:?}",
+        sharing_outside_count,
+        sharing_friends_outside
+          .iter()
+          .map(|f| format!("{}({})", f.display_name, f.summoner_id))
+          .collect::<Vec<_>>()
+      );
+    }
     return Ok(());
   }
 
-  if !sharing_friends_outside.is_empty() {
+  if sharing_outside_count > 0 && !force_send_to_all {
     normal_log!(
       "[Party Mode][INFO] Not sending to {} paired friend(s) outside your party: {:?}",
-      sharing_friends_outside.len(),
+      sharing_outside_count,
       sharing_friends_outside
         .iter()
         .map(|f| format!("{}({})", f.display_name, f.summoner_id))
         .collect::<Vec<_>>()
+    );
+  }
+
+  let use_party_targets = sharing_in_party_count > 0;
+  let target_friends = if use_party_targets {
+    sharing_friends_in_party
+  } else {
+    sharing_friends_outside
+  };
+
+  if force_send_to_all && !use_party_targets {
+    normal_log!(
+      "[Party Mode] Force-sending skin_share to {} paired friend(s) outside the detected party",
+      target_friends.len()
     );
   }
 
@@ -271,11 +301,11 @@ pub async fn send_skin_share_to_paired_friends(
   };
 
   verbose_log!(
-    "[Party Mode][OUTBOUND] Delivering skin_share to {} confirmed party friend(s)",
-    sharing_friends_in_party.len()
+    "[Party Mode][OUTBOUND] Delivering skin_share to {} paired friend(s)",
+    target_friends.len()
   );
 
-  for friend in sharing_friends_in_party {
+  for friend in target_friends {
     let key = sent_share_key(&friend.summoner_id, champion_id, skin_id, chroma_id);
     {
       let mut sent = SENT_SKIN_SHARES.lock().unwrap();
