@@ -82,61 +82,46 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           
-          echo "::group::🔍 DEBUG: File System Diagnostics"
-          echo "Current Directory: $(pwd)"
-          echo "Listing ALL files in 'src-tauri/target' to locate artifacts:"
-          # This command will print the entire directory structure so we can't miss the file
-          ls -R src-tauri/target || echo "❌ Could not list target dir"
-          echo "::endgroup::"
-          
           echo "----------------------------------------"
           echo "🚀 Starting Robust Artifact Search..."
+          echo "Current Directory: $(pwd)"
           
           # Enable recursive globbing (globstar) to find files anywhere
           shopt -s globstar nullglob
           
           # --- FIND SIGNATURE (.sig) ---
-          # Look for .msi.sig recursively in the target folder
-          SIG_FILES=(src-tauri/target/**/*.msi.sig)
+          # We look for ANY .msi.sig file in the entire workspace
+          SIG_FILES=(**/*.msi.sig)
           
           echo "DEBUG: Found ${#SIG_FILES[@]} signature candidates: ${SIG_FILES[*]}"
           
           if [ ${#SIG_FILES[@]} -eq 0 ]; then
-            echo "❌ CRITICAL ERROR: No .sig file found in src-tauri/target/**"
-            # Fallback check in current dir just in case
-            SIG_FILES_ROOT=(*.msi.sig)
-            if [ ${#SIG_FILES_ROOT[@]} -gt 0 ]; then
-               echo "⚠️ Found file in root instead: ${SIG_FILES_ROOT[0]}"
-               SIG_FILES=("${SIG_FILES_ROOT[@]}")
-            else
-               exit 1
-            fi
+            echo "❌ CRITICAL ERROR: No .sig file found anywhere in the workspace."
+            # List all files to debug
+            echo "File listing:"
+            ls -R
+            exit 1
           fi
           
+          # Use the first match found
           SIG_FILE="${SIG_FILES[0]}"
           echo "✅ Selected signature file: $SIG_FILE"
-          SIGNATURE=$(cat "$SIG_FILE")
           
+          SIGNATURE=$(cat "$SIG_FILE")
           if [ -z "$SIGNATURE" ]; then
              echo "❌ Error: Signature file is empty!"
              exit 1
           fi
-
+          
           # --- FIND INSTALLER (.msi) ---
-          MSI_FILES=(src-tauri/target/**/*.msi)
+          # We look for ANY .msi file in the entire workspace
+          MSI_FILES=(**/*.msi)
           
           echo "DEBUG: Found ${#MSI_FILES[@]} MSI candidates: ${MSI_FILES[*]}"
           
           if [ ${#MSI_FILES[@]} -eq 0 ]; then
-            echo "❌ CRITICAL ERROR: No .msi file found in src-tauri/target/**"
-             # Fallback check in current dir
-            MSI_FILES_ROOT=(*.msi)
-            if [ ${#MSI_FILES_ROOT[@]} -gt 0 ]; then
-               echo "⚠️ Found file in root instead: ${MSI_FILES_ROOT[0]}"
-               MSI_FILES=("${MSI_FILES_ROOT[@]}")
-            else
-               exit 1
-            fi
+            echo "❌ CRITICAL ERROR: No .msi file found anywhere in the workspace."
+            exit 1
           fi
           
           MSI_FILE="${MSI_FILES[0]}"
