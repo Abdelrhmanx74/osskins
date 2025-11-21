@@ -52,7 +52,7 @@ export function DataUpdateModal({ isOpen, progress }: DataUpdateModalProps) {
 
     return (
         <Dialog open={isOpen}>
-            <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+            <DialogContent className="sm:max-w-md" onInteractOutside={(e) => { e.preventDefault(); }}>
                 <div className="flex flex-col space-y-6 py-4">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-xl">

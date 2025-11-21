@@ -10,7 +10,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Progress } from "@/components/ui/progress";
 
 export function AppUpdateBanner() {
-  const [updateAvailable, setUpdateAvailable] = useState<any>(null);
+  type UpdateEvent =
+    | { event: "Started"; data?: { contentLength?: number } }
+    | { event: "Progress"; data?: { chunkLength?: number } }
+    | { event: "Finished" }
+    | { event: string; data?: unknown };
+
+  type UpdaterUpdate = {
+    version?: string;
+    downloadAndInstall?: (cb?: (event: UpdateEvent) => void) => Promise<void>;
+  };
+
+  const [updateAvailable, setUpdateAvailable] = useState<UpdaterUpdate | null>(null);
   const [checking, setChecking] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [downloaded, setDownloaded] = useState(0);
@@ -20,7 +31,9 @@ export function AppUpdateBanner() {
     const checkForUpdates = async () => {
       try {
         const update = await check();
-        if (update?.available) {
+        // The `check` return can be null; the `available` property is deprecated and always `true`
+        // so check `update` for null instead
+        if (update) {
           setUpdateAvailable(update);
           toast.info(`Update available: ${update.version}`);
         }
@@ -31,7 +44,7 @@ export function AppUpdateBanner() {
       }
     };
 
-    checkForUpdates();
+    void checkForUpdates();
   }, []);
 
   const handleUpdate = async () => {
@@ -39,14 +52,25 @@ export function AppUpdateBanner() {
 
     setDownloading(true);
     try {
-      await updateAvailable.downloadAndInstall((event: any) => {
+      const downloader = updateAvailable.downloadAndInstall;
+      if (!downloader) return;
+
+      const toNumber = (v: unknown) => (typeof v === "number" ? v : 0);
+
+      await downloader((event: UpdateEvent) => {
         switch (event.event) {
-          case 'Started':
-            setTotal(event.data.contentLength || 0);
+          case 'Started': {
+            const data = event.data as { contentLength?: unknown } | undefined;
+            const contentLen = toNumber(data?.contentLength);
+            setTotal(contentLen);
             break;
-          case 'Progress':
-            setDownloaded((prev) => prev + event.data.chunkLength);
+          }
+          case 'Progress': {
+            const data = event.data as { chunkLength?: unknown } | undefined;
+            const chunk = toNumber(data?.chunkLength);
+            setDownloaded((prev: number) => prev + chunk);
             break;
+          }
           case 'Finished':
             // setDownloading(false); // Keep it open until relaunch
             break;
@@ -71,7 +95,7 @@ export function AppUpdateBanner() {
           <RefreshCw className="h-4 w-4 animate-spin-slow" />
           <span>New version available: {updateAvailable.version}</span>
         </div>
-        <Button size="sm" variant="default" onClick={handleUpdate} disabled={downloading}>
+        <Button size="sm" variant="default" onClick={() => void handleUpdate()} disabled={downloading}>
           {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
           {downloading ? "Updating..." : "Update Now"}
         </Button>
