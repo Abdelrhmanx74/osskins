@@ -36,7 +36,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "resources/fonts/*"
+      "resources/fonts.zip"
     ]
   },
   "plugins": {

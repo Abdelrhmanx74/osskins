@@ -349,50 +349,61 @@ pub fn get_selected_misc_items(app: &AppHandle) -> Result<Vec<MiscItem>, String>
         if let Some(suffix) = selected_id.strip_prefix("builtin-font-") {
           // Resource directory where bundled fonts may live. Try several common locations to
           // handle differences between dev (crate resources) and packaged layouts.
+          let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+
+          // 1. Check app data dir (extracted fonts)
+          if let Ok(app_data_dir) = app.path().app_data_dir() {
+             candidates.push(
+                app_data_dir
+                  .join("fonts")
+                  .join(format!("{}.fantome", suffix)),
+             );
+          }
+
+          // 2. Check resource dir (legacy/dev)
           if let Ok(resource_dir) = app.path().resource_dir() {
-            // Build a list of candidate font paths to check (dev vs packaged layouts)
-            let mut candidates: Vec<std::path::PathBuf> = Vec::new();
             candidates.push(
               resource_dir
                 .join("fonts")
-                .join(format!("{}.skin_file", suffix)),
+                .join(format!("{}.fantome", suffix)),
             );
             candidates.push(
               resource_dir
                 .join("resources")
                 .join("fonts")
-                .join(format!("{}.skin_file", suffix)),
+                .join(format!("{}.fantome", suffix)),
             );
             candidates.push(
               resource_dir
                 .join("..")
                 .join("resources")
                 .join("fonts")
-                .join(format!("{}.skin_file", suffix)),
+                .join(format!("{}.fantome", suffix)),
             );
+          }
 
-            // Also check the crate's resources folder (useful during cargo run from workspace)
-            let manifest_fonts = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-              .join("resources")
-              .join("fonts")
-              .join(format!("{}.skin_file", suffix));
-            candidates.push(manifest_fonts);
+          // 3. Check manifest dir (dev)
+          let manifest_fonts = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("fonts")
+            .join(format!("{}.fantome", suffix));
+          candidates.push(manifest_fonts);
 
-            // Find first existing candidate
-            let mut found_candidate: Option<std::path::PathBuf> = None;
-            for cand in candidates.iter() {
-              if cand.exists() {
-                found_candidate = Some(cand.clone());
-                break;
-              }
+          // Find first existing candidate
+          let mut found_candidate: Option<std::path::PathBuf> = None;
+          for cand in candidates.iter() {
+            if cand.exists() {
+              found_candidate = Some(cand.clone());
+              break;
             }
+          }
 
-            if let Some(candidate) = found_candidate {
+          if let Some(candidate) = found_candidate {
               // Ensure misc_items_dir exists
               let _ = std::fs::create_dir_all(&misc_items_dir);
 
               // Destination filename in misc_items dir
-              let dest_filename = format!("font_builtin_{}.skin_file", suffix);
+              let dest_filename = format!("font_builtin_{}.fantome", suffix);
               let dest_path = misc_items_dir.join(&dest_filename);
 
               // Copy if not already present
@@ -430,21 +441,11 @@ pub fn get_selected_misc_items(app: &AppHandle) -> Result<Vec<MiscItem>, String>
               );
               selected_items.push(builtin_misc);
               continue;
-            } else {
-              // Log the primary candidate path for debugging
-              let primary = resource_dir
-                .join("fonts")
-                .join(format!("{}.skin_file", suffix));
-              println!(
-                "DEBUG: Builtin font resource not found in known locations, primary checked: {}",
-                primary.display()
-              );
-            }
           } else {
-            println!(
-              "DEBUG: resource_dir unavailable; cannot resolve builtin font {}",
-              selected_id
-            );
+              println!(
+                "DEBUG: Builtin font resource not found in known locations for {}",
+                selected_id
+              );
           }
         }
       }
