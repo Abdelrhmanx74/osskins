@@ -86,16 +86,16 @@ jobs:
           ls -la src-tauri/target/release/bundle/msi/ || echo "MSI directory not found"
           
           # Find the .sig file
-          SIG_FILE=$(find src-tauri/target/release/bundle/msi -name "*.msi.sig" | head -n 1)
+          SIG_FILE=$(ls src-tauri/target/release/bundle/msi/*.msi.sig | head -n 1)
           if [ -z "$SIG_FILE" ]; then
             echo "Error: No .sig file found!"
             exit 1
           fi
           echo "Found signature file: $SIG_FILE"
           SIGNATURE=$(cat "$SIG_FILE")
-
+          
           # Find the .msi file
-          MSI_FILE=$(find src-tauri/target/release/bundle/msi -name "*.msi" | head -n 1)
+          MSI_FILE=$(ls src-tauri/target/release/bundle/msi/*.msi | head -n 1)
           if [ -z "$MSI_FILE" ]; then
             echo "Error: No .msi file found!"
             exit 1
@@ -138,8 +138,7 @@ jobs:
           generate_release_notes: true
           files: |
             src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/msi/*.msi.zip
-            src-tauri/target/release/bundle/msi/*.msi.zip.sig
+            src-tauri/target/release/bundle/msi/*.msi.sig
             updates.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -150,7 +149,6 @@ jobs:
           name: windows-build-${{ steps.version.outputs.version }}
           path: |
             src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/msi/*.msi.zip
-            src-tauri/target/release/bundle/msi/*.msi.zip.sig
+            src-tauri/target/release/bundle/msi/*.msi.sig
             updates.json
           retention-days: 30
