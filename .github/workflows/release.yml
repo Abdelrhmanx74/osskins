@@ -1,4 +1,7 @@
-name: Build & Publish Tauri Windows Release
+# Build & Publish Tauri Windows Release (with updater JSON)
+# NOTE: replace placeholders and ensure the secrets TAURI_SIGNING_PRIVATE_KEY and
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD are configured in the repo settings.
+name: Build & Publish Tauri Windows Release (with updater JSON)
 
 on:
   push:
@@ -54,8 +57,6 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          # If you already tag the repo to trigger this workflow, use the tag.
-          # tauri-action can substitute __VERSION__ by reading tauri.conf.json; if you prefer that behavior use tagName: app-v__VERSION__
           tagName: ${{ github.ref_name }}
           releaseName: 'Osskins ${{ github.ref_name }}'
           releaseBody: 'Release built by CI (tauri-action).'
@@ -69,193 +70,69 @@ jobs:
     needs: build_and_release
     env:
       REPO: ${{ github.repository }}
-      RELEASE_ID: ${{ needs.build_and_release.outputs.release_id }}
       TOKEN: ${{ secrets.GITHUB_TOKEN }}
       VERSION: ${{ github.ref_name }}
     steps:
       - name: Install jq & curl
         run: sudo apt-get update && sudo apt-get install -y jq curl
 
-      - name: List release assets
+      - name: Lookup release by tag
         run: |
-          # We need the release ID created by tauri-action; tauri-action normally creates the release and outputs info in logs.
-          # If tauri-action did not expose the release id, we lookup the release by tag:
-          TAG=${GITHUB_REF##*/} # e.g. v1.2.3
+          TAG=${GITHUB_REF##*/}
           echo "Looking up release for tag $TAG"
-          API="https://api.github.com/repos/${REPO}/releases/tags/$TAG"
+          API="https://api.github.com/repos/${REPO}/releases/tags/${TAG}"
           curl -s -H "Authorization: token ${TOKEN}" "$API" > /tmp/release.json
-          jq -r '.assets[].name' /tmp/release.json || true
-          cat /tmp/release.json > /tmp/assets.json
-
-      - name: Collect build artifacts (guarantee known location)
-        id: collect
-        shell: bash
-        run: |
-          echo "----------------------------------------"
-          echo "🔎 Collecting build artifacts into ./release-artifacts"
-          # ensure globstar works and missing matches don't expand
-          shopt -s globstar nullglob
-          
-          # Candidate searches (prefer the standard tauri bundle path first)
-          SIG_CANDIDATES=(src-tauri/target/release/bundle/**/*.msi.sig src-tauri/target/release/**/*.msi.sig **/*.msi.sig)
-          MSI_CANDIDATES=(src-tauri/target/release/bundle/**/*.msi src-tauri/target/release/**/*.msi **/*.msi)
-          
-          echo "DEBUG: SIG search patterns:"
-          printf '  %s\n' "${SIG_CANDIDATES[@]}"
-          echo "DEBUG: MSI search patterns:"
-          printf '  %s\n' "${MSI_CANDIDATES[@]}"
-          
-          # Expand the patterns into real file lists (first non-empty set)
-          SIG_FILES=()
-          for p in "${SIG_CANDIDATES[@]}"; do
-            files=( $p )
-            if [ ${#files[@]} -gt 0 ]; then
-              SIG_FILES=( "${files[@]}" )
-              break
-            fi
-          done
-          
-          MSI_FILES=()
-          for p in "${MSI_CANDIDATES[@]}"; do
-            files=( $p )
-            if [ ${#files[@]} -gt 0 ]; then
-              MSI_FILES=( "${files[@]}" )
-              break
-            fi
-          done
-          
-          echo "DEBUG: Found SIG files: ${SIG_FILES[*]:-<none>}"
-          echo "DEBUG: Found MSI files: ${MSI_FILES[*]:-<none>}"
-          
-          mkdir -p release-artifacts
-          
-          # Copy any found signature(s) and installer(s) into release-artifacts
-          copied=0
-          for f in "${SIG_FILES[@]}"; do
-            echo "Copying signature: $f -> release-artifacts/"
-            cp -v "$f" release-artifacts/ || { echo "Failed to copy $f"; exit 1; }
-            copied=$((copied+1))
-          done
-          for f in "${MSI_FILES[@]}"; do
-            echo "Copying installer: $f -> release-artifacts/"
-            cp -v "$f" release-artifacts/ || { echo "Failed to copy $f"; exit 1; }
-            copied=$((copied+1))
-          done
-          
-          # Fallback: if none found, also try top-level directory (some tools output there)
-          if [ $copied -eq 0 ]; then
-            echo "⚠️ No artifacts copied yet. Trying root and current dir fallback..."
-            fallback_sig=(./*.msi.sig)
-            fallback_msi=(./*.msi)
-            echo "DEBUG: fallback_sig=${fallback_sig[*]}"
-            echo "DEBUG: fallback_msi=${fallback_msi[*]}"
-            for f in "${fallback_sig[@]}"; do
-              if [ -f "$f" ]; then cp -v "$f" release-artifacts/ && copied=$((copied+1)); fi
-            done
-            for f in "${fallback_msi[@]}"; do
-              if [ -f "$f" ]; then cp -v "$f" release-artifacts/ && copied=$((copied+1)); fi
-            done
-          fi
-          
-          echo "----------------------------------------"
-          if [ $copied -eq 0 ]; then
-            echo "❌ CRITICAL: No .msi or .msi.sig found after all searches."
-            echo "Workspace listing (top-level):"
-            ls -la || true
-            echo "src-tauri bundle listing (if present):"
-            ls -la src-tauri/target/release/bundle || true
+          if [ ! -s /tmp/release.json ]; then
+            echo "/tmp/release.json is empty; release lookup failed" >&2
+            jq -C . /tmp/release.json || true
             exit 1
           fi
-          
-          echo "✅ Files copied to release-artifacts:"
-          ls -la release-artifacts || true
-          
-          # expose paths as outputs (first matches)
-          FIRST_SIG=$(ls release-artifacts/*.msi.sig 2>/dev/null | head -n1 || true)
-          FIRST_MSI=$(ls release-artifacts/*.msi 2>/dev/null | head -n1 || true)
-          echo "sig=${FIRST_SIG:-}" >> $GITHUB_OUTPUT
-          echo "msi=${FIRST_MSI:-}" >> $GITHUB_OUTPUT
+          echo "Release found:"
+          jq -r '.name, .id, .tag_name' /tmp/release.json || true
+          jq -r '.assets[].name' /tmp/release.json || true
 
-      - name: Get version from tag or input
-        id: version
-        shell: bash
+      - name: Choose installer asset + matching .sig
+        id: pick
         run: |
           # Prefer NSIS .exe, fallback to MSI
-          exe_name=$(jq -r '.assets[] | select(.name|endswith(".exe")) | .name' /tmp/assets.json | head -n1)
-          msi_name=$(jq -r '.assets[] | select(.name|endswith(".msi")) | .name' /tmp/assets.json | head -n1)
-          if [ -n "$exe_name" ]; then
-            installer="$exe_name"
-            sig_name="${exe_name}.sig"
-          elif [ -n "$msi_name" ]; then
-            installer="$msi_name"
-            sig_name="${msi_name}.sig"
-          else
+          installer=$(jq -r '.assets[] | select(.name|endswith(".exe")) | .name' /tmp/release.json | head -n1)
+          if [ -z "$installer" ]; then
+            installer=$(jq -r '.assets[] | select(.name|endswith(".msi")) | .name' /tmp/release.json | head -n1)
+          fi
+          if [ -z "$installer" ]; then
             echo "No installer (.exe or .msi) found in release assets" >&2
+            jq -r '.assets[].name' /tmp/release.json >&2 || true
             exit 1
           fi
+          # signature file is installer + ".sig"
+          sig_name="${installer}.sig"
           echo "installer=$installer" >> $GITHUB_OUTPUT
           echo "sig_name=$sig_name" >> $GITHUB_OUTPUT
 
-      - name: Create updates.json (use release-artifacts)
-        id: create_updates
-        shell: bash
+      - name: Fetch asset URLs and signature content, build updates.json
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          TAG="${{ steps.version.outputs.tag }}"
-          DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-          
-          echo "🚀 Creating updates.json using files in ./release-artifacts"
-          echo "Contents of release-artifacts:"
-          ls -la release-artifacts || true
-          
-          # Read the signature file we copied earlier (use step output if present)
-          SIG_PATH="${{ steps.collect.outputs.sig }}"
-          MSI_PATH="${{ steps.collect.outputs.msi }}"
-          
-          # Fallback to any file in release-artifacts
-          if [ -z "$SIG_PATH" ]; then
-            SIG_PATH=$(ls release-artifacts/*.msi.sig 2>/dev/null | head -n1 || true)
-          fi
-          if [ -z "$MSI_PATH" ]; then
-            MSI_PATH=$(ls release-artifacts/*.msi 2>/dev/null | head -n1 || true)
-          fi
-          
-          echo "DEBUG: Using SIG_PATH=$SIG_PATH"
-          echo "DEBUG: Using MSI_PATH=$MSI_PATH"
-          
-          if [ -z "$SIG_PATH" ] || [ ! -f "$SIG_PATH" ]; then
-            echo "❌ No signature file found at $SIG_PATH"
-            ls -la release-artifacts || true
+          installer="${{ steps.pick.outputs.installer }}"
+          sig_name="${{ steps.pick.outputs.sig_name }}"
+          echo "Selected installer: $installer"
+          installer_url=$(jq -r --arg n "$installer" '.assets[] | select(.name==$n) | .browser_download_url' /tmp/release.json)
+          sig_url=$(jq -r --arg n "$sig_name" '.assets[] | select(.name==$n) | .browser_download_url' /tmp/release.json)
+
+          if [ -z "$installer_url" ] || [ -z "$sig_url" ]; then
+            echo "Installer or its .sig not found among release assets:" >&2
+            jq -r '.assets[].name' /tmp/release.json >&2 || true
+            echo "installer_url: $installer_url" >&2
+            echo "sig_url: $sig_url" >&2
             exit 1
           fi
-          if [ -z "$MSI_PATH" ] || [ ! -f "$MSI_PATH" ]; then
-            echo "❌ No MSI file found at $MSI_PATH"
-            ls -la release-artifacts || true
-            exit 1
-          fi
-          
-          SIGNATURE=$(cat "$SIG_PATH")
-          MSI_FILENAME=$(basename "$MSI_PATH")
-          
-          cat > updates.json << EOF
-          {
-            "version": "$VERSION",
-            "date": "$DATE",
-            "platforms": {
-              "windows-x86_64": {
-                "signature": "$SIGNATURE",
-                "url": "https://github.com/${{ github.repository }}/releases/download/$TAG/$MSI_FILENAME"
-              }
-            },
-            "body": "See release notes at https://github.com/${{ github.repository }}/releases/tag/$TAG"
-          }
-          EOF
-          
-          echo "Created updates.json:"
-          cat updates.json
 
           # Download the .sig and trim newlines (Tauri expects raw signature content)
           curl -sL -H "Authorization: token $TOKEN" -o /tmp/installer.sig "$sig_url"
+          if [ ! -s /tmp/installer.sig ]; then
+            echo "Downloaded .sig is empty" >&2
+            exit 1
+          fi
           signature=$(tr -d '\r\n' < /tmp/installer.sig)
 
           # Use version without leading v
@@ -274,30 +151,19 @@ jobs:
   }
 }
 EOF
-
           echo "Built updates.json:"
           cat updates.json
-      - name: Upload updates.json to release
-        uses: actions/upload-release-asset@v1
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: Osskins ${{ steps.version.outputs.tag }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-          files: |
-            release-artifacts/*.msi
-            release-artifacts/*.msi.sig
-            updates.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-build-${{ steps.version.outputs.version }}
-          path: |
-            release-artifacts/*.msi
-            release-artifacts/*.msi.sig
-            updates.json
-          retention-days: 30
+      - name: Upload updates.json to release via GitHub uploads API
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          upload_url_template=$(jq -r .upload_url /tmp/release.json)
+          # strip template suffix like {?name,label}
+          upload_url="${upload_url_template%\{*}"
+          echo "Uploading updates.json to $upload_url?name=updates.json"
+          response=$(curl -sSL -X POST -H "Authorization: token $TOKEN" \
+            -H "Content-Type: application/json" --data-binary @updates.json \
+            "$upload_url?name=updates.json")
+          echo "Upload response summary:"
+          echo "$response" | jq -r '.url, .state, .browser_download_url' || echo "$response"
