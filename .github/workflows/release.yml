@@ -38,11 +38,7 @@ jobs:
       - name: Install frontend deps
         shell: pwsh
         run: pnpm install
-
-      - name: Build frontend
-        shell: pwsh
-        run: pnpm build
-
+        
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -137,6 +133,41 @@ jobs:
       - name: Install jq & curl
         run: sudo apt-get update && sudo apt-get install -y jq curl
 
+      - name: Resolve cslol zip URL (fallback)
+        # This step tries the latest problematic tag first and falls back to the older working tag.
+        # Sets CSLOL_ZIP_URL and CSLOL_ZIP_TAG in the job environment (GITHUB_ENV).
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tried_tags=("2025-11-19-c1a81da" "2025-11-02-4d6f7f2")
+          found_url=""
+          found_tag=""
+          for tag in "${tried_tags[@]}"; do
+            echo "Checking LeagueToolkit/cslol-manager release for tag: $tag"
+            API="https://api.github.com/repos/LeagueToolkit/cslol-manager/releases/tags/$tag"
+            resp=$(curl -s -H "Authorization: token ${TOKEN}" "$API")
+            # try to find a .zip asset (first match)
+            asset_url=$(echo "$resp" | jq -r '.assets[]?.browser_download_url | select(test("\\.zip$"))' | head -n1 || true)
+            if [ -n "$asset_url" ] && [ "$asset_url" != "null" ]; then
+              found_url="$asset_url"
+              found_tag="$tag"
+              echo "Found cslol zip for tag $tag: $asset_url"
+              break
+            else
+              echo "No zip asset for tag $tag (or release not found)."
+            fi
+          done
+
+          if [ -n "$found_url" ]; then
+            echo "CSLOL_ZIP_URL=$found_url" >> $GITHUB_ENV
+            echo "CSLOL_ZIP_TAG=$found_tag" >> $GITHUB_ENV
+          else
+            echo "Warning: could not find a .zip asset for any tried tags. Proceeding without cslol zip."
+            echo "CSLOL_ZIP_URL=" >> $GITHUB_ENV
+            echo "CSLOL_ZIP_TAG=" >> $GITHUB_ENV
+          fi
+
       - name: Lookup release by tag
         run: |
           TAG=${GITHUB_REF##*/}
@@ -210,6 +241,16 @@ jobs:
             exit 1
           fi
           signature=$(tr -d '\r\n' < /tmp/installer.sig)
+
+          # If CSLOL_ZIP_URL was found in previous step, include it in log (you can use it however you need)
+          if [ -n "${CSLOL_ZIP_URL:-}" ]; then
+            echo "Using cslol zip from tag ${CSLOL_ZIP_TAG:-} : ${CSLOL_ZIP_URL:-}"
+            # Optionally you could download or include this file in updates.json or upload it to your release.
+            # Example to download it locally (uncomment if you need it):
+            # curl -sL -H "Authorization: token $TOKEN" -o /tmp/cslol.zip "${CSLOL_ZIP_URL}"
+          else
+            echo "No cslol zip resolved; continuing without it."
+          fi
 
           # Use version without leading v
           ver="${VERSION#v}"
