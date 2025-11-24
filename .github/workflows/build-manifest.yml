@@ -38,49 +38,87 @@ jobs:
         id: fetch_releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RECENT_LIMIT: 50
         run: |
           set -euo pipefail
           TMP_RELEASES="app/tmp/external_releases.json"
           REPO="LeagueToolkit/cslol-manager"
 
-          echo "Fetching latest release for $REPO..."
+          mkdir -p "$(dirname "$TMP_RELEASES")"
+
+          echo "Fetching up to ${RECENT_LIMIT} recent releases for $REPO..."
           export GITHUB_TOKEN="${GH_TOKEN}"
 
-          # If gh fails, create an empty releases file rather than failing whole job
-          if ! RELEASE_JSON=$(gh release view --repo "$REPO" --json tagName,assets 2>/dev/null); then
-            echo "Warning: gh release view failed for $REPO - saving empty external_releases"
+          # Get recent releases (newest first). If this fails, write empty array and continue.
+          if ! RELEASES_JSON=$(gh release list --repo "$REPO" --limit "${RECENT_LIMIT}" --json tagName,publishedAt,assets 2>/dev/null); then
+            echo "Warning: gh release list failed for $REPO - saving empty external_releases"
             jq -n '[]' > "$TMP_RELEASES"
-          else
-            TAG_NAME=$(echo "$RELEASE_JSON" | jq -r '.tagName // ""')
-            ASSET=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("cslol-manager.*\\.(zip|exe|7z|tar\\.gz)$"; "i")) | .' || true)
-            ASSET=$(echo "$ASSET" | jq -s '.[0]')
-
-            if [ -z "$ASSET" ] || [ "$ASSET" = "null" ]; then
-              echo "Warning: Could not find a cslol-manager archive asset. Writing empty list."
-              jq -n '[]' > "$TMP_RELEASES"
-            else
-              ASSET_NAME=$(echo "$ASSET" | jq -r '.name')
-              DOWNLOAD_URL=$(echo "$ASSET" | jq -r '.browser_download_url // .url')
-              SIZE=$(echo "$ASSET" | jq -r '.size // 0')
-
-              jq -n --arg repo "$REPO" \
-                    --arg tag "$TAG_NAME" \
-                    --arg name "$ASSET_NAME" \
-                    --arg url "$DOWNLOAD_URL" \
-                    --argjson size "$SIZE" \
-                    '[{ "repo": $repo, "tag_name": $tag, "asset_name": $name, "browser_download_url": $url, "size": $size }]' \
-                    > "$TMP_RELEASES"
-            fi
+            echo "selected_tag=" >> $GITHUB_OUTPUT
+            echo "selected_asset_name=" >> $GITHUB_OUTPUT
+            exit 0
           fi
 
-          echo "External releases saved to $TMP_RELEASES"
+          # Helper: returns matching asset JSON encoded as base64 for a release JSON blob
+          find_matching_asset_b64() {
+            echo "$1" | jq -c -r '.assets[]? | select(.name | test("cslol-manager.*\\.(zip|exe|7z|tar\\.gz)$"; "i")) | @base64' || true
+          }
+
+          selected_tag=""
+          selected_asset_b64=""
+          # iterate releases in order (jq preserves the order from gh release list — newest first)
+          echo "$RELEASES_JSON" | jq -c '.[]' | while read -r rel; do
+            asset_b64=$(find_matching_asset_b64 "$rel" | head -n1 || true)
+            if [ -n "$asset_b64" ]; then
+              selected_tag=$(echo "$rel" | jq -r '.tagName // ""')
+              selected_asset_b64="$asset_b64"
+              # write to a temp file for later pickup outside the while subshell
+              printf '%s\n' "$selected_tag" > /tmp/selected_tag.txt
+              printf '%s\n' "$selected_asset_b64" > /tmp/selected_asset_b64.txt
+              break
+            fi
+          done
+
+          # If the while loop used a subshell, read back values from tmp files
+          if [ -f /tmp/selected_tag.txt ]; then
+            selected_tag=$(cat /tmp/selected_tag.txt)
+            selected_asset_b64=$(cat /tmp/selected_asset_b64.txt)
+            rm -f /tmp/selected_tag.txt /tmp/selected_asset_b64.txt
+          fi
+
+          if [ -z "${selected_asset_b64:-}" ]; then
+            echo "No matching cslol-manager archive found in the ${RECENT_LIMIT} most recent releases for $REPO."
+            jq -n '[]' > "$TMP_RELEASES"
+            echo "selected_tag=" >> $GITHUB_OUTPUT
+            echo "selected_asset_name=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Decode selected asset JSON and extract fields
+          selected_asset_json=$(echo "$selected_asset_b64" | base64 --decode)
+          ASSET_NAME=$(echo "$selected_asset_json" | jq -r '.name // ""')
+          DOWNLOAD_URL=$(echo "$selected_asset_json" | jq -r '.browser_download_url // .url // ""')
+          SIZE=$(echo "$selected_asset_json" | jq -r '.size // 0')
+
+          # Write the external release info in the same shape downstream expects
+          jq -n --arg repo "$REPO" \
+                --arg tag "$selected_tag" \
+                --arg name "$ASSET_NAME" \
+                --arg url "$DOWNLOAD_URL" \
+                --argjson size "$SIZE" \
+                '[{ "repo": $repo, "tag_name": $tag, "asset_name": $name, "browser_download_url": $url, "size": $size }]' \
+                > "$TMP_RELEASES"
+
+          echo "External releases saved to $TMP_RELEASES (using tag ${selected_tag})"
+          # Export selected tag & asset name as step outputs
+          echo "selected_tag=${selected_tag}" >> $GITHUB_OUTPUT
+          echo "selected_asset_name=${ASSET_NAME}" >> $GITHUB_OUTPUT
 
       - name: Check upstream commit and skip build if unchanged
         id: check_upstream
         run: |
           set -euo pipefail
           current_commit=""
-          # Check the manifest where Pages is configured to serve from: main:/docs
+          # Use main:/docs because Pages is configured to serve from that location
           REMOTE_MANIFEST_URL="https://raw.githubusercontent.com/${{ github.repository }}/main/docs/manifest.json"
           if curl --output /dev/null --silent --head --fail "$REMOTE_MANIFEST_URL"; then
              current_commit=$(curl -s "$REMOTE_MANIFEST_URL" | jq -r '.source_repo' 2>/dev/null | sed -E 's/.*@(.+)$/\1/' || true)
@@ -226,11 +264,11 @@ jobs:
       - name: Deploy only docs/ to main (non-destructive)
         run: |
           set -euo pipefail
-          # We're already checked out to the repo (actions/checkout).
-          # Switch to main explicitly to ensure we commit to the branch that Pages builds from.
+          # Ensure we're on main
+          git fetch origin main:main
           git checkout main
 
-          # Ensure docs/ exists and copy generated manifest into it
+          # Ensure docs exists and copy generated manifest into it
           mkdir -p docs
           if [ -f app/docs/manifest.json ]; then
             cp app/docs/manifest.json docs/manifest.json
@@ -238,7 +276,7 @@ jobs:
             jq -n '[]' > docs/manifest.json
           fi
 
-          # Minimal index and .nojekyll so Pages won't run SCSS/Jekyll if you prefer
+          # Minimal index and .nojekyll so Pages won't run Jekyll/SCSS if you prefer
           cat > docs/index.html <<'HTML'
           <!doctype html>
           <html>
