@@ -1,0 +1,34 @@
+name: Build & Publish GitHub Pages (Jekyll)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Build Jekyll site (use repo root as source)
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: '.'
+          destination: './_site'
+          verbose: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload built site artifact (for debugging)
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-artifact
+          path: ./_site
