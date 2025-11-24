@@ -39,10 +39,6 @@ jobs:
         shell: pwsh
         run: pnpm install
 
-      - name: Build frontend
-        shell: pwsh
-        run: pnpm build
-
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -73,8 +69,22 @@ jobs:
           if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
             choco install gh -y | Out-Null
           }
+
           # Authenticate gh with the token (non-interactive)
           echo $env:GITHUB_TOKEN | gh auth login --with-token
+
+          # Ensure release exists (create if missing)
+          $exists = $true
+          gh release view $RELEASE_TAG 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Release $RELEASE_TAG not found; creating it."
+            gh release create $RELEASE_TAG --title "Osskins $RELEASE_TAG" --notes "Release created by CI (uploading installers)"
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "Failed to create release $RELEASE_TAG" ; exit 1
+            }
+          } else {
+            Write-Host "Release $RELEASE_TAG exists."
+          }
 
           $bundle = "src-tauri\target\release\bundle"
           Write-Host "Searching for installers under $bundle"
@@ -92,8 +102,14 @@ jobs:
           }
 
           foreach ($p in $paths) {
-            Write-Host "Uploading $($p.FullName) to release $RELEASE_TAG"
-            gh release upload $RELEASE_TAG $p.FullName --clobber
+            $full = $p.FullName
+            Write-Host "Uploading $full to release $RELEASE_TAG"
+            # Use call operator with argument array to avoid issues with spaces/backslashes
+            $args = @($RELEASE_TAG, $full, '--clobber')
+            & gh release upload @args
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "gh release upload failed for $full with exit code $LASTEXITCODE" ; exit $LASTEXITCODE
+            }
           }
 
           Write-Host "Upload step completed. Verify release assets on GitHub."
@@ -130,7 +146,7 @@ jobs:
           # Use the release JSON produced above
           assets_json=/tmp/release.json
           echo "Assets present:"
-          jq -r '.[].name' $assets_json || true
+          jq -r '.assets[].name' $assets_json || true
 
           # Prefer an installer by common extensions (.exe, .msi, .AppImage, .tar.gz, .zip, .dmg)
           installer_url=$(jq -r '.assets[] | select(.name|test("\\.(exe|msi|AppImage|tar.gz|zip|dmg)$")) | .browser_download_url' $assets_json | head -n1)
