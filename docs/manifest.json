@@ -61728,5 +61728,13 @@
       "fingerprint": "cd4db287a275d2a159a9464f84d44b153eb05163d383e4972d155a7e5e52a319"
     }
   ],
-  "external_releases": []
+  "external_releases": [
+    {
+      "repo": "LeagueToolkit/cslol-manager",
+      "tag_name": "2025-11-19-c1a81da",
+      "asset_name": "cslol-manager-windows.exe",
+      "browser_download_url": "https://github.com/LeagueToolkit/cslol-manager/releases/download/2025-11-19-c1a81da/cslol-manager-windows.exe",
+      "size": 35721061
+    }
+  ]
 }
