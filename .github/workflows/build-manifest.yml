@@ -32,8 +32,7 @@ jobs:
 
       - name: Ensure directories exist
         run: |
-          mkdir -p app/tmp
-          mkdir -p app/docs
+          mkdir -p app/tmp app/docs docs
 
       - name: Fetch external releases info (always)
         id: fetch_releases
@@ -220,14 +219,13 @@ jobs:
         if: steps.check_upstream.outputs.changed == 'true'
         run: |
           set -euo pipefail
-          cd app
-          mkdir -p docs
-
           SRC_SHA=$(git -C ../upstream rev-parse HEAD || echo "")
           SRC_BRANCH="main"
 
-          CHAMPS_FILE="tmp/champions.json"
-          RELEASES_FILE="tmp/external_releases.json"
+          CHAMPS_FILE="app/tmp/champions.json"
+          RELEASES_FILE="app/tmp/external_releases.json"
+
+          mkdir -p app/docs app/tmp
 
           if [ ! -f "$CHAMPS_FILE" ]; then
             jq -n '[]' > "$CHAMPS_FILE"
@@ -247,48 +245,42 @@ jobs:
             --slurpfile champions "${CHAMPS_FILE}" \
             --slurpfile releases "${RELEASES_FILE}" \
             '{schema:2, generated_at:$gen, source_repo:$repo, branch:$branch, license:$license_url, source:$source_url, attribution:$attribution, champions: ($champions[0] // []), external_releases: ($releases[0] // []) }' \
-            > docs/manifest.json
-
-          # Ensure path exists for downstream steps that expect app/docs/manifest.json
-          mkdir -p ../app/docs
-          cp docs/manifest.json ../app/docs/manifest.json
+            > app/docs/manifest.json
 
       - name: Merge external_releases into existing manifest (if upstream unchanged)
         if: steps.check_upstream.outputs.changed == 'false'
         run: |
           set -euo pipefail
-          mkdir -p app/docs
-          # Fetch existing manifest from the location Pages uses (main:/docs). If not found, start from empty object.
-          if curl -s "https://raw.githubusercontent.com/${{ github.repository }}/main/docs/manifest.json" > app/docs/manifest.json; then
-            echo "Fetched existing main:/docs/manifest.json into app/docs/manifest.json"
+          mkdir -p app/tmp app/docs
+
+          EXISTING_TMP="app/tmp/existing_manifest.json"
+          if curl -s "https://raw.githubusercontent.com/${{ github.repository }}/main/docs/manifest.json" > "$EXISTING_TMP"; then
+            echo "Fetched existing main:/docs/manifest.json into $EXISTING_TMP"
           else
-            echo "{}" > app/docs/manifest.json
+            echo "{}" > "$EXISTING_TMP"
             echo "No existing manifest found — starting from empty manifest"
           fi
 
-          cd app
-          RELEASES_FILE="tmp/external_releases.json"
+          RELEASES_FILE="app/tmp/external_releases.json"
           if [ ! -f "$RELEASES_FILE" ]; then
             jq -n '[]' > "$RELEASES_FILE"
           fi
-          jq --slurpfile releases "${RELEASES_FILE}" \
-            '. + { external_releases: ($releases[0] // []) }' \
-            docs/manifest.json > docs/manifest.new.json
-          mv docs/manifest.new.json docs/manifest.json
 
-          # Ensure app/docs/manifest.json is present for deploy step
-          mkdir -p ../app/docs
-          cp docs/manifest.json ../app/docs/manifest.json
+          # Merge releases into the existing manifest, write directly to app/docs/manifest.json
+          jq --slurpfile releases "${RELEASES_FILE}" \
+             '. + { external_releases: ($releases[0] // []) }' \
+             "$EXISTING_TMP" > app/docs/manifest.json
 
       - name: Deploy only docs/ to main (non-destructive)
         run: |
           set -euo pipefail
-          # Ensure we have the latest main
+          # ensure we have up-to-date main
           git fetch origin main:main
           git checkout main
 
           # Ensure docs exists and copy generated manifest into it
           mkdir -p docs
+
           if [ -f app/docs/manifest.json ]; then
             cp app/docs/manifest.json docs/manifest.json
           else
