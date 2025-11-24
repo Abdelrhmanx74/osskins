@@ -1,42 +1,29 @@
-name: Build & Publish Updater Artifacts (Windows only)
+# Build & Publish Tauri Windows Release (with explicit installer upload and updates.json generation)
+# NOTE: set TAURI_SIGNING_PRIVATE_KEY and (optionally) TAURI_SIGNING_PRIVATE_KEY_PASSWORD in repo Secrets.
+name: Build & Publish Tauri Windows Release (with updater JSON)
 
 on:
   push:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
-  create_release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-      release_id: ${{ steps.create_release.outputs.id }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        with:
-          tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build_and_upload:
-    name: Build on Windows and upload artifacts
-    needs: create_release
+  build_and_release:
+    name: Build on Windows and create Release via tauri-action
     runs-on: windows-latest
     env:
-      RELEASE_TAG: ${{ github.ref_name }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Checkout
+      - name: Checkout repository (with submodules)
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -46,9 +33,9 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 8
+          pnpm-version: 8
 
-      - name: Install dependencies
+      - name: Install frontend deps
         shell: pwsh
         run: pnpm install
 
@@ -62,92 +49,118 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Build tauri bundle
+      - name: Run tauri-action (build & release)
+        uses: tauri-apps/tauri-action@v0
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        shell: pwsh
-        run: pnpm tauri build
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Osskins ${{ github.ref_name }}'
+          releaseBody: 'Release built by CI (tauri-action).'
+          releaseDraft: false
+          prerelease: false
+          args: ''
 
-      - name: Find Windows artifacts (exe/msi and .sig)
-        id: find_all
-        shell: pwsh
-        run: |
-          $root = "src-tauri\target\release\bundle"
-          Write-Host "Searching under $root"
-          $files = Get-ChildItem -Path $root -Recurse -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.Extension -in ".exe", ".msi", ".sig" }
-          if (-not $files) { Write-Error "No artifacts found"; exit 1 }
-          $list = $files | ForEach-Object { $_.FullName }
-          $joined = ($list -join "`n")
-          Write-Host "Artifacts:`n$joined"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "files<<EOF`n$joined`nEOF"
-
-      - name: Upload all artifacts to release (exe/msi/sig)
+      - name: Upload installers to release (ensure installers present)
         shell: pwsh
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Install gh if needed
           if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
             choco install gh -y | Out-Null
           }
-          $files = "${{ steps.find_all.outputs.files }}".Split("`n") | Where-Object { $_ -ne "" }
-          foreach ($f in $files) {
-            Write-Host "Uploading $f"
-            gh release upload "$env:RELEASE_TAG" "$f" --clobber
+          # Authenticate gh with the token (non-interactive)
+          echo $env:GITHUB_TOKEN | gh auth login --with-token
+
+          $bundle = "src-tauri\target\release\bundle"
+          Write-Host "Searching for installers under $bundle"
+          $paths = Get-ChildItem -Path $bundle -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -in ".exe", ".msi", ".AppImage", ".dmg", ".zip", ".tar.gz" }
+
+          if (-not $paths) {
+            Write-Host "No installers found to upload. Listing bundle tree:"
+            if (Test-Path $bundle) {
+              Get-ChildItem -Path $bundle -Recurse | ForEach-Object { Write-Host $_.FullName }
+            } else {
+              Write-Host "Bundle path $bundle does not exist."
+            }
+            throw "No installer files found in $bundle; build may have failed or produced different output path"
           }
 
-  generate_metadata:
-    name: Generate updates.json from Tauri .sig
-    needs: [create_release, build_and_upload]
+          foreach ($p in $paths) {
+            Write-Host "Uploading $($p.FullName) to release $RELEASE_TAG"
+            gh release upload $RELEASE_TAG $p.FullName --clobber
+          }
+
+          Write-Host "Upload step completed. Verify release assets on GitHub."
+
+  generate_updates_json:
+    name: Generate static updates.json from uploaded release assets
     runs-on: ubuntu-latest
+    needs: build_and_release
+    env:
+      REPO: ${{ github.repository }}
+      TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION: ${{ github.ref_name }}
     steps:
-      - name: Install jq, curl
+      - name: Install jq & curl
+        run: sudo apt-get update && sudo apt-get install -y jq curl
+
+      - name: Lookup release by tag
         run: |
-          sudo apt-get update && sudo apt-get install -y jq curl
+          TAG=${GITHUB_REF##*/}
+          echo "Looking up release for tag $TAG"
+          API="https://api.github.com/repos/${REPO}/releases/tags/${TAG}"
+          curl -s -H "Authorization: token ${TOKEN}" "$API" > /tmp/release.json
+          if [ ! -s /tmp/release.json ]; then
+            echo "/tmp/release.json is empty; release lookup failed" >&2
+            jq -C . /tmp/release.json || true
+            exit 1
+          fi
+          echo "Release found:"
+          jq -r '.name, .id, .tag_name' /tmp/release.json || true
+          jq -r '.assets[].name' /tmp/release.json || true
 
       - name: Build updates.json using uploaded assets and Tauri signatures
-        env:
-          REPO: ${{ github.repository }}
-          RELEASE_ID: ${{ needs.create_release.outputs.release_id }}
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ github.ref_name }}
         run: |
-          API="https://api.github.com/repos/$REPO/releases/$RELEASE_ID/assets"
-          echo "Listing assets from $API"
-          curl -s -H "Authorization: token $TOKEN" "$API" > /tmp/assets.json
+          # Use the release JSON produced above
+          assets_json=/tmp/release.json
           echo "Assets present:"
-          jq -r '.[].name' /tmp/assets.json || true
+          jq -r '.[].name' $assets_json || true
 
-          # Prefer an installer by extension (.exe, .msi, .AppImage, .tar.gz, .zip, .dmg)
-          installer_url=$(jq -r '.[] | select(.name|test("\\.(exe|msi|AppImage|tar.gz|zip|dmg)$")) | .browser_download_url' /tmp/assets.json | head -n1)
+          # Prefer an installer by common extensions (.exe, .msi, .AppImage, .tar.gz, .zip, .dmg)
+          installer_url=$(jq -r '.assets[] | select(.name|test("\\.(exe|msi|AppImage|tar.gz|zip|dmg)$")) | .browser_download_url' $assets_json | head -n1)
 
           # If no installer found, try to match a .sig to a base name (e.g. foo.exe.sig -> foo.exe)
           if [ -z "$installer_url" ]; then
-            sig_name=$(jq -r '.[] | select(.name|endswith(".sig")) | .name' /tmp/assets.json | head -n1)
+            sig_name=$(jq -r '.assets[] | select(.name|endswith(".sig")) | .name' $assets_json | head -n1)
             if [ -n "$sig_name" ]; then
               base_name="${sig_name%.sig}"
               echo "Found signature $sig_name; trying base $base_name"
-              installer_url=$(jq -r --arg b "$base_name" '.[] | select(.name==$b) | .browser_download_url' /tmp/assets.json | head -n1)
+              installer_url=$(jq -r --arg b "$base_name" '.assets[] | select(.name==$b) | .browser_download_url' $assets_json | head -n1)
             fi
           fi
 
           if [ -z "$installer_url" ]; then
             echo "No installer asset found in release. Available assets:"
-            jq -r '.[].name' /tmp/assets.json || true
+            jq -r '.assets[].name' $assets_json || true
             echo ""
             echo "Make sure the Windows build job uploaded the installer (.exe or .msi) to the release. The job may have uploaded only the .sig."
             exit 1
           fi
 
-          # Now find the matching signature asset for that installer
+          # Determine installer name and matching sig
           installer_name=$(basename "$installer_url")
           sig_asset_name="${installer_name}.sig"
-          sig_url=$(jq -r --arg n "$sig_asset_name" '.[] | select(.name==$n) | .browser_download_url' /tmp/assets.json | head -n1)
+          sig_url=$(jq -r --arg n "$sig_asset_name" '.assets[] | select(.name==$n) | .browser_download_url' $assets_json | head -n1)
 
-          # If signature not found by installer_name.sig, also try to find any .sig and use its content
+          # Fallback: use first .sig if exact match not found
           if [ -z "$sig_url" ]; then
-            sig_url=$(jq -r '.[] | select(.name|endswith(".sig")) | .browser_download_url' /tmp/assets.json | head -n1)
+            sig_url=$(jq -r '.assets[] | select(.name|endswith(".sig")) | .browser_download_url' $assets_json | head -n1)
             if [ -n "$sig_url" ]; then
               echo "Warning: exact matching .sig not found. Falling back to first .sig in release."
             fi
@@ -155,7 +168,7 @@ jobs:
 
           if [ -z "$sig_url" ]; then
             echo "No .sig asset found in release. Available assets:"
-            jq -r '.[].name' /tmp/assets.json || true
+            jq -r '.assets[].name' $assets_json || true
             exit 1
           fi
 
@@ -163,6 +176,7 @@ jobs:
           echo "Installer URL: $installer_url"
           echo "Signature URL: $sig_url"
 
+          # Download the .sig and trim newlines (Tauri expects raw signature content)
           curl -sL -H "Authorization: token $TOKEN" -o /tmp/installer.sig "$sig_url"
           if [ ! -s /tmp/installer.sig ]; then
             echo "Downloaded .sig is empty" >&2
@@ -186,14 +200,19 @@ jobs:
               }
             }' > updates.json
 
+          echo "Built updates.json:"
           cat updates.json
 
-      - name: Upload updates.json to release
-        uses: actions/upload-release-asset@v1
+      - name: Upload updates.json to release via GitHub uploads API
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: updates.json
-          asset_name: updates.json
-          asset_content_type: application/json
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get upload_url from the release JSON and strip template suffix
+          upload_url_template=$(jq -r .upload_url /tmp/release.json)
+          upload_url="${upload_url_template%\{*}"
+          echo "Uploading updates.json to $upload_url?name=updates.json"
+          response=$(curl -sSL -X POST -H "Authorization: token $TOKEN" \
+            -H "Content-Type: application/json" --data-binary @updates.json \
+            "$upload_url?name=updates.json")
+          echo "Upload response summary:"
+          echo "$response" | jq -r '.url, .state, .browser_download_url' || echo "$response"
