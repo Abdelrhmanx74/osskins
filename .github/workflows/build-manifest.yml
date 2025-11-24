@@ -34,72 +34,87 @@ jobs:
         run: |
           mkdir -p app/tmp app/docs docs
 
-      - name: Fetch external releases info (always)
+      - name: Fetch external releases info (latest → previous fallback)
         id: fetch_releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RECENT_LIMIT: 50
         run: |
           set -euo pipefail
+
           TMP_RELEASES="app/tmp/external_releases.json"
           REPO="LeagueToolkit/cslol-manager"
-
           mkdir -p "$(dirname "$TMP_RELEASES")"
 
-          echo "Fetching up to ${RECENT_LIMIT} recent releases for $REPO..."
+          echo "Attempting to find a cslol-manager archive asset in the latest release first..."
           export GITHUB_TOKEN="${GH_TOKEN}"
 
-          # Get recent releases (newest first). If this fails, write empty array and continue.
-          if ! RELEASES_JSON=$(gh release list --repo "$REPO" --limit "${RECENT_LIMIT}" --json tagName,publishedAt,assets 2>/dev/null); then
-            echo "Warning: gh release list failed for $REPO - saving empty external_releases"
-            jq -n '[]' > "$TMP_RELEASES"
-            echo "selected_tag=" >> $GITHUB_OUTPUT
-            echo "selected_asset_name=" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          # Helper: returns matching asset JSON encoded as base64 for a release JSON blob
-          find_matching_asset_b64() {
-            echo "$1" | jq -c -r '.assets[]? | select(.name | test("cslol-manager.*\\.(zip|exe|7z|tar\\.gz)$"; "i")) | @base64' || true
+          # Helper to extract a matching asset (base64 JSON) from a release JSON blob
+          find_asset_b64_from_release_json() {
+            local rel_json="$1"
+            # asset name must contain cslol or cslol-manager (allow - or _), and end with a common archive extension
+            echo "$rel_json" | jq -c -r --arg re 'cslol[-_]?manager|cslol' --arg ex 'zip|exe|7z|tar\\.gz|msi' \
+              '.assets[]? | select(.name | test($re + ".*\\.(" + $ex + ")$"; "i")) | @base64' || true
           }
 
           selected_tag=""
           selected_asset_b64=""
-          # iterate releases in order (jq preserves the order from gh release list — newest first)
-          echo "$RELEASES_JSON" | jq -c '.[]' | while read -r rel; do
-            asset_b64=$(find_matching_asset_b64 "$rel" | head -n1 || true)
-            if [ -n "$asset_b64" ]; then
-              selected_tag=$(echo "$rel" | jq -r '.tagName // ""')
-              selected_asset_b64="$asset_b64"
-              # write to a temp file for later pickup outside the while subshell
-              printf '%s\n' "$selected_tag" > /tmp/selected_tag.txt
-              printf '%s\n' "$selected_asset_b64" > /tmp/selected_asset_b64.txt
-              break
-            fi
-          done
 
-          # If the while loop used a subshell, read back values from tmp files
-          if [ -f /tmp/selected_tag.txt ]; then
-            selected_tag=$(cat /tmp/selected_tag.txt)
-            selected_asset_b64=$(cat /tmp/selected_asset_b64.txt)
-            rm -f /tmp/selected_tag.txt /tmp/selected_asset_b64.txt
+          # 1) Try the latest release (gh release view without --tag returns latest)
+          if RELEASE_JSON=$(gh release view --repo "$REPO" --json tagName,assets 2>/dev/null); then
+            echo "Got latest release: $(echo "$RELEASE_JSON" | jq -r '.tagName // "(unknown)")')"
+            selected_asset_b64=$(find_asset_b64_from_release_json "$RELEASE_JSON" | head -n1 || true)
+            if [ -n "$selected_asset_b64" ]; then
+              selected_tag=$(echo "$RELEASE_JSON" | jq -r '.tagName // ""')
+            fi
+          else
+            echo "Latest release view failed (maybe 404 or no releases). Will fall back to scanning recent releases."
           fi
 
-          if [ -z "${selected_asset_b64:-}" ]; then
-            echo "No matching cslol-manager archive found in the ${RECENT_LIMIT} most recent releases for $REPO."
+          # 2) If not found, iterate recent releases (newest→oldest) and pick first with a matching asset
+          if [ -z "${selected_asset_b64}" ]; then
+            echo "Scanning up to ${RECENT_LIMIT} recent releases for a matching asset..."
+            if ! RELEASES_LIST_JSON=$(gh release list --repo "$REPO" --limit "${RECENT_LIMIT}" --json tagName,publishedAt 2>/dev/null); then
+              echo "gh release list failed or no releases; writing empty external_releases.json"
+              jq -n '[]' > "$TMP_RELEASES"
+              echo "selected_tag=" >> $GITHUB_OUTPUT
+              echo "selected_asset_name=" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+
+            # build array of tags preserving order (newest first)
+            mapfile -t tags < <(echo "$RELEASES_LIST_JSON" | jq -r '.[].tagName')
+
+            for tag in "${tags[@]}"; do
+              echo "Trying release tag: $tag"
+              if rel_json=$(gh release view --repo "$REPO" --tag "$tag" --json tagName,assets 2>/dev/null); then
+                asset_b64=$(find_asset_b64_from_release_json "$rel_json" | head -n1 || true)
+                if [ -n "$asset_b64" ]; then
+                  selected_tag="$tag"
+                  selected_asset_b64="$asset_b64"
+                  break
+                fi
+              else
+                echo "  release view for $tag failed (skipping)"
+              fi
+            done
+          fi
+
+          # 3) If still not found, write empty array and exit gracefully (workflow continues)
+          if [ -z "${selected_asset_b64}" ]; then
+            echo "No matching cslol-manager archive found in latest or recent releases."
             jq -n '[]' > "$TMP_RELEASES"
             echo "selected_tag=" >> $GITHUB_OUTPUT
             echo "selected_asset_name=" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # Decode selected asset JSON and extract fields
+          # Decode selected asset JSON and write expected external_releases shape
           selected_asset_json=$(echo "$selected_asset_b64" | base64 --decode)
           ASSET_NAME=$(echo "$selected_asset_json" | jq -r '.name // ""')
           DOWNLOAD_URL=$(echo "$selected_asset_json" | jq -r '.browser_download_url // .url // ""')
           SIZE=$(echo "$selected_asset_json" | jq -r '.size // 0')
 
-          # Write the external release info in the same shape downstream expects
           jq -n --arg repo "$REPO" \
                 --arg tag "$selected_tag" \
                 --arg name "$ASSET_NAME" \
@@ -108,8 +123,8 @@ jobs:
                 '[{ "repo": $repo, "tag_name": $tag, "asset_name": $name, "browser_download_url": $url, "size": $size }]' \
                 > "$TMP_RELEASES"
 
-          echo "External releases saved to $TMP_RELEASES (using tag ${selected_tag})"
-          # Export selected tag & asset name as step outputs
+          echo "Selected external release: tag=${selected_tag}, asset=${ASSET_NAME}"
+          echo "External releases saved to $TMP_RELEASES"
           echo "selected_tag=${selected_tag}" >> $GITHUB_OUTPUT
           echo "selected_asset_name=${ASSET_NAME}" >> $GITHUB_OUTPUT
 
