@@ -1,30 +1,42 @@
-# Build & Publish Tauri Windows Release (with updater JSON)
-# NOTE: replace placeholders and ensure the secrets TAURI_SIGNING_PRIVATE_KEY and
-# TAURI_SIGNING_PRIVATE_KEY_PASSWORD are configured in the repo settings.
-name: Build & Publish Tauri Windows Release (with updater JSON)
+name: Build & Publish Updater Artifacts (Windows only)
 
 on:
   push:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
-
 jobs:
-  build_and_release:
-    name: Build on Windows and create Release via tauri-action
+  create_release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      release_id: ${{ steps.create_release.outputs.id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build_and_upload:
+    name: Build on Windows and upload artifacts
+    needs: create_release
     runs-on: windows-latest
     env:
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      RELEASE_TAG: ${{ github.ref_name }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Checkout repository (with submodules)
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -36,7 +48,7 @@ jobs:
         with:
           pnpm-version: 8
 
-      - name: Install frontend deps
+      - name: Install dependencies
         shell: pwsh
         run: pnpm install
 
@@ -50,120 +62,97 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Run tauri-action (build & release)
-        uses: tauri-apps/tauri-action@v0
+      - name: Build tauri bundle
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Osskins ${{ github.ref_name }}'
-          releaseBody: 'Release built by CI (tauri-action).'
-          releaseDraft: false
-          prerelease: false
-          args: ''
+        shell: pwsh
+        run: pnpm tauri build
 
-  generate_updates_json:
-    name: Generate static updates.json from uploaded release assets
-    runs-on: ubuntu-latest
-    needs: build_and_release
-    env:
-      REPO: ${{ github.repository }}
-      TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      VERSION: ${{ github.ref_name }}
-    steps:
-      - name: Install jq & curl
-        run: sudo apt-get update && sudo apt-get install -y jq curl
-
-      - name: Lookup release by tag
+      - name: Find Windows artifacts (exe/msi and .sig)
+        id: find_all
+        shell: pwsh
         run: |
-          TAG=${GITHUB_REF##*/}
-          echo "Looking up release for tag $TAG"
-          API="https://api.github.com/repos/${REPO}/releases/tags/${TAG}"
-          curl -s -H "Authorization: token ${TOKEN}" "$API" > /tmp/release.json
-          if [ ! -s /tmp/release.json ]; then
-            echo "/tmp/release.json is empty; release lookup failed" >&2
-            jq -C . /tmp/release.json || true
-            exit 1
-          fi
-          echo "Release found:"
-          jq -r '.name, .id, .tag_name' /tmp/release.json || true
-          jq -r '.assets[].name' /tmp/release.json || true
+          $root = "src-tauri\target\release\bundle"
+          Write-Host "Searching under $root"
+          $files = Get-ChildItem -Path $root -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -in ".exe", ".msi", ".sig" }
+          if (-not $files) { Write-Error "No artifacts found"; exit 1 }
+          $list = $files | ForEach-Object { $_.FullName }
+          $joined = ($list -join "`n")
+          Write-Host "Artifacts:`n$joined"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "files<<EOF`n$joined`nEOF"
 
-      - name: Choose installer asset + matching .sig
-        id: pick
-        run: |
-          # Prefer NSIS .exe, fallback to MSI
-          installer=$(jq -r '.assets[] | select(.name|endswith(".exe")) | .name' /tmp/release.json | head -n1)
-          if [ -z "$installer" ]; then
-            installer=$(jq -r '.assets[] | select(.name|endswith(".msi")) | .name' /tmp/release.json | head -n1)
-          fi
-          if [ -z "$installer" ]; then
-            echo "No installer (.exe or .msi) found in release assets" >&2
-            jq -r '.assets[].name' /tmp/release.json >&2 || true
-            exit 1
-          fi
-          # signature file is installer + ".sig"
-          sig_name="${installer}.sig"
-          echo "installer=$installer" >> $GITHUB_OUTPUT
-          echo "sig_name=$sig_name" >> $GITHUB_OUTPUT
-
-      - name: Fetch asset URLs and signature content, build updates.json
+      - name: Upload all artifacts to release (exe/msi/sig)
+        shell: pwsh
         env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          installer="${{ steps.pick.outputs.installer }}"
-          sig_name="${{ steps.pick.outputs.sig_name }}"
-          echo "Selected installer: $installer"
-          installer_url=$(jq -r --arg n "$installer" '.assets[] | select(.name==$n) | .browser_download_url' /tmp/release.json)
-          sig_url=$(jq -r --arg n "$sig_name" '.assets[] | select(.name==$n) | .browser_download_url' /tmp/release.json)
+          if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+            choco install gh -y | Out-Null
+          }
+          $files = "${{ steps.find_all.outputs.files }}".Split("`n") | Where-Object { $_ -ne "" }
+          foreach ($f in $files) {
+            Write-Host "Uploading $f"
+            gh release upload "$env:RELEASE_TAG" "$f" --clobber
+          }
 
-          if [ -z "$installer_url" ] || [ -z "$sig_url" ]; then
-            echo "Installer or its .sig not found among release assets:" >&2
-            jq -r '.assets[].name' /tmp/release.json >&2 || true
-            echo "installer_url: $installer_url" >&2
-            echo "sig_url: $sig_url" >&2
-            exit 1
-          fi
+  generate_metadata:
+    name: Generate updates.json from Tauri .sig
+    needs: [create_release, build_and_upload]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install jq, curl
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq curl
 
-          # Download the .sig and trim newlines (Tauri expects raw signature content)
-          curl -sL -H "Authorization: token $TOKEN" -o /tmp/installer.sig "$sig_url"
-          if [ ! -s /tmp/installer.sig ]; then
-            echo "Downloaded .sig is empty" >&2
-            exit 1
-          fi
-          signature=$(tr -d '\r\n' < /tmp/installer.sig)
+      - name: Build updates.json using uploaded assets and Tauri signatures
+        env:
+          REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ needs.create_release.outputs.release_id }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          API="https://api.github.com/repos/$REPO/releases/$RELEASE_ID/assets"
+          echo "Listing assets from $API"
+          curl -s -H "Authorization: token $TOKEN" "$API" > /tmp/assets.json
+          jq -r '.[].name' /tmp/assets.json | sed 's/^/ - /'
 
-          # Use version without leading v
+          # Choose NSIS .exe for updates; pair with its .sig (switch to MSI if preferred)
+          exe_name=$(jq -r '.[] | select(.name|endswith(".exe")) | .name' /tmp/assets.json | head -n1)
+          exe_url=$(jq -r ".[] | select(.name==\"$exe_name\") | .browser_download_url" /tmp/assets.json | head -n1)
+          sig_url=$(jq -r ".[] | select(.name==\"$exe_name.sig\") | .browser_download_url" /tmp/assets.json | head -n1)
+
+          if [ -z "$exe_url" ]; then echo "No .exe found in assets"; exit 1; fi
+          if [ -z "$sig_url" ]; then echo "No matching .exe.sig found in assets"; exit 1; fi
+
+          curl -sL -H "Authorization: token $TOKEN" -o /tmp/app.exe.sig "$sig_url"
+          signature=$(tr -d '\r\n' < /tmp/app.exe.sig)
+
+          # Strip leading 'v' for version (both 'v1.2.3' and '1.2.3' are valid)
           ver="${VERSION#v}"
           now=$(date --utc +"%Y-%m-%dT%H:%M:%SZ")
 
-          cat > updates.json <<EOF
-{
-  "version": "$ver",
-  "pub_date": "$now",
-  "platforms": {
-    "windows-x86_64": {
-      "url": "$installer_url",
-      "signature": "$signature"
-    }
-  }
-}
-EOF
-          echo "Built updates.json:"
+          jq -n --arg v "$ver" --arg d "$now" --arg u "$exe_url" --arg s "$signature" \
+            '{
+              version:$v,
+              pub_date:$d,
+              platforms:{
+                "windows-x86_64": {
+                  url:$u,
+                  signature:$s
+                }
+              }
+            }' > updates.json
+
           cat updates.json
 
-      - name: Upload updates.json to release via GitHub uploads API
+      - name: Upload updates.json to release
+        uses: actions/upload-release-asset@v1
         env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          upload_url_template=$(jq -r .upload_url /tmp/release.json)
-          # strip template suffix like {?name,label}
-          upload_url="${upload_url_template%\{*}"
-          echo "Uploading updates.json to $upload_url?name=updates.json"
-          response=$(curl -sSL -X POST -H "Authorization: token $TOKEN" \
-            -H "Content-Type: application/json" --data-binary @updates.json \
-            "$upload_url?name=updates.json")
-          echo "Upload response summary:"
-          echo "$response" | jq -r '.url, .state, .browser_download_url' || echo "$response"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_path: updates.json
+          asset_name: updates.json
+          asset_content_type: application/json
