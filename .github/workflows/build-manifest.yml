@@ -12,22 +12,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository (will be used to commit docs/)
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          persist-credentials: true
+
       - name: Prepare environment
         run: |
           sudo apt-get update
           sudo apt-get install -y jq coreutils git curl gh
           # ensure sha256sum is available (coreutils)
-      
+
       - name: Configure git user
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-      
-      - name: Clone this repository (app)
+
+      - name: Ensure app tmp exists
         run: |
-          git clone --depth=1 "https://github.com/${{ github.repository }}.git" app
           mkdir -p app/tmp
-      
+
       - name: Fetch external releases info (always)
         id: fetch_releases
         env:
@@ -38,45 +44,33 @@ jobs:
           REPO="LeagueToolkit/cslol-manager"
 
           echo "Fetching latest release for $REPO..."
-          # Allow gh to use the token in the environment
           export GITHUB_TOKEN="${GH_TOKEN}"
 
-          # Try to get release info; if it fails, create an empty file (do not fail the workflow)
+          # If gh fails, create an empty releases file rather than failing whole job
           if ! RELEASE_JSON=$(gh release view --repo "$REPO" --json tagName,assets 2>/dev/null); then
             echo "Warning: gh release view failed for $REPO - saving empty external_releases"
             jq -n '[]' > "$TMP_RELEASES"
-            exit 0
-          fi
-
-          TAG_NAME=$(echo "$RELEASE_JSON" | jq -r '.tagName // ""')
-
-          # Robust asset finding: accept .zip, .exe, .7z, .tar.gz (case-insensitive)
-          ASSET=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("cslol-manager.*\\.(zip|exe|7z|tar\\.gz)$"; "i")) | .' || true)
-          ASSET=$(echo "$ASSET" | jq -s '.[0]')
-
-          if [ -z "$ASSET" ] || [ "$ASSET" = "null" ]; then
-            echo "Warning: Could not find a cslol-manager archive asset (zip/exe/7z/tar.gz). Available assets:"
-            echo "$RELEASE_JSON" | jq -r '.assets[].name'
-            # Write an empty array so downstream steps won't fail
-            jq -n '[]' > "$TMP_RELEASES"
           else
-            ASSET_NAME=$(echo "$ASSET" | jq -r '.name')
-            # prefer browser_download_url when present, otherwise fall back to API url
-            DOWNLOAD_URL=$(echo "$ASSET" | jq -r '.browser_download_url // .url')
-            SIZE=$(echo "$ASSET" | jq -r '.size // 0')
+            TAG_NAME=$(echo "$RELEASE_JSON" | jq -r '.tagName // ""')
+            ASSET=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("cslol-manager.*\\.(zip|exe|7z|tar\\.gz)$"; "i")) | .' || true)
+            ASSET=$(echo "$ASSET" | jq -s '.[0]')
 
-            jq -n --arg repo "$REPO" \
-                  --arg tag "$TAG_NAME" \
-                  --arg name "$ASSET_NAME" \
-                  --arg url "$DOWNLOAD_URL" \
-                  --argjson size "$SIZE" \
-                  '[{
-                    "repo": $repo,
-                    "tag_name": $tag,
-                    "asset_name": $name,
-                    "browser_download_url": $url,
-                    "size": $size
-                  }]' > "$TMP_RELEASES"
+            if [ -z "$ASSET" ] || [ "$ASSET" = "null" ]; then
+              echo "Warning: Could not find a cslol-manager archive asset. Writing empty list."
+              jq -n '[]' > "$TMP_RELEASES"
+            else
+              ASSET_NAME=$(echo "$ASSET" | jq -r '.name')
+              DOWNLOAD_URL=$(echo "$ASSET" | jq -r '.browser_download_url // .url')
+              SIZE=$(echo "$ASSET" | jq -r '.size // 0')
+
+              jq -n --arg repo "$REPO" \
+                    --arg tag "$TAG_NAME" \
+                    --arg name "$ASSET_NAME" \
+                    --arg url "$DOWNLOAD_URL" \
+                    --argjson size "$SIZE" \
+                    '[{ "repo": $repo, "tag_name": $tag, "asset_name": $name, "browser_download_url": $url, "size": $size }]' \
+                    > "$TMP_RELEASES"
+            fi
           fi
 
           echo "External releases saved to $TMP_RELEASES"
@@ -86,7 +80,8 @@ jobs:
         run: |
           set -euo pipefail
           current_commit=""
-          REMOTE_MANIFEST_URL="https://raw.githubusercontent.com/${{ github.repository }}/gh-pages/manifest.json"
+          # Check the manifest where Pages is configured to serve from: main:/docs
+          REMOTE_MANIFEST_URL="https://raw.githubusercontent.com/${{ github.repository }}/main/docs/manifest.json"
           if curl --output /dev/null --silent --head --fail "$REMOTE_MANIFEST_URL"; then
              current_commit=$(curl -s "$REMOTE_MANIFEST_URL" | jq -r '.source_repo' 2>/dev/null | sed -E 's/.*@(.+)$/\1/' || true)
           fi
@@ -106,7 +101,7 @@ jobs:
         run: |
           git clone --depth=1 --no-single-branch https://github.com/darkseal-org/lol-skins.git upstream
 
-      - name: Generate v2 manifest.json (champion grouped)
+      - name: Generate champions JSON in upstream
         if: steps.check_upstream.outputs.changed == 'true'
         run: |
           set -euo pipefail
@@ -114,12 +109,12 @@ jobs:
           SRC_SHA=$(git rev-parse HEAD)
           SRC_BRANCH="main"
 
-          # Prepare temporary files
-          ITEMS_JSON=$(mktemp)
-          CHAMPS_JSON=$(mktemp)
+          ITEMS_JSON="upstream_items.json"
+          CHAMPS_JSON="upstream_champs.json"
+          CHAMPS_FP_JSON="upstream_champs_fp.json"
+          : > "$ITEMS_JSON"
+          : > "$CHAMPS_FP_JSON"
 
-          # Collect matching files (zip or fantome)
-          # find only files under the repo (skip .git)
           find . -type f -regextype posix-extended -regex '.*\.(zip|fantome)$' -print0 | while IFS= read -r -d '' f; do
             path="${f#./}"
             size=$(stat -c%s "$path")
@@ -128,9 +123,9 @@ jobs:
             url="https://raw.githubusercontent.com/darkseal-org/lol-skins/${SRC_BRANCH}/$path"
             jq -n --arg path "$path" --arg url "$url" --argjson size "$size" --arg sha "$sha256" --arg commit "$last_commit" \
               '{path:$path, url:$url, size:$size, sha256:$sha, commit:$commit}' >> "$ITEMS_JSON"
+            echo "" >> "$ITEMS_JSON"
           done
 
-          # Convert items file into a JSON array
           if [ -s "$ITEMS_JSON" ]; then
             jq -s '.' "$ITEMS_JSON" > "${ITEMS_JSON}.arr"
             mv "${ITEMS_JSON}.arr" "$ITEMS_JSON"
@@ -138,7 +133,6 @@ jobs:
             jq -n '[]' > "$ITEMS_JSON"
           fi
 
-          # Group by champion (assumes path format like skins/<champion>/...)
           jq -r '
             map(select(.path | test("^skins/"))) |
             group_by(.path | split("/")[1]) |
@@ -162,10 +156,7 @@ jobs:
               size: (map(.size) | add // 0)
             })' "$ITEMS_JSON" > "$CHAMPS_JSON"
 
-          # Compute fingerprint per champion (sha256 of sorted asset sha256 values)
-          CHAMPS_FP_JSON=$(mktemp)
           jq -c '.[]' "$CHAMPS_JSON" | while read -r champ; do
-            # gather sha list
             sha_list=$(echo "$champ" | jq -r '[ (.assets.skins // [])[], (.assets.chromas // [])[] ] | map(.sha256) | sort | .[]' 2>/dev/null || true)
             if [ -z "$sha_list" ]; then
               fp=$(printf "" | sha256sum | awk '{print $1}')
@@ -174,6 +165,7 @@ jobs:
               fp=$(printf "%s" "$sorted" | sha256sum | awk '{print $1}')
             fi
             echo "$champ" | jq --arg fp "$fp" '. + { fingerprint: $fp }' >> "$CHAMPS_FP_JSON"
+            echo "" >> "$CHAMPS_FP_JSON"
           done
 
           if [ -s "$CHAMPS_FP_JSON" ]; then
@@ -182,11 +174,30 @@ jobs:
             jq -n '[]' > "$CHAMPS_JSON"
           fi
 
-          # Move manifest into app/docs
-          cd ../app
+          mkdir -p ../app/tmp
+          cp "$CHAMPS_JSON" ../app/tmp/champions.json
+
+      - name: Build final manifest in app from upstream data
+        if: steps.check_upstream.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          cd app
           mkdir -p docs
 
-          # Build final manifest v2
+          SRC_SHA=$(git -C ../upstream rev-parse HEAD || echo "")
+          SRC_BRANCH="main"
+
+          CHAMPS_FILE="tmp/champions.json"
+          RELEASES_FILE="tmp/external_releases.json"
+
+          if [ ! -f "$CHAMPS_FILE" ]; then
+            jq -n '[]' > "$CHAMPS_FILE"
+          fi
+
+          if [ ! -f "$RELEASES_FILE" ]; then
+            jq -n '[]' > "$RELEASES_FILE"
+          fi
+
           jq -n \
             --arg gen "$(date -u +%FT%TZ)" \
             --arg repo "darkseal-org/lol-skins@${SRC_SHA}" \
@@ -194,8 +205,8 @@ jobs:
             --arg license_url "https://github.com/darkseal-org/lol-skins/blob/main/LICENSE" \
             --arg source_url "https://github.com/darkseal-org/lol-skins" \
             --arg attribution "Skins © their respective creators. DSCL license applies. Not affiliated with or endorsed by Dark Seal or Riot Games." \
-            --slurpfile champions "../upstream/$CHAMPS_JSON" \
-            --slurpfile releases "tmp/external_releases.json" \
+            --slurpfile champions "${CHAMPS_FILE}" \
+            --slurpfile releases "${RELEASES_FILE}" \
             '{schema:2, generated_at:$gen, source_repo:$repo, branch:$branch, license:$license_url, source:$source_url, attribution:$attribution, champions: ($champions[0] // []), external_releases: ($releases[0] // []) }' \
             > docs/manifest.json
 
@@ -203,8 +214,7 @@ jobs:
         if: steps.check_upstream.outputs.changed == 'false'
         run: |
           set -euo pipefail
-          # Fetch existing manifest from gh-pages (if not present, start from empty object)
-          curl -s "https://raw.githubusercontent.com/${{ github.repository }}/gh-pages/manifest.json" > app/docs/manifest.json || echo "{}" > app/docs/manifest.json
+          curl -s "https://raw.githubusercontent.com/${{ github.repository }}/main/docs/manifest.json" > app/docs/manifest.json || echo "{}" > app/docs/manifest.json
 
           cd app
           RELEASES_FILE="tmp/external_releases.json"
@@ -213,20 +223,42 @@ jobs:
             docs/manifest.json > docs/manifest.new.json
           mv docs/manifest.new.json docs/manifest.json
 
-      - name: Deploy manifest to gh-pages
+      - name: Deploy only docs/ to main (non-destructive)
         run: |
           set -euo pipefail
-          mkdir -p deploy
-          cp app/docs/manifest.json deploy/manifest.json
+          # We're already checked out to the repo (actions/checkout).
+          # Switch to main explicitly to ensure we commit to the branch that Pages builds from.
+          git checkout main
 
-          cd deploy
-          git init
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b gh-pages
-          git add -A
-          git commit -m "Update manifest.json [skip ci]" || true
+          # Ensure docs/ exists and copy generated manifest into it
+          mkdir -p docs
+          if [ -f app/docs/manifest.json ]; then
+            cp app/docs/manifest.json docs/manifest.json
+          else
+            jq -n '[]' > docs/manifest.json
+          fi
 
-          # Use x-access-token for authentication (works with GITHUB_TOKEN)
-          git remote add origin "https://github.com/${{ github.repository }}.git"
-          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
+          # Minimal index and .nojekyll so Pages won't run SCSS/Jekyll if you prefer
+          cat > docs/index.html <<'HTML'
+          <!doctype html>
+          <html>
+            <head><meta charset="utf-8"><title>OSS Kins Manifest</title></head>
+            <body>
+              <h1>OSS Kins Manifest</h1>
+              <p>The manifest is available at <a href="./manifest.json">manifest.json</a></p>
+            </body>
+          </html>
+          HTML
+
+          touch docs/.nojekyll
+
+          # Stage only docs/ paths to avoid touching other files
+          git add docs/manifest.json docs/index.html docs/.nojekyll
+
+          # If there are no changes, exit cleanly. If there are, commit and push.
+          if git diff --cached --quiet; then
+            echo "No docs changes to commit."
+          else
+            git commit -m "Update docs (manifest) [skip ci]"
+            git push origin main
+          fi
