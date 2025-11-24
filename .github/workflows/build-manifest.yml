@@ -30,9 +30,10 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Ensure app tmp exists
+      - name: Ensure directories exist
         run: |
           mkdir -p app/tmp
+          mkdir -p app/docs
 
       - name: Fetch external releases info (always)
         id: fetch_releases
@@ -248,23 +249,41 @@ jobs:
             '{schema:2, generated_at:$gen, source_repo:$repo, branch:$branch, license:$license_url, source:$source_url, attribution:$attribution, champions: ($champions[0] // []), external_releases: ($releases[0] // []) }' \
             > docs/manifest.json
 
+          # Ensure path exists for downstream steps that expect app/docs/manifest.json
+          mkdir -p ../app/docs
+          cp docs/manifest.json ../app/docs/manifest.json
+
       - name: Merge external_releases into existing manifest (if upstream unchanged)
         if: steps.check_upstream.outputs.changed == 'false'
         run: |
           set -euo pipefail
-          curl -s "https://raw.githubusercontent.com/${{ github.repository }}/main/docs/manifest.json" > app/docs/manifest.json || echo "{}" > app/docs/manifest.json
+          mkdir -p app/docs
+          # Fetch existing manifest from the location Pages uses (main:/docs). If not found, start from empty object.
+          if curl -s "https://raw.githubusercontent.com/${{ github.repository }}/main/docs/manifest.json" > app/docs/manifest.json; then
+            echo "Fetched existing main:/docs/manifest.json into app/docs/manifest.json"
+          else
+            echo "{}" > app/docs/manifest.json
+            echo "No existing manifest found — starting from empty manifest"
+          fi
 
           cd app
           RELEASES_FILE="tmp/external_releases.json"
+          if [ ! -f "$RELEASES_FILE" ]; then
+            jq -n '[]' > "$RELEASES_FILE"
+          fi
           jq --slurpfile releases "${RELEASES_FILE}" \
             '. + { external_releases: ($releases[0] // []) }' \
             docs/manifest.json > docs/manifest.new.json
           mv docs/manifest.new.json docs/manifest.json
 
+          # Ensure app/docs/manifest.json is present for deploy step
+          mkdir -p ../app/docs
+          cp docs/manifest.json ../app/docs/manifest.json
+
       - name: Deploy only docs/ to main (non-destructive)
         run: |
           set -euo pipefail
-          # Ensure we're on main
+          # Ensure we have the latest main
           git fetch origin main:main
           git checkout main
 
@@ -273,7 +292,8 @@ jobs:
           if [ -f app/docs/manifest.json ]; then
             cp app/docs/manifest.json docs/manifest.json
           else
-            jq -n '[]' > docs/manifest.json
+            # If the manifest was not produced for some reason, create a minimal empty manifest
+            jq -n '{schema:2, generated_at: ("'$(date -u +%FT%TZ)'"), champions: [], external_releases: [] }' > docs/manifest.json
           fi
 
           # Minimal index and .nojekyll so Pages won't run Jekyll/SCSS if you prefer
