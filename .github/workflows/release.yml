@@ -33,7 +33,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          pnpm-version: 8
+          version: '8'
 
       - name: Install frontend deps
         shell: pwsh
