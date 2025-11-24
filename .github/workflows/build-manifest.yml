@@ -274,8 +274,8 @@ jobs:
       - name: Deploy only docs/ to main (non-destructive)
         run: |
           set -euo pipefail
-          # ensure we have up-to-date main
-          git fetch origin main:main
+          # We already checked out the repository at the start (actions/checkout) and persist-credentials=true.
+          # Just ensure we're on the main branch (no fetching into a checked-out ref).
           git checkout main
 
           # Ensure docs exists and copy generated manifest into it
