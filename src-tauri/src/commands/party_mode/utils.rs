@@ -1,9 +1,9 @@
 // Utility functions for party mode
 
+use super::types::{MAX_SHARE_AGE_SECS, SENT_SKIN_SHARES};
+use crate::commands::types::SavedConfig;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
-use crate::commands::types::SavedConfig;
-use super::types::{MAX_SHARE_AGE_SECS, SENT_SKIN_SHARES};
 
 // Helper to generate key for received skin
 pub fn received_skin_key(from_summoner_id: &str, champion_id: u32) -> String {

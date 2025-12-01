@@ -1,5 +1,8 @@
 // Logging utilities for LCU watcher
 
+use chrono::Utc;
+use copypasta::{ClipboardContext, ClipboardProvider};
+use once_cell::sync::Lazy;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -7,9 +10,6 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
-use once_cell::sync::Lazy;
-use chrono::Utc;
-use copypasta::{ClipboardContext, ClipboardProvider};
 
 // Global in-memory log buffer
 pub static LOG_BUFFER: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));

@@ -1,22 +1,24 @@
 // Message handlers and skin sharing logic
 
-use crate::{verbose_log, normal_log};
+use super::lcu::{get_current_summoner, get_lcu_connection};
+use super::messaging::send_chat_message;
+use super::party_detection::{
+  get_current_party_member_summoner_ids, get_gameflow_party_member_summoner_ids,
+};
+use super::session::{prune_stale_received_skins, refresh_session_tracker};
+use super::types::{
+  CurrentSummoner, InMemoryReceivedSkin, PARTY_MODE_MESSAGE_PREFIX, RECEIVED_SKINS,
+  SENT_SKIN_SHARES,
+};
+use super::utils::{get_skin_name_from_config, received_skin_key, sent_share_key};
+use crate::commands::types::{PairedFriend, PartyModeMessage, SavedConfig, SkinShare};
+use crate::{normal_log, verbose_log};
+use base64::{engine::general_purpose, Engine};
+use serde_json;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
-use serde_json;
-use base64::{engine::general_purpose, Engine};
-use crate::commands::types::{
-  PartyModeMessage, PairedFriend, SavedConfig, SkinShare,
-};
-use super::types::{RECEIVED_SKINS, SENT_SKIN_SHARES, PARTY_MODE_MESSAGE_PREFIX, CurrentSummoner, InMemoryReceivedSkin};
-use super::utils::{received_skin_key, sent_share_key, get_skin_name_from_config};
-use super::lcu::{get_lcu_connection, get_current_summoner};
-use super::messaging::send_chat_message;
-use super::party_detection::{get_current_party_member_summoner_ids, get_gameflow_party_member_summoner_ids};
-use super::session::{refresh_session_tracker, prune_stale_received_skins};
-
 
 // Function to handle incoming party mode messages (called from LCU watcher)
 pub async fn handle_party_mode_message(
@@ -65,31 +67,35 @@ pub async fn handle_party_mode_message(
         return Ok(());
       }
 
-  let share_ts = match i64::try_from(skin_share.timestamp) {
-    Ok(ts) => ts,
-    Err(_) => {
-      verbose_log!(
-        "[Party Mode][INBOUND][SKIP] timestamp {} overflows i64",
-        skin_share.timestamp
-      );
-      return Ok(());
-    }
-  };
+      let share_ts = match i64::try_from(skin_share.timestamp) {
+        Ok(ts) => ts,
+        Err(_) => {
+          verbose_log!(
+            "[Party Mode][INBOUND][SKIP] timestamp {} overflows i64",
+            skin_share.timestamp
+          );
+          return Ok(());
+        }
+      };
 
-  // Note: Previous implementation enforced message staleness checks here and skipped
-  // messages older than a configured maximum or a previous session. That logic has been
-  // removed in favour of explicit cleanup via the LCU API DELETE endpoint after
-  // friend skin injections. Keep receiving all messages (it's up to other logic to
-  // handle session transitions / pruning).
+      // Note: Previous implementation enforced message staleness checks here and skipped
+      // messages older than a configured maximum or a previous session. That logic has been
+      // removed in favour of explicit cleanup via the LCU API DELETE endpoint after
+      // friend skin injections. Keep receiving all messages (it's up to other logic to
+      // handle session transitions / pruning).
 
-  // Still compute message age for logging purposes but do not skip messages
-  let age_secs: u64 = (SystemTime::now()
-    .duration_since(UNIX_EPOCH)
-    .unwrap_or_default()
-    .as_secs() as i64 - share_ts).max(0) as u64;
+      // Still compute message age for logging purposes but do not skip messages
+      let age_secs: u64 = (SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+        - share_ts)
+        .max(0) as u64;
 
       let key = received_skin_key(&skin_share.from_summoner_id, skin_share.champion_id);
-      let mut map = RECEIVED_SKINS.lock().map_err(|e| format!("Failed to lock RECEIVED_SKINS: {}", e))?;
+      let mut map = RECEIVED_SKINS
+        .lock()
+        .map_err(|e| format!("Failed to lock RECEIVED_SKINS: {}", e))?;
       let before = map.len();
       map.insert(
         key,
@@ -308,7 +314,9 @@ pub async fn send_skin_share_to_paired_friends(
   for friend in target_friends {
     let key = sent_share_key(&friend.summoner_id, champion_id, skin_id, chroma_id);
     {
-      let mut sent = SENT_SKIN_SHARES.lock().map_err(|e| format!("Failed to lock SENT_SKIN_SHARES: {}", e))?;
+      let mut sent = SENT_SKIN_SHARES
+        .lock()
+        .map_err(|e| format!("Failed to lock SENT_SKIN_SHARES: {}", e))?;
       if sent.contains(&key) {
         verbose_log!(
           "[Party Mode][OUTBOUND] Skipping {} (already sent this phase)",
@@ -325,7 +333,9 @@ pub async fn send_skin_share_to_paired_friends(
       friend.summoner_id
     );
     if let Err(e) = send_chat_message(app, &lcu_conn, &friend.summoner_id, &message).await {
-      let mut sent = SENT_SKIN_SHARES.lock().map_err(|e| format!("Failed to lock SENT_SKIN_SHARES: {}", e))?;
+      let mut sent = SENT_SKIN_SHARES
+        .lock()
+        .map_err(|e| format!("Failed to lock SENT_SKIN_SHARES: {}", e))?;
       sent.remove(&key);
       eprintln!(
         "[Party Mode][OUTBOUND][ERROR] Failed to send to {}({}): {}",
@@ -527,7 +537,9 @@ pub async fn should_inject_now(app: &AppHandle, champion_id: u32) -> Result<bool
 
   let mut friends_who_shared: HashSet<String> = HashSet::new();
   {
-    let map = RECEIVED_SKINS.lock().map_err(|e| format!("Failed to lock RECEIVED_SKINS: {}", e))?;
+    let map = RECEIVED_SKINS
+      .lock()
+      .map_err(|e| format!("Failed to lock RECEIVED_SKINS: {}", e))?;
     for value in map.values() {
       friends_who_shared.insert(value.from_summoner_id.clone());
     }

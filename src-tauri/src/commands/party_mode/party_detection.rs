@@ -1,9 +1,9 @@
 // Party member detection and game mode utilities
 
-use std::collections::HashSet;
+use super::types::LcuConnection;
 use base64::{engine::general_purpose, Engine};
 use serde_json;
-use super::types::LcuConnection;
+use std::collections::HashSet;
 
 pub async fn get_current_party_member_summoner_ids(
   lcu: &LcuConnection,

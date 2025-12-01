@@ -1,12 +1,12 @@
 // Party mode chat monitoring and message handling
 
 use base64::{engine::general_purpose, Engine};
-use tauri::AppHandle;
 use serde_json;
 use std::sync::atomic::Ordering;
+use tauri::AppHandle;
 
-use crate::commands::party_mode::PARTY_MODE_VERBOSE;
 use super::utils::get_lcu_client;
+use crate::commands::party_mode::PARTY_MODE_VERBOSE;
 
 // Start monitoring LCU chat messages for party mode
 #[tauri::command]
@@ -212,4 +212,3 @@ pub fn check_conversation_for_party_messages(
 
   Ok(())
 }
-

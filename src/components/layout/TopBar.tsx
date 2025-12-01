@@ -27,7 +27,17 @@ import { useI18n } from "@/lib/i18n";
 import { type SkinTab, useGameStore } from "@/lib/store";
 import { usePartyModeStore } from "@/lib/store/party-mode";
 import type { Champion, DataUpdateProgress } from "@/lib/types";
-import { Menu, RefreshCw, Users2Icon, ArrowDownToLine, Sparkles, Check, Zap, Hand, ChevronDown } from "lucide-react";
+import {
+  Menu,
+  RefreshCw,
+  Users2Icon,
+  ArrowDownToLine,
+  Sparkles,
+  Check,
+  Zap,
+  Hand,
+  ChevronDown,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import CslolManagerModal from "@/components/CslolManagerModal";
 import { Badge } from "../ui/badge";
@@ -58,7 +68,12 @@ export function TopBar({
   const [showDownloadingModal, setShowDownloadingModal] = useState(false);
   const [showCslolModal, setShowCslolModal] = useState(false);
   // Get tab state from the store
-  const { activeTab, setActiveTab, manualInjectionMode, setManualInjectionMode } = useGameStore();
+  const {
+    activeTab,
+    setActiveTab,
+    manualInjectionMode,
+    setManualInjectionMode,
+  } = useGameStore();
   const pairedFriendsCount = usePartyModeStore((s) => s.pairedFriends.length);
   // Updater removed: no updater store or hook
 
@@ -147,7 +162,9 @@ export function TopBar({
                     >
                       <Zap className="h-4 w-4 mr-2" />
                       Auto
-                      {!manualInjectionMode && <Check className="h-4 w-4 ml-auto" />}
+                      {!manualInjectionMode && (
+                        <Check className="h-4 w-4 ml-auto" />
+                      )}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onSelect={() => {
@@ -156,7 +173,9 @@ export function TopBar({
                     >
                       <Hand className="h-4 w-4 mr-2" />
                       Manual
-                      {manualInjectionMode && <Check className="h-4 w-4 ml-auto" />}
+                      {manualInjectionMode && (
+                        <Check className="h-4 w-4 ml-auto" />
+                      )}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -247,7 +266,12 @@ export function TopBar({
         onReinstallData={onReinstallData}
         isUpdating={isUpdating}
       />
-      <CslolManagerModal isOpen={showCslolModal} onClose={() => { setShowCslolModal(false); }} />
-    </div >
+      <CslolManagerModal
+        isOpen={showCslolModal}
+        onClose={() => {
+          setShowCslolModal(false);
+        }}
+      />
+    </div>
   );
 }

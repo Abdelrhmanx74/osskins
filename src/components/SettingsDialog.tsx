@@ -60,7 +60,9 @@ export function SettingsDialog() {
     let mounted = true;
     void (async () => {
       try {
-        const cfg = (await invoke<unknown>("load_config")) as { auto_update_data?: boolean };
+        const cfg = (await invoke<unknown>("load_config")) as {
+          auto_update_data?: boolean;
+        };
         if (mounted) setAutoUpdate(cfg.auto_update_data !== false);
       } catch {
         if (mounted) setAutoUpdate(true);
@@ -230,7 +232,9 @@ export function SettingsDialog() {
               />
               <div className="flex gap-2">
                 <Button
-                  onClick={() => { void handleAutoDetect(); }}
+                  onClick={() => {
+                    void handleAutoDetect();
+                  }}
                   disabled={isLoading}
                   className="flex-1"
                   variant="secondary"
@@ -239,7 +243,9 @@ export function SettingsDialog() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => { void handleSelectDirectory(); }}
+                  onClick={() => {
+                    void handleSelectDirectory();
+                  }}
                   disabled={isLoading}
                   className="flex-1"
                 >
@@ -359,7 +365,6 @@ export function SettingsDialog() {
                 />
               </div>
             </div>
-
           </div>
 
           <Separator orientation="vertical" className="mx-2" />

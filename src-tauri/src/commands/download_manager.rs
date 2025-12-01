@@ -26,12 +26,12 @@ static TASKS: Lazy<Arc<Mutex<HashMap<String, DownloadCtrl>>>> =
 #[serde(rename_all = "camelCase")]
 struct DownloadProgressPayload {
   id: String,
-  status: String,            // queued | downloading | completed | failed | canceled
+  status: String, // queued | downloading | completed | failed | canceled
   url: String,
-  category: String,          // skin | data | tools | misc
+  category: String, // skin | data | tools | misc
   downloaded: Option<u64>,
   total: Option<u64>,
-  speed: Option<f64>,        // bytes/sec
+  speed: Option<f64>, // bytes/sec
   champion_name: Option<String>,
   file_name: Option<String>,
   dest_path: Option<String>,
@@ -47,9 +47,11 @@ static HTTP_CLIENT: Lazy<Arc<reqwest::Client>> = Lazy::new(|| {
     reqwest::Client::builder()
       .user_agent("osskins-downloader/2.0")
       .timeout(Duration::from_secs(600))
+      .connect_timeout(Duration::from_secs(10))
       .tcp_keepalive(Duration::from_secs(60))
-      .pool_max_idle_per_host(16)
+      .pool_max_idle_per_host(32)
       .pool_idle_timeout(Duration::from_secs(120))
+      .http2_adaptive_window(true)
       .build()
       .expect("Failed to build HTTP client"),
   )
@@ -129,9 +131,12 @@ pub async fn download_file_to_champion_with_progress(
 
     let total = response.content_length();
     let mut stream = response.bytes_stream();
-    let mut file = async_fs::File::create(&file_path)
+    
+    // Use buffered writer for better I/O performance
+    let file = async_fs::File::create(&file_path)
       .await
       .map_err(|e| format!("Failed to create destination file: {}", e))?;
+    let mut file = tokio::io::BufWriter::with_capacity(256 * 1024, file);
 
     let mut downloaded: u64 = 0;
     let started = Instant::now();
@@ -170,7 +175,7 @@ pub async fn download_file_to_champion_with_progress(
 
               downloaded += bytes.len() as u64;
 
-              if last_emit.elapsed() >= Duration::from_millis(250) {
+              if last_emit.elapsed() >= Duration::from_millis(500) {
                 let elapsed = started.elapsed().as_secs_f64();
                 let speed = if elapsed > 0.0 { downloaded as f64 / elapsed } else { 0.0 };
                 emit(
@@ -202,6 +207,12 @@ pub async fn download_file_to_champion_with_progress(
       .flush()
       .await
       .map_err(|e| format!("Failed to finalize file: {}", e))?;
+    
+    file
+      .into_inner()
+      .sync_all()
+      .await
+      .map_err(|e| format!("Failed to sync file: {}", e))?;
 
     Ok::<(), String>(())
   }

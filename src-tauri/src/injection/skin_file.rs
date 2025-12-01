@@ -1,12 +1,12 @@
 use crate::injection::error::{InjectionError, Skin};
 use memmap2::MmapOptions;
+use serde_json::Value;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use walkdir::WalkDir;
 use zip::ZipArchive;
-use serde_json::Value;
 
 // Fantome file processing operations
 
@@ -26,7 +26,9 @@ impl crate::injection::core::SkinInjector {
     let mut prev_us = false;
     for ch in out.chars() {
       if ch == '_' {
-        if !prev_us { collapsed.push('_'); }
+        if !prev_us {
+          collapsed.push('_');
+        }
         prev_us = true;
       } else {
         collapsed.push(ch);
@@ -51,25 +53,45 @@ impl crate::injection::core::SkinInjector {
     let rd = fs::read_dir(champions_dir).ok()?;
     for entry in rd.flatten() {
       let dir_path = entry.path();
-      if !dir_path.is_dir() { continue; }
-      let dir_name = match dir_path.file_name().and_then(|n| n.to_str()) { Some(s) => s, None => continue };
+      if !dir_path.is_dir() {
+        continue;
+      }
+      let dir_name = match dir_path.file_name().and_then(|n| n.to_str()) {
+        Some(s) => s,
+        None => continue,
+      };
       let json_path = dir_path.join(format!("{}.json", dir_name));
-      if !json_path.exists() { continue; }
-      let Ok(contents) = fs::read_to_string(&json_path) else { continue };
-      let Ok(value) = serde_json::from_str::<Value>(&contents) else { continue };
+      if !json_path.exists() {
+        continue;
+      }
+      let Ok(contents) = fs::read_to_string(&json_path) else {
+        continue;
+      };
+      let Ok(value) = serde_json::from_str::<Value>(&contents) else {
+        continue;
+      };
       let champ_id = value.get("id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-      if champ_id != skin.champion_id { continue; }
+      if champ_id != skin.champion_id {
+        continue;
+      }
 
       // Found champion. Now find the skin by id, and optional chroma by id
-      let skins = match value.get("skins").and_then(|v| v.as_array()) { Some(a) => a, None => continue };
+      let skins = match value.get("skins").and_then(|v| v.as_array()) {
+        Some(a) => a,
+        None => continue,
+      };
       let mut skin_name_opt: Option<String> = None;
       let mut chroma_suffix: Option<String> = None;
       for s in skins {
         let sid = s.get("id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-        if sid != skin.skin_id { continue; }
+        if sid != skin.skin_id {
+          continue;
+        }
         let sname = s.get("name").and_then(|v| v.as_str()).unwrap_or("");
         skin_name_opt = Some(sname.to_string());
-        if let (Some(chroma_id), Some(chromas)) = (skin.chroma_id, s.get("chromas").and_then(|v| v.as_array())) {
+        if let (Some(chroma_id), Some(chromas)) =
+          (skin.chroma_id, s.get("chromas").and_then(|v| v.as_array()))
+        {
           for c in chromas {
             let cid = c.get("id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
             if cid == chroma_id {

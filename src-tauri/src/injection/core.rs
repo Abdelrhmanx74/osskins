@@ -532,12 +532,12 @@ impl SkinInjector {
 
     // Reset the state regardless of previous state to ensure cleanup
     self.set_state(ModState::Idle);
-    
+
     // Emit idle status to frontend so UI updates properly
     if let Some(app) = &self.app_handle {
       let _ = app.emit("injection-status", "idle");
     }
-    
+
     self.log("Skin injection stopped");
 
     Ok(())

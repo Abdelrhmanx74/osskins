@@ -1,9 +1,9 @@
 // LCU connection and API utilities
 
+use super::types::{CurrentSummoner, LcuConnection};
+use crate::commands::types::{FriendInfo, SavedConfig};
 use base64::{engine::general_purpose, Engine};
 use tauri::{AppHandle, Manager};
-use crate::commands::types::{SavedConfig, FriendInfo};
-use super::types::{LcuConnection, CurrentSummoner};
 
 // Internal function to get LCU connection details
 pub async fn get_lcu_connection(app: &AppHandle) -> Result<LcuConnection, String> {
@@ -41,11 +41,17 @@ pub async fn get_lcu_connection(app: &AppHandle) -> Result<LcuConnection, String
     {
       use std::os::windows::process::CommandExt;
       const CREATE_NO_WINDOW: u32 = 0x08000000;
-      
+
       if let Ok(output) = std::process::Command::new("wmic")
-        .args(&["process", "where", "name='LeagueClient.exe'", "get", "ExecutablePath"])
+        .args(&[
+          "process",
+          "where",
+          "name='LeagueClient.exe'",
+          "get",
+          "ExecutablePath",
+        ])
         .creation_flags(CREATE_NO_WINDOW)
-        .output() 
+        .output()
       {
         let stdout = String::from_utf8_lossy(&output.stdout);
         for line in stdout.lines() {
@@ -55,7 +61,7 @@ pub async fn get_lcu_connection(app: &AppHandle) -> Result<LcuConnection, String
           }
           // line is the full path to exe, we need the directory
           if let Some(path) = std::path::PathBuf::from(line).parent() {
-             search_dirs.push(path.to_path_buf());
+            search_dirs.push(path.to_path_buf());
           }
         }
       }
@@ -170,7 +176,10 @@ pub async fn get_current_summoner(app: &AppHandle) -> Result<CurrentSummoner, St
 }
 
 // FUNCTION: get_friends_with_connection
-pub async fn get_friends_with_connection(port: &str, token: &str) -> Result<Vec<FriendInfo>, String> {
+pub async fn get_friends_with_connection(
+  port: &str,
+  token: &str,
+) -> Result<Vec<FriendInfo>, String> {
   let client = reqwest::Client::builder()
     .danger_accept_invalid_certs(true)
     .build()

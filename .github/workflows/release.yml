@@ -3,7 +3,7 @@ name: Build & Publish Tauri Windows Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
@@ -26,17 +26,17 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: '8'
+          version: "8"
 
       - name: Install frontend deps
         shell: pwsh
         run: pnpm install
-        
+
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -51,11 +51,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'Osskins ${{ github.ref_name }}'
-          releaseBody: 'Release built by CI (tauri-action).'
+          releaseName: "Osskins ${{ github.ref_name }}"
+          releaseBody: "Release built by CI (tauri-action)."
           releaseDraft: false
           prerelease: false
-          args: ''
+          args: ""
 
       - name: Upload installers to release (skip if release already has installers)
         shell: pwsh

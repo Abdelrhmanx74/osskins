@@ -353,11 +353,11 @@ pub fn get_selected_misc_items(app: &AppHandle) -> Result<Vec<MiscItem>, String>
 
           // 1. Check app data dir (extracted fonts)
           if let Ok(app_data_dir) = app.path().app_data_dir() {
-             candidates.push(
-                app_data_dir
-                  .join("fonts")
-                  .join(format!("{}.fantome", suffix)),
-             );
+            candidates.push(
+              app_data_dir
+                .join("fonts")
+                .join(format!("{}.fantome", suffix)),
+            );
           }
 
           // 2. Check resource dir (legacy/dev)
@@ -399,53 +399,53 @@ pub fn get_selected_misc_items(app: &AppHandle) -> Result<Vec<MiscItem>, String>
           }
 
           if let Some(candidate) = found_candidate {
-              // Ensure misc_items_dir exists
-              let _ = std::fs::create_dir_all(&misc_items_dir);
+            // Ensure misc_items_dir exists
+            let _ = std::fs::create_dir_all(&misc_items_dir);
 
-              // Destination filename in misc_items dir
-              let dest_filename = format!("font_builtin_{}.fantome", suffix);
-              let dest_path = misc_items_dir.join(&dest_filename);
+            // Destination filename in misc_items dir
+            let dest_filename = format!("font_builtin_{}.fantome", suffix);
+            let dest_path = misc_items_dir.join(&dest_filename);
 
-              // Copy if not already present
-              if !dest_path.exists() {
-                if let Err(e) = std::fs::copy(&candidate, &dest_path) {
-                  println!(
-                    "DEBUG: Failed to copy builtin font {} to misc_items: {}",
-                    candidate.display(),
-                    e
-                  );
-                } else {
-                  println!(
-                    "DEBUG: Copied builtin font {} -> {}",
-                    candidate.display(),
-                    dest_path.display()
-                  );
-                }
+            // Copy if not already present
+            if !dest_path.exists() {
+              if let Err(e) = std::fs::copy(&candidate, &dest_path) {
+                println!(
+                  "DEBUG: Failed to copy builtin font {} to misc_items: {}",
+                  candidate.display(),
+                  e
+                );
               } else {
                 println!(
-                  "DEBUG: Builtin font already copied: {}",
+                  "DEBUG: Copied builtin font {} -> {}",
+                  candidate.display(),
                   dest_path.display()
                 );
               }
+            } else {
+              println!(
+                "DEBUG: Builtin font already copied: {}",
+                dest_path.display()
+              );
+            }
 
-              // Construct a MiscItem entry matching expectations of injector
-              let builtin_misc = crate::injection::MiscItem {
-                id: selected_id.clone(),
-                name: suffix.to_string(),
-                item_type: item_type.clone(),
-                skin_file_path: dest_filename,
-              };
-              println!(
-                "DEBUG: Adding builtin selected item: {} ({})",
-                builtin_misc.name, builtin_misc.id
-              );
-              selected_items.push(builtin_misc);
-              continue;
+            // Construct a MiscItem entry matching expectations of injector
+            let builtin_misc = crate::injection::MiscItem {
+              id: selected_id.clone(),
+              name: suffix.to_string(),
+              item_type: item_type.clone(),
+              skin_file_path: dest_filename,
+            };
+            println!(
+              "DEBUG: Adding builtin selected item: {} ({})",
+              builtin_misc.name, builtin_misc.id
+            );
+            selected_items.push(builtin_misc);
+            continue;
           } else {
-              println!(
-                "DEBUG: Builtin font resource not found in known locations for {}",
-                selected_id
-              );
+            println!(
+              "DEBUG: Builtin font resource not found in known locations for {}",
+              selected_id
+            );
           }
         }
       }

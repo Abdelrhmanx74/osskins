@@ -25,7 +25,7 @@ fn extract_fonts(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error
   // Try to find the zip file
   // 1. In the resource root (prod)
   let mut resource_path = app.path().resolve("fonts.zip", BaseDirectory::Resource)?;
-  
+
   if !resource_path.exists() {
       // 2. In resources/fonts.zip (dev?)
       if let Ok(p) = app.path().resolve("resources/fonts.zip", BaseDirectory::Resource) {
@@ -34,7 +34,7 @@ fn extract_fonts(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error
           }
       }
   }
-  
+
   // 3. Fallback to CARGO_MANIFEST_DIR for dev
   if !resource_path.exists() {
       let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
@@ -57,6 +57,7 @@ fn extract_fonts(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error
 
 fn main() {
   tauri::Builder::default()
+    .plugin(tauri_plugin_updater::Builder::new().build())
     .setup(|app| {
       // Initialize ConfigLock
       app.manage(commands::ConfigLock::new());
@@ -146,7 +147,8 @@ fn main() {
       inject_skins_with_misc,
       inject_all_selected_skins,
       ensure_mod_tools,
-  get_cslol_manager_status,
+      get_cslol_manager_status,
+      extract_sfx,
       inject_game_skins,
       save_league_path,
       load_league_path,

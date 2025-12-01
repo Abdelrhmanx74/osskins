@@ -1,12 +1,12 @@
 // Session tracking and skin management
 
-use crate::normal_log;
-use std::time::{SystemTime, UNIX_EPOCH};
-use base64::{engine::general_purpose, Engine};
-use tauri::AppHandle;
-use super::types::{CURRENT_SESSION_ID, RECEIVED_SKINS};
 use super::lcu::get_lcu_connection;
+use super::types::{CURRENT_SESSION_ID, RECEIVED_SKINS};
 use super::utils::get_configured_max_share_age_secs;
+use crate::normal_log;
+use base64::{engine::general_purpose, Engine};
+use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::AppHandle;
 
 pub async fn refresh_session_tracker(app: &AppHandle) {
   let maybe_lcu = get_lcu_connection(app).await;

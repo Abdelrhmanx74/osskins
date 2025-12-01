@@ -1,32 +1,43 @@
 // Main LCU watcher using WebSocket event stream
 
+use base64::{engine::general_purpose, Engine};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
-use base64::{engine::general_purpose, Engine};
 
-use crate::commands::party_mode::{clear_received_skins, clear_sent_shares, PARTY_MODE_VERBOSE, RECEIVED_SKINS};
-use crate::commands::types::{SavedConfig, SkinData};
-use crate::commands::misc_items::get_selected_misc_items;
-use crate::injection::{inject_skins_and_misc, Skin};
-use super::types::{InjectionMode, LAST_CHAMPION_SHARE_TIME, LAST_PARTY_INJECTION_SIGNATURE, PARTY_INJECTION_DONE_THIS_PHASE, PHASE_STATE};
-use super::utils::{compute_party_injection_signature, read_injection_mode};
-use super::logging::emit_terminal_log;
-use super::session::{extract_swift_play_champions_from_lobby, get_selected_champion_id, get_swift_play_champion_selections};
 use super::injection::{trigger_party_mode_injection, trigger_party_mode_injection_for_champions};
+use super::logging::emit_terminal_log;
 use super::party_mode::check_for_party_mode_messages_with_connection;
+use super::session::{
+  extract_swift_play_champions_from_lobby, get_selected_champion_id,
+  get_swift_play_champion_selections,
+};
+use super::types::{
+  InjectionMode, LAST_CHAMPION_SHARE_TIME, LAST_PARTY_INJECTION_SIGNATURE,
+  PARTY_INJECTION_DONE_THIS_PHASE, PHASE_STATE,
+};
+use super::utils::{compute_party_injection_signature, read_injection_mode};
+use crate::commands::misc_items::get_selected_misc_items;
+use crate::commands::party_mode::{
+  clear_received_skins, clear_sent_shares, PARTY_MODE_VERBOSE, RECEIVED_SKINS,
+};
+use crate::commands::types::{SavedConfig, SkinData};
+use crate::injection::{inject_skins_and_misc, Skin};
 
+use futures_util::{SinkExt, StreamExt};
 use native_tls::TlsConnector;
-use tokio_tungstenite::Connector;
 use tokio_tungstenite::tungstenite::Message;
-use futures_util::{StreamExt, SinkExt};
+use tokio_tungstenite::Connector;
 
 #[tauri::command]
 pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), String> {
-  println!("Starting LCU watcher (WebSocket-based) for path: {}", league_path);
+  println!(
+    "Starting LCU watcher (WebSocket-based) for path: {}",
+    league_path
+  );
   let app_handle = app.clone();
   let league_path_clone = league_path.clone();
 
@@ -99,20 +110,25 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
         .expect("failed to build TLS connector");
 
       println!("[LCU Watcher] Connecting to LCU WebSocket at {}", ws_url);
-      
+
       // Use tokio_tungstenite's IntoClientRequest trait for proper WebSocket handshake
       use tokio_tungstenite::tungstenite::client::IntoClientRequest;
       let mut request = ws_url.clone().into_client_request().expect("Invalid URL");
-      request.headers_mut().insert("Authorization", format!("Basic {}", auth).parse().unwrap());
-      request.headers_mut().insert("Sec-WebSocket-Protocol", "wamp".parse().unwrap());
+      request
+        .headers_mut()
+        .insert("Authorization", format!("Basic {}", auth).parse().unwrap());
+      request
+        .headers_mut()
+        .insert("Sec-WebSocket-Protocol", "wamp".parse().unwrap());
 
       let connect_res = rt.block_on(async {
         tokio_tungstenite::connect_async_tls_with_config(
           request,
           None,
           false,
-          Some(Connector::NativeTls(tls))
-        ).await
+          Some(Connector::NativeTls(tls)),
+        )
+        .await
       });
 
       let (mut socket, _response) = match connect_res {
@@ -162,12 +178,15 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
 
         // Periodically poll lobby state for Swift Play (Lobby injection mode)
         // WebSocket doesn't reliably emit lobby selection events
-        if injection_mode == InjectionMode::Lobby && last_phase == "Lobby" && last_lobby_check.elapsed().as_millis() >= 1000 {
+        if injection_mode == InjectionMode::Lobby
+          && last_phase == "Lobby"
+          && last_lobby_check.elapsed().as_millis() >= 1000
+        {
           last_lobby_check = Instant::now();
           let port_clone = port.clone();
           let token_clone = token.clone();
           let auth = general_purpose::STANDARD.encode(format!("riot:{}", token_clone));
-          
+
           // Check lobby state via REST
           let http_client = reqwest::blocking::Client::builder()
             .danger_accept_invalid_certs(true)
@@ -185,7 +204,10 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                   let selections = get_swift_play_champion_selections(&json);
                   if !selections.is_empty() {
                     // Log for debugging
-                    println!("[LCU Watcher][Lobby] Detected {} Swift Play champion selections", selections.len());
+                    println!(
+                      "[LCU Watcher][Lobby] Detected {} Swift Play champion selections",
+                      selections.len()
+                    );
                   }
                 }
               }
@@ -205,17 +227,20 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                     .as_str()
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| "None".to_string());
-                  
+
                   // Check transitions BEFORE updating last_phase
                   let old_phase = last_phase.clone();
-                  
+
                   // Handle Lobby->Matchmaking instant-assign via REST resolution (Swift Play/lobby injection)
                   // This fires when you click "Find Match" with champions already selected
-                  if old_phase == "Lobby" && new_phase == "Matchmaking" && !crate::commands::skin_injection::is_manual_injection_active() {
+                  if old_phase == "Lobby"
+                    && new_phase == "Matchmaking"
+                    && !crate::commands::skin_injection::is_manual_injection_active()
+                  {
                     println!("[LCU Watcher] Lobby->Matchmaking transition - triggering instant-assign injection");
                     handle_instant_assign_injection(&app_handle, &league_path_clone, &port, &token);
                   }
-                  
+
                   // Now update the phase
                   handle_phase_change(
                     &app_handle,
@@ -251,7 +276,10 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                       extract_swift_play_champions_from_lobby(&evt.data)
                     };
                     if !selections.is_empty() {
-                      println!("[LCU Watcher][WS] Detected {} Swift Play selections in lobby", selections.len());
+                      println!(
+                        "[LCU Watcher][WS] Detected {} Swift Play selections in lobby",
+                        selections.len()
+                      );
                     }
                   }
                 }
@@ -276,7 +304,9 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
       // Only run polling fallback if lockfile still exists (WS failed but LCU is running)
       // Don't run it if LCU closed (lockfile gone) - just wait and retry WS connection
       if lockfile_path.exists() {
-        println!("[LCU Watcher] WebSocket disconnected but lockfile exists, trying polling fallback");
+        println!(
+          "[LCU Watcher] WebSocket disconnected but lockfile exists, trying polling fallback"
+        );
         run_polling_loop(
           &app_handle,
           &league_path_clone,
@@ -304,7 +334,11 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
 
 fn read_lockfile_once(league_path: &str) -> Option<(String, String, PathBuf)> {
   let dir = PathBuf::from(league_path);
-  for name in ["lockfile", "LeagueClientUx.lockfile", "LeagueClient.lockfile"] {
+  for name in [
+    "lockfile",
+    "LeagueClientUx.lockfile",
+    "LeagueClient.lockfile",
+  ] {
     let path = dir.join(name);
     if let Ok(content) = fs::read_to_string(&path) {
       let parts: Vec<&str> = content.split(':').collect();
@@ -358,10 +392,16 @@ fn handle_phase_change(
   if new_phase == *last_phase {
     return;
   }
-  println!("[LCU Watcher] LCU status changed: {} -> {}", last_phase, new_phase);
+  println!(
+    "[LCU Watcher] LCU status changed: {} -> {}",
+    last_phase, new_phase
+  );
   emit_terminal_log(
     app_handle,
-    &format!("[LCU Watcher] LCU status changed: {} -> {}", last_phase, new_phase),
+    &format!(
+      "[LCU Watcher] LCU status changed: {} -> {}",
+      last_phase, new_phase
+    ),
   );
 
   let should_cleanup = match (&**last_phase, new_phase) {
@@ -554,7 +594,7 @@ fn handle_champ_select_event_data(
               std::thread::spawn(move || {
                 let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async move {
-                    let _ = crate::commands::party_mode::send_skin_share_to_paired_friends(
+                  let _ = crate::commands::party_mode::send_skin_share_to_paired_friends(
                     &app_handle_clone,
                     skin_clone.champion_id,
                     skin_clone.skin_id,
@@ -743,7 +783,10 @@ fn handle_instant_assign_injection(
   }
   PARTY_INJECTION_DONE_THIS_PHASE.store(true, Ordering::Relaxed);
   clear_sent_shares();
-  emit_terminal_log(app_handle, "[LCU Watcher] Lobby->Matchmaking detected; resolving lobby-selected champions...");
+  emit_terminal_log(
+    app_handle,
+    "[LCU Watcher] Lobby->Matchmaking detected; resolving lobby-selected champions...",
+  );
 
   let auth = general_purpose::STANDARD.encode(format!("riot:{}", token));
   let mut resolved_champions: Vec<i64> = Vec::new();
@@ -752,7 +795,10 @@ fn handle_instant_assign_injection(
   let http_client = reqwest::blocking::Client::builder()
     .danger_accept_invalid_certs(true)
     .build();
-  let http_client = match http_client { Ok(c) => c, Err(_) => return };
+  let http_client = match http_client {
+    Ok(c) => c,
+    Err(_) => return,
+  };
 
   // Try gameflow session
   let session_url = format!("https://127.0.0.1:{}/lol-gameflow/v1/session", port);
@@ -763,34 +809,37 @@ fn handle_instant_assign_injection(
   {
     if resp.status().is_success() {
       if let Ok(json) = resp.json::<serde_json::Value>() {
-      resolved_champions.extend(get_swift_play_champion_selections(&json));
-      if let Some(game_data) = json.get("gameData") {
-        if let Some(selected) = game_data.get("selectedChampions").and_then(|s| s.as_array()) {
-          for sel in selected {
-            if let Some(cid) = sel.get("championId").and_then(|v| v.as_i64()) {
-              if cid > 0 && !resolved_champions.contains(&cid) {
-                resolved_champions.push(cid);
+        resolved_champions.extend(get_swift_play_champion_selections(&json));
+        if let Some(game_data) = json.get("gameData") {
+          if let Some(selected) = game_data
+            .get("selectedChampions")
+            .and_then(|s| s.as_array())
+          {
+            for sel in selected {
+              if let Some(cid) = sel.get("championId").and_then(|v| v.as_i64()) {
+                if cid > 0 && !resolved_champions.contains(&cid) {
+                  resolved_champions.push(cid);
+                }
               }
             }
           }
-        }
-        if let Some(pcs) = game_data
-          .get("playerChampionSelections")
-          .and_then(|p| p.as_array())
-        {
-          for item in pcs {
-            if let Some(champs) = item.get("championIds").and_then(|c| c.as_array()) {
-              for c in champs {
-                if let Some(cid) = c.as_i64() {
-                  if cid > 0 && !resolved_champions.contains(&cid) {
-                    resolved_champions.push(cid);
+          if let Some(pcs) = game_data
+            .get("playerChampionSelections")
+            .and_then(|p| p.as_array())
+          {
+            for item in pcs {
+              if let Some(champs) = item.get("championIds").and_then(|c| c.as_array()) {
+                for c in champs {
+                  if let Some(cid) = c.as_i64() {
+                    if cid > 0 && !resolved_champions.contains(&cid) {
+                      resolved_champions.push(cid);
+                    }
                   }
                 }
               }
             }
           }
         }
-      }
       }
     }
   }
@@ -805,12 +854,12 @@ fn handle_instant_assign_injection(
     {
       if resp.status().is_success() {
         if let Ok(json) = resp.json::<serde_json::Value>() {
-        let lobby_ids = extract_swift_play_champions_from_lobby(&json);
-        for id in lobby_ids {
-          if !resolved_champions.contains(&id) {
-            resolved_champions.push(id);
+          let lobby_ids = extract_swift_play_champions_from_lobby(&json);
+          for id in lobby_ids {
+            if !resolved_champions.contains(&id) {
+              resolved_champions.push(id);
+            }
           }
-        }
         }
       }
     }
@@ -826,12 +875,12 @@ fn handle_instant_assign_injection(
     {
       if resp.status().is_success() {
         if let Ok(json) = resp.json::<serde_json::Value>() {
-        let ids = extract_swift_play_champions_from_lobby(&json);
-        for id in ids {
-          if !resolved_champions.contains(&id) {
-            resolved_champions.push(id);
+          let ids = extract_swift_play_champions_from_lobby(&json);
+          for id in ids {
+            if !resolved_champions.contains(&id) {
+              resolved_champions.push(id);
+            }
           }
-        }
         }
       }
     }
@@ -905,9 +954,10 @@ fn handle_instant_assign_injection(
         let mut ready = false;
         let start = Instant::now();
         while start.elapsed() < std::time::Duration::from_secs(8) {
-          match crate::commands::party_mode::should_inject_now(&app_for_async, *champs_u32
-            .get(0)
-            .unwrap_or(&0))
+          match crate::commands::party_mode::should_inject_now(
+            &app_for_async,
+            *champs_u32.get(0).unwrap_or(&0),
+          )
           .await
           {
             Ok(true) => {
@@ -930,12 +980,10 @@ fn handle_instant_assign_injection(
           std::thread::sleep(std::time::Duration::from_millis(750));
         }
         if !ready {
-          println!(
-            "[Party Mode][instant-assign] Proceeding without all shares after timeout",
-          );
+          println!("[Party Mode][instant-assign] Proceeding without all shares after timeout",);
         }
-        if let Err(e) = trigger_party_mode_injection_for_champions(&app_for_async, &champs_u32)
-          .await
+        if let Err(e) =
+          trigger_party_mode_injection_for_champions(&app_for_async, &champs_u32).await
         {
           eprintln!("[Party Mode][instant-assign] Injection failed: {}", e);
         }
@@ -979,7 +1027,8 @@ fn run_polling_loop(
   let mut last_phase_seen = last_phase.clone();
 
   // Poll for a bounded time or until things change
-  for _ in 0..1200 { // ~20 minutes max as a safety guard
+  for _ in 0..1200 {
+    // ~20 minutes max as a safety guard
     // Party-mode inbox polling
     if last_party_mode_check.elapsed().as_millis() >= 1500 {
       *last_party_mode_check = Instant::now();
@@ -1037,7 +1086,10 @@ fn run_polling_loop(
       }
 
       // Auto/party instant-assign on Lobby->Matchmaking
-      if last_phase == "Lobby" && phase == "Matchmaking" && !crate::commands::skin_injection::is_manual_injection_active() {
+      if last_phase == "Lobby"
+        && phase == "Matchmaking"
+        && !crate::commands::skin_injection::is_manual_injection_active()
+      {
         handle_instant_assign_injection(app_handle, league_path, port, token);
       }
     }

@@ -49,7 +49,7 @@ export function useInitialization() {
             "[Init] Commits -> last_saved:",
             last_data_commit,
             "| latest_upstream:",
-            latestUpstream
+            latestUpstream,
           );
         } catch (e) {
           console.warn("[Init] Could not fetch latest upstream commit", e);
@@ -84,7 +84,7 @@ export function useInitialization() {
                 skinObj.champion_id,
                 skinObj.skin_id,
                 skinObj.chroma_id,
-                skinObj.skin_file
+                skinObj.skin_file,
               );
             }
           });
@@ -111,19 +111,33 @@ export function useInitialization() {
                   const champ = champions.find((c) => c.id === sel.champion_id);
                   const skin = champ?.skins.find((sk) => sk.id === sel.skin_id);
                   let resolved: string | undefined = undefined;
-                  if (sel.chroma_id && skin?.chromas && skin.chromas.length > 0) {
-                    resolved = skin.chromas.find((c) => c.id === sel.chroma_id)?.skin_file;
+                  if (
+                    sel.chroma_id &&
+                    skin?.chromas &&
+                    skin.chromas.length > 0
+                  ) {
+                    resolved = skin.chromas.find(
+                      (c) => c.id === sel.chroma_id,
+                    )?.skin_file;
                   }
                   resolved ??= skin?.skin_file;
                   if (resolved) {
                     // Update store selection with resolved path
-                    selectSkin(sel.champion_id, sel.skin_id, sel.chroma_id, resolved);
+                    selectSkin(
+                      sel.champion_id,
+                      sel.skin_id,
+                      sel.chroma_id,
+                      resolved,
+                    );
                   }
                 }
               }
             }
           } catch (e) {
-            console.warn("[Init] Failed to enrich selections with skin_file", e);
+            console.warn(
+              "[Init] Failed to enrich selections with skin_file",
+              e,
+            );
           }
 
           // Load favorites

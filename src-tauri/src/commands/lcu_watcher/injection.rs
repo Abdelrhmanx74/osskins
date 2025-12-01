@@ -1,17 +1,17 @@
 // Injection logic for skins and misc items
 
+use serde_json;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager, Emitter};
-use serde_json;
+use tauri::{AppHandle, Emitter, Manager};
 
-use crate::commands::misc_items::get_selected_misc_items;
-use crate::commands::types::SavedConfig;
-use crate::commands::party_mode::RECEIVED_SKINS;
-use crate::commands::party_mode::messaging::delete_conversation_messages;
-use crate::commands::party_mode::lcu::get_lcu_connection;
-use crate::injection::Skin;
 use super::utils::is_in_champ_select;
+use crate::commands::misc_items::get_selected_misc_items;
+use crate::commands::party_mode::lcu::get_lcu_connection;
+use crate::commands::party_mode::messaging::delete_conversation_messages;
+use crate::commands::party_mode::RECEIVED_SKINS;
+use crate::commands::types::SavedConfig;
+use crate::injection::Skin;
 
 // Helper function to inject skins for multiple champions (used in instant-assign)
 // Kept for backward compatibility and manual calls (not referenced by watcher now).
@@ -576,25 +576,41 @@ pub async fn trigger_party_mode_injection(app: &AppHandle, champion_id: u32) -> 
       if let Ok(lcu_conn) = get_lcu_connection(app).await {
         for friend_id in friends_to_clear.iter() {
           if let Err(e) = delete_conversation_messages(app, &lcu_conn, friend_id).await {
-            println!("[Party Mode][CLEANUP] Failed to delete messages for {}: {}", friend_id, e);
+            println!(
+              "[Party Mode][CLEANUP] Failed to delete messages for {}: {}",
+              friend_id, e
+            );
           } else {
-            println!("[Party Mode][CLEANUP] Deleted conversation messages for {}", friend_id);
+            println!(
+              "[Party Mode][CLEANUP] Deleted conversation messages for {}",
+              friend_id
+            );
           }
         }
       } else {
-        println!("[Party Mode][CLEANUP] Could not connect to LCU to delete partner conversation messages");
+        println!(
+          "[Party Mode][CLEANUP] Could not connect to LCU to delete partner conversation messages"
+        );
       }
       // After injection completes, attempt to delete conversation messages from the LCU for each friend that contributed
       if let Ok(lcu_conn) = get_lcu_connection(app).await {
         for friend_id in friends_to_clear.iter() {
           if let Err(e) = delete_conversation_messages(app, &lcu_conn, friend_id).await {
-            println!("[Party Mode][CLEANUP] Failed to delete messages for {}: {}", friend_id, e);
+            println!(
+              "[Party Mode][CLEANUP] Failed to delete messages for {}: {}",
+              friend_id, e
+            );
           } else {
-            println!("[Party Mode][CLEANUP] Deleted conversation messages for {}", friend_id);
+            println!(
+              "[Party Mode][CLEANUP] Deleted conversation messages for {}",
+              friend_id
+            );
           }
         }
       } else {
-        println!("[Party Mode][CLEANUP] Could not connect to LCU to delete partner conversation messages");
+        println!(
+          "[Party Mode][CLEANUP] Could not connect to LCU to delete partner conversation messages"
+        );
       }
       Ok(())
     }
@@ -891,7 +907,13 @@ pub async fn trigger_party_mode_injection_for_champions(
   // Emit start event once for the whole batch
   let _ = app.emit("injection-status", "injecting");
 
-  match crate::injection::inject_skins_and_misc_no_events(app, league_path, &unique_skins, &misc_items, &champions_dir) {
+  match crate::injection::inject_skins_and_misc_no_events(
+    app,
+    league_path,
+    &unique_skins,
+    &misc_items,
+    &champions_dir,
+  ) {
     Ok(_) => {
       let total = unique_skins.len();
       let friend_count = total.saturating_sub(local_added_count);

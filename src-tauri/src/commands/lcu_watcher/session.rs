@@ -103,7 +103,6 @@ pub fn get_selected_champion_id(session_json: &serde_json::Value) -> Option<i64>
   None
 }
 
-
 // Helper function to get instant-assign champion selections from session JSON
 pub fn get_swift_play_champion_selections(json: &serde_json::Value) -> Vec<i64> {
   let mut champion_ids = Vec::new();

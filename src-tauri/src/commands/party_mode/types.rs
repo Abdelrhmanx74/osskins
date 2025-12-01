@@ -25,7 +25,7 @@ pub static CURRENT_SESSION_ID: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex:
 pub static PARTY_MODE_VERBOSE: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
 // Outbound share de-duplication within a phase: track one send per friend per champion
-pub static SENT_SKIN_SHARES: Lazy<Mutex<std::collections::HashSet<String>>> = 
+pub static SENT_SKIN_SHARES: Lazy<Mutex<std::collections::HashSet<String>>> =
   Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
 
 pub const PARTY_MODE_MESSAGE_PREFIX: &str = "OSS:";

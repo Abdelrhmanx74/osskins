@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
 use std::time::Duration;
+use tauri::{AppHandle, Manager};
 
 const LOL_SKINS_MANIFEST_URL: &str = "https://abdelrhmanx74.github.io/osskins/manifest.json";
 
@@ -82,7 +82,12 @@ fn extract_manifest_commit(manifest: &LolSkinsManifest) -> Option<String> {
   }
 
   if let Some(champ) = manifest.champions.first() {
-    if let Some(asset) = champ.assets.skins.first().or_else(|| champ.assets.chromas.first()) {
+    if let Some(asset) = champ
+      .assets
+      .skins
+      .first()
+      .or_else(|| champ.assets.chromas.first())
+    {
       if !asset.commit.is_empty() {
         return Some(asset.commit.clone());
       }

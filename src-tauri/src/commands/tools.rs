@@ -1,15 +1,20 @@
 use chrono::Utc;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use sevenz_rust::SevenZReader;
+use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager};
 use tokio::fs as async_fs;
 use tokio::io::AsyncWriteExt;
 
-const RELEASE_API_URL: &str = "https://api.github.com/repos/LeagueToolkit/cslol-manager/releases/latest";
+const RELEASE_API_URL: &str =
+  "https://api.github.com/repos/LeagueToolkit/cslol-manager/releases/latest";
 const PROGRESS_EVENT: &str = "cslol-tools-progress";
 const TOOLS_DIR_NAME: &str = "cslol-tools";
 const VERSION_FILE_NAME: &str = "cslol-tools-version.txt";
@@ -68,6 +73,7 @@ struct ReleaseInfo {
   version: String,
   download_url: String,
   size: u64,
+  asset_name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +91,10 @@ fn build_http_client() -> Result<reqwest::Client, String> {
   reqwest::Client::builder()
     .user_agent("osskins-tools-installer/1.0 (+https://github.com/Abdelrhmanx74/osskins)")
     .timeout(Duration::from_secs(300))
+    .connect_timeout(Duration::from_secs(10))
+    .pool_max_idle_per_host(32)
+    .pool_idle_timeout(Duration::from_secs(120))
+    .http2_adaptive_window(true)
     .build()
     .map_err(|e| format!("Failed to build HTTP client: {}", e))
 }
@@ -122,9 +132,17 @@ async fn read_installed_version(paths: &LocalToolsPaths) -> Result<Option<String
 }
 
 async fn mod_tools_exists(paths: &LocalToolsPaths) -> bool {
-  async_fs::metadata(paths.tools_dir.join("mod-tools.exe")).await.is_ok()
+  async_fs::metadata(paths.tools_dir.join("mod-tools.exe"))
+    .await
+    .is_ok()
 }
 
+/// Try to pick a suitable asset from the release payload.
+/// Preference order:
+/// 1) explicit zip (cslol-manager.zip)
+/// 2) any archive-like asset (zip, 7z, tar.gz, tar, msi)
+/// 3) executable (.exe)
+/// If none found, returns an error listing available assets.
 async fn fetch_latest_release_info() -> Result<ReleaseInfo, String> {
   let client = build_http_client()?;
   let response = client
@@ -149,17 +167,71 @@ async fn fetch_latest_release_info() -> Result<ReleaseInfo, String> {
     .await
     .map_err(|e| format!("Failed to parse release info: {}", e))?;
 
-  let asset = payload
+  // Helper closures
+  let is_archive = |n: &str| {
+    let l = n.to_lowercase();
+    l.ends_with(".zip")
+      || l.ends_with(".7z")
+      || l.ends_with(".tar.gz")
+      || l.ends_with(".tgz")
+      || l.ends_with(".tar")
+  };
+  let is_sfx = |n: &str| n.to_lowercase().ends_with(".exe");
+
+  // 1) Prefer explicit cslol-manager.zip if present
+  if let Some(asset) = payload
     .assets
     .iter()
     .find(|asset| asset.name == "cslol-manager.zip")
-    .ok_or_else(|| "Could not find cslol-manager.zip in latest release".to_string())?;
+  {
+    return Ok(ReleaseInfo {
+      version: payload.tag_name,
+      download_url: asset.browser_download_url.clone(),
+      size: asset.size,
+      asset_name: asset.name.clone(),
+    });
+  }
 
-  Ok(ReleaseInfo {
-    version: payload.tag_name,
-    download_url: asset.browser_download_url.clone(),
-    size: asset.size,
-  })
+  // 2) Try any ZIP/7z archive that looks like the manager package
+  // Prefer regular archives over SFX
+  if let Some(asset) = payload.assets.iter().find(|asset| {
+    let name_matches = asset.name.to_lowercase().contains("cslol-manager")
+      || asset.name.to_lowercase().contains("cslol");
+    name_matches && is_archive(&asset.name)
+  }) {
+    return Ok(ReleaseInfo {
+      version: payload.tag_name,
+      download_url: asset.browser_download_url.clone(),
+      size: asset.size,
+      asset_name: asset.name.clone(),
+    });
+  }
+
+  // 3) Fallback to 7z SFX (.exe) if no regular archives found
+  if let Some(asset) = payload.assets.iter().find(|asset| {
+    let name_matches = asset.name.to_lowercase().contains("cslol-manager")
+      || asset.name.to_lowercase().contains("cslol");
+    name_matches && is_sfx(&asset.name)
+  }) {
+    return Ok(ReleaseInfo {
+      version: payload.tag_name,
+      download_url: asset.browser_download_url.clone(),
+      size: asset.size,
+      asset_name: asset.name.clone(),
+    });
+  }
+
+  // Nothing matched - build informative error
+  let names = payload
+    .assets
+    .iter()
+    .map(|a| a.name.clone())
+    .collect::<Vec<_>>()
+    .join(", ");
+  Err(format!(
+    "Could not find a suitable cslol-manager archive (.zip, .7z, or .exe SFX) in latest release. Available assets: {}",
+    names
+  ))
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), io::Error> {
@@ -200,13 +272,19 @@ async fn download_file_with_progress(
     .map_err(|e| format!("Failed to start download: {}", e))?;
 
   if !response.status().is_success() {
-    return Err(format!("Download failed with status: {}", response.status()));
+    return Err(format!(
+      "Download failed with status: {}",
+      response.status()
+    ));
   }
 
   let content_length = response.content_length().unwrap_or(total_size);
-  let mut file = async_fs::File::create(file_path)
+  
+  // Use buffered writer for faster I/O
+  let file = async_fs::File::create(file_path)
     .await
     .map_err(|e| format!("Failed to create download file: {}", e))?;
+  let mut file = tokio::io::BufWriter::with_capacity(256 * 1024, file);
 
   let mut downloaded: u64 = 0;
   let mut last_emit = Instant::now();
@@ -222,8 +300,8 @@ async fn download_file_with_progress(
 
     downloaded += bytes.len() as u64;
 
-    // Emit progress updates at most every 250ms or when download completes
-    if last_emit.elapsed() >= Duration::from_millis(250) || downloaded >= content_length {
+    // Emit progress updates at most every 500ms to reduce overhead
+    if last_emit.elapsed() >= Duration::from_millis(500) || downloaded >= content_length {
       let elapsed = started_at.elapsed().as_secs_f64();
       let speed = if elapsed > 0.0 {
         downloaded as f64 / elapsed
@@ -239,8 +317,209 @@ async fn download_file_with_progress(
     .flush()
     .await
     .map_err(|e| format!("Failed to finalize download: {}", e))?;
+  
+  file
+    .into_inner()
+    .sync_all()
+    .await
+    .map_err(|e| format!("Failed to sync download: {}", e))?;
 
   Ok(downloaded)
+}
+
+/// Extract a 7z SFX archive (self-extracting .exe) using sevenz-rust.
+/// 7z SFX files have a small executable header followed by a valid .7z stream.
+/// We need to find the 7z signature within the file and extract from there.
+/// NOTE: This only works for true 7z SFX archives created with 7z -sfx
+fn try_extract_sfx_with_sevenz(archive_path: &Path, extract_path: &Path) -> Result<(), String> {
+  use std::io::{Read, Seek, SeekFrom};
+  
+  let mut file = fs::File::open(archive_path)
+    .map_err(|e| format!("Failed to open archive: {}", e))?;
+
+  // 7z signature: '7' 'z' 0xBC 0xAF 0x27 0x1C
+  const SEVENZ_SIGNATURE: [u8; 6] = [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C];
+  
+  // Search for 7z signature in the file
+  let mut buffer = Vec::new();
+  file.read_to_end(&mut buffer)
+    .map_err(|e| format!("Failed to read file: {}", e))?;
+  
+  // Find the 7z signature
+  let signature_offset = buffer
+    .windows(SEVENZ_SIGNATURE.len())
+    .position(|window| window == SEVENZ_SIGNATURE)
+    .ok_or_else(|| {
+      "Not a 7z SFX archive - could not find 7z signature. This appears to be a regular .exe installer.".to_string()
+    })?;
+  
+  if signature_offset == 0 {
+    // It's a regular 7z file, not SFX
+    file.seek(SeekFrom::Start(0))
+      .map_err(|e| format!("Failed to seek file: {}", e))?;
+  } else {
+    // It's an SFX, skip to the 7z data
+    file.seek(SeekFrom::Start(signature_offset as u64))
+      .map_err(|e| format!("Failed to seek to 7z data: {}", e))?;
+  }
+
+  // Get remaining file size from signature position
+  let file_size = buffer.len() as u64 - signature_offset as u64;
+  
+  // Create a cursor over the 7z portion of the data
+  let sevenz_data = &buffer[signature_offset..];
+  let cursor = std::io::Cursor::new(sevenz_data);
+
+  let mut sz = SevenZReader::new(cursor, file_size, sevenz_rust::Password::empty())
+    .map_err(|e| format!("Failed to read 7z archive structure: {}", e))?;
+
+  // Extract all entries
+  sz.for_each_entries(|entry, reader| {
+    // Skip directories
+    if entry.is_directory() {
+      return Ok(true);
+    }
+
+    let entry_path = extract_path.join(entry.name());
+
+    // Create parent directories if needed
+    if let Some(parent) = entry_path.parent() {
+      fs::create_dir_all(parent)?;
+    }
+
+    // Extract the file
+    let mut out_file = fs::File::create(&entry_path)?;
+    io::copy(reader, &mut out_file)?;
+
+    Ok(true)
+  })
+  .map_err(|e| format!("Failed during 7z extraction: {}", e))?;
+
+  Ok(())
+}
+
+/// Try to extract an archive using multiple strategies:
+/// 1) Attempt to open as ZIP using zip crate
+/// Try to extract an archive using multiple strategies:
+/// 1) ZIP files: Use zip crate
+/// 2) 7z archives and 7z SFX (.exe): Use sevenz-rust with SFX detection
+/// 3) External tools are OPTIONAL fallbacks only
+/// Returns Err with a descriptive message if all methods fail.
+fn try_extract_archive(archive_path: &Path, extract_path: &Path) -> Result<(), String> {
+  let mut errors = Vec::new();
+  let file_ext = archive_path
+    .extension()
+    .and_then(OsStr::to_str)
+    .map(|s| s.to_lowercase())
+    .unwrap_or_default();
+
+  // 1) Try ZIP archive extraction via zip crate for .zip files
+  if file_ext == "zip" {
+    if let Ok(file) = fs::File::open(&archive_path) {
+      match zip::ZipArchive::new(file) {
+        Ok(mut archive) => {
+          match archive.extract(&extract_path) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+              errors.push(format!("ZIP extraction failed: {}", e));
+            }
+          }
+        }
+        Err(e) => {
+          errors.push(format!("Not a valid ZIP archive: {}", e));
+        }
+      }
+    } else {
+      return Err(format!(
+        "Failed to open downloaded archive at {}",
+        archive_path.display()
+      ));
+    }
+  }
+
+  // 2) Try sevenz-rust for 7z archives and 7z SFX (.exe) files
+  // Our implementation searches for the 7z signature within the file
+  if file_ext == "7z" || file_ext == "exe" {
+    match try_extract_sfx_with_sevenz(archive_path, extract_path) {
+      Ok(()) => return Ok(()),
+      Err(e) => {
+        errors.push(format!("sevenz-rust extraction failed: {}", e));
+      }
+    }
+  }
+
+  // If we've successfully handled common formats, we should have returned by now
+  // The following are OPTIONAL fallbacks only if user has these tools installed
+
+  // 3) OPTIONAL: Try external 7z extraction (only if user has 7-Zip installed)
+  // This is NOT required and is only a fallback
+  match Command::new("7z")
+    .arg("x")
+    .arg(archive_path.as_os_str())
+    .arg(format!("-o{}", extract_path.to_string_lossy()))
+    .arg("-y")
+    .stderr(Stdio::piped())
+    .stdout(Stdio::piped())
+    .spawn()
+  {
+    Ok(mut cmd) => {
+      match cmd.wait() {
+        Ok(status) if status.success() => return Ok(()),
+        Ok(status) => {
+          errors.push(format!("External 7z (optional fallback) failed with exit code: {:?}", status.code()));
+        }
+        Err(e) => {
+          errors.push(format!("External 7z (optional fallback) process error: {}", e));
+        }
+      }
+    }
+    Err(_) => {
+      // 7z not installed - this is EXPECTED and OK
+      errors.push("External 7z not available (not required)".to_string());
+    }
+  }
+
+  // 4) OPTIONAL: Try tar (only for tar-based formats and if tar is available)
+  // 4) OPTIONAL: Try tar (only for tar-based formats and if tar is available)
+  if file_ext == "tar"
+    || file_ext == "gz"
+    || file_ext == "tgz"
+    || archive_path.to_string_lossy().to_lowercase().ends_with(".tar.gz")
+  {
+    match Command::new("tar")
+      .arg("-xf")
+      .arg(archive_path.as_os_str())
+      .arg("-C")
+      .arg(extract_path.as_os_str())
+      .stderr(Stdio::piped())
+      .stdout(Stdio::piped())
+      .spawn()
+    {
+      Ok(mut cmd) => {
+        match cmd.wait() {
+          Ok(status) if status.success() => return Ok(()),
+          Ok(status) => {
+            errors.push(format!("tar (optional fallback) failed with exit code: {:?}", status.code()));
+          }
+          Err(e) => {
+            errors.push(format!("tar (optional fallback) process error: {}", e));
+          }
+        }
+      }
+      Err(_) => {
+        // tar not installed - this is EXPECTED and OK for non-tar files
+        errors.push("tar not available (not required for .zip/.7z/.exe files)".to_string());
+      }
+    }
+  }
+
+  // All extraction methods failed - provide detailed error information
+  Err(format!(
+    "Failed to extract archive '{}' (extension: .{}). Built-in extractors should handle .zip, .7z, and .exe files without external tools.\n\nAttempted methods:\n{}",
+    archive_path.display(),
+    file_ext,
+    errors.join("\n")
+  ))
 }
 
 async fn download_and_install_tools(
@@ -259,11 +538,12 @@ async fn download_and_install_tools(
     .await
     .map_err(|e| format!("Failed to create temporary directory: {}", e))?;
 
-  let zip_path = temp_dir.join("cslol-manager.zip");
+  // Use the actual asset name for the downloaded file (preserves extension)
+  let download_file = temp_dir.join(&release.asset_name);
   let extract_path = temp_dir.join("extracted");
 
   let client = build_http_client()?;
-  
+
   // Download with progress tracking
   let version = release.version.clone();
   let source_str = source.to_string();
@@ -271,7 +551,7 @@ async fn download_and_install_tools(
   let downloaded = download_file_with_progress(
     &client,
     &release.download_url,
-    &zip_path,
+    &download_file,
     release.size,
     move |downloaded, total, speed| {
       let progress = if total > 0 {
@@ -312,23 +592,43 @@ async fn download_and_install_tools(
     },
   );
 
-  let zip_path_clone = zip_path.clone();
+  // Attempt extraction using multiple strategies. This runs in blocking thread because extraction can be CPU/IO heavy.
+  let download_file_clone = download_file.clone();
   let extract_path_clone = extract_path.clone();
   tokio::task::spawn_blocking(move || -> Result<(), String> {
-    let file = fs::File::open(&zip_path_clone)
-      .map_err(|e| format!("Failed to open downloaded archive: {}", e))?;
-    let mut archive = zip::ZipArchive::new(file)
-      .map_err(|e| format!("Failed to read ZIP archive: {}", e))?;
-    archive
-      .extract(&extract_path_clone)
-      .map_err(|e| format!("Failed to extract CSLOL Manager archive: {}", e))?;
-    Ok(())
+    // Ensure extract path exists
+    if let Err(e) = fs::create_dir_all(&extract_path_clone) {
+      return Err(format!(
+        "Failed to create extract directory {}: {}",
+        extract_path_clone.display(),
+        e
+      ));
+    }
+
+    // try_extract_archive now handles: ZIP, 7z/SFX (.exe), external 7z, and tar
+    try_extract_archive(&download_file_clone, &extract_path_clone)
+      .map_err(|e| format!("Extraction failed: {}", e))
   })
   .await
   .map_err(|e| format!("Extraction task failed: {}", e))??;
 
+  // After extraction, look for the tools folder in common locations
   let mut candidates = vec![extract_path.join("cslol-manager").join(TOOLS_DIR_NAME)];
   candidates.push(extract_path.join(TOOLS_DIR_NAME));
+
+  // Some self-extracting exes may produce a nested folder or produce contents at root
+  // add additional candidates: root of extracted, and any first-level directory that contains the TOOLS_DIR_NAME
+  candidates.push(extract_path.clone());
+  if let Ok(read_dir) = fs::read_dir(&extract_path) {
+    if let Ok(iter) = read_dir.into_iter().collect::<Result<Vec<_>, _>>() {
+      for entry in iter {
+        if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+          candidates.push(entry.path().join(TOOLS_DIR_NAME));
+          candidates.push(entry.path());
+        }
+      }
+    }
+  }
 
   let tools_source = candidates
     .into_iter()
@@ -350,7 +650,10 @@ async fn download_and_install_tools(
   .await
   .map_err(|e| format!("Install task failed: {}", e))??;
 
-  if async_fs::metadata(paths.tools_dir.join("mod-tools.exe")).await.is_err() {
+  if async_fs::metadata(paths.tools_dir.join("mod-tools.exe"))
+    .await
+    .is_err()
+  {
     return Err("Installed CSLOL tools are missing mod-tools.exe".into());
   }
 
@@ -386,7 +689,13 @@ pub async fn get_cslol_manager_status(app: tauri::AppHandle) -> Result<CslolMana
     latest_version: Some(release_info.version),
     has_update,
     path: if installed {
-      Some(paths.tools_dir.join("mod-tools.exe").to_string_lossy().to_string())
+      Some(
+        paths
+          .tools_dir
+          .join("mod-tools.exe")
+          .to_string_lossy()
+          .to_string(),
+      )
     } else {
       None
     },
@@ -437,7 +746,13 @@ pub async fn ensure_mod_tools(
         skipped: true,
         version: current_version.clone(),
         latest_version: Some(release_info.version.clone()),
-        path: Some(paths.tools_dir.join("mod-tools.exe").to_string_lossy().to_string()),
+        path: Some(
+          paths
+            .tools_dir
+            .join("mod-tools.exe")
+            .to_string_lossy()
+            .to_string(),
+        ),
       })
     } else {
       download_and_install_tools(&app, &paths, &release_info, source).await?;
@@ -447,7 +762,13 @@ pub async fn ensure_mod_tools(
         skipped: false,
         version: Some(release_info.version.clone()),
         latest_version: Some(release_info.version.clone()),
-        path: Some(paths.tools_dir.join("mod-tools.exe").to_string_lossy().to_string()),
+        path: Some(
+          paths
+            .tools_dir
+            .join("mod-tools.exe")
+            .to_string_lossy()
+            .to_string(),
+        ),
       })
     }
   }
@@ -505,4 +826,19 @@ pub async fn ensure_mod_tools(
   }
 
   result
+}
+
+/// Manual SFX extraction command that can be called from JavaScript.
+/// Extracts a 7z SFX archive (.exe file) to the specified output directory.
+#[tauri::command]
+pub async fn extract_sfx(path: String, output: String) -> Result<(), String> {
+  let archive_path = PathBuf::from(path);
+  let output_path = PathBuf::from(output);
+
+  // Run extraction in a blocking task since it's CPU/IO intensive
+  tokio::task::spawn_blocking(move || {
+    try_extract_sfx_with_sevenz(&archive_path, &output_path)
+  })
+  .await
+  .map_err(|e| format!("Extraction task failed: {}", e))?
 }

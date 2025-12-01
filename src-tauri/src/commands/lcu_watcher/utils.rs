@@ -1,12 +1,12 @@
 // Utility functions for LCU watcher
 
+use serde_json;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use tauri::{AppHandle, Manager};
-use serde_json;
 
-use crate::commands::party_mode::RECEIVED_SKINS;
 use super::types::{InjectionMode, PHASE_STATE};
+use crate::commands::party_mode::RECEIVED_SKINS;
 use std::sync::atomic::Ordering;
 
 pub fn is_in_champ_select() -> bool {

@@ -56,6 +56,9 @@ export default function Home() {
     null,
   );
   const [initialUpdateTriggered, setInitialUpdateTriggered] = useState(false);
+  // If an initial update fails we allow the UI to proceed. This flag is set
+  // when an update attempt errors so rendering can avoid blocking the user.
+  const [updateFailed, setUpdateFailed] = useState(false);
 
   // Handle misc item selection
   const handleMiscItemClick = useCallback((type: MiscItemType) => {
@@ -82,13 +85,22 @@ export default function Home() {
   );
 
   const handleUpdateData = useCallback(async () => {
+    // Clear previous failure state when starting a new attempt
+    setUpdateFailed(false);
     try {
       await updateData();
       await refreshChampions();
+      // Success: ensure failure flag is cleared
+      setUpdateFailed(false);
     } catch (error) {
+      // Mark that update failed so UI won't remain blocked
+      setUpdateFailed(true);
       console.error("Failed to update data:", error);
-      toast.error("Failed to update data");
-      throw error instanceof Error ? error : new Error(String(error));
+      // Show an actionable message but don't rethrow - letting callers continue
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error("Failed to update data: " + msg);
+      // Do not rethrow here so that initial startup and modal triggers
+      // won't lock the renderer into a blocking state.
     }
   }, [refreshChampions, updateData]);
 
@@ -164,7 +176,10 @@ export default function Home() {
     );
   }
 
-  if (isUpdating) {
+  // While an update is in progress we show the progress modal, but if the
+  // update has already failed we allow the rest of the app to render so the
+  // user is not locked out. The modal UI is still available via the TopBar.
+  if (isUpdating && !updateFailed) {
     return (
       <Suspense fallback={<ChampionsLoader />}>
         <main className="flex min-h-full flex-col items-center justify-center p-24">
@@ -180,7 +195,10 @@ export default function Home() {
     );
   }
 
-  if (hasData === false) {
+  // If there is no existing data we normally show the loader. However if an
+  // update attempt failed, allow the user to proceed into the app (so they
+  // can fix settings/select directory) while the error is shown via toast.
+  if (hasData === false && !updateFailed) {
     return <ChampionsLoader />;
   }
 
@@ -222,9 +240,15 @@ export default function Home() {
               <MiscItemView type={selectedMiscItem} />
             ) : activeTab === "official" ? (
               manualInjectionMode ? (
-                <ManualSkinGrid champion={selectedChampionData ?? null} searchQuery={searchQuery} />
+                <ManualSkinGrid
+                  champion={selectedChampionData ?? null}
+                  searchQuery={searchQuery}
+                />
               ) : (
-                <SkinGrid champion={selectedChampionData ?? null} searchQuery={searchQuery} />
+                <SkinGrid
+                  champion={selectedChampionData ?? null}
+                  searchQuery={searchQuery}
+                />
               )
             ) : (
               <CustomSkinList championId={selectedChampion} />

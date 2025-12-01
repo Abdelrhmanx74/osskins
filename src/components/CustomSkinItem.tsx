@@ -45,18 +45,18 @@ export function CustomSkinItem({ skin, onDelete }: CustomSkinCardProps) {
           setIsDeleting(true);
 
           toast.promise(
-            async () => {
+            (async () => {
               const success = await onDelete(skin.id);
               if (!success) {
                 throw new Error("Failed to delete skin");
               }
               return success;
-            },
+            })(),
             {
               loading: "Deleting skin...",
               success: `"${skin.name}" was deleted successfully`,
               error: "Failed to delete skin",
-            }
+            },
           );
         },
       },
@@ -77,7 +77,7 @@ export function CustomSkinItem({ skin, onDelete }: CustomSkinCardProps) {
     <Button
       className={cn(
         "w-full py-6 px-1 bg-primary dark:bg-primary/20 gap-0 rounded-lg overflow-hidden transition-all duration-300",
-        isSelected ? "ring-2 ring-primary" : ""
+        isSelected ? "ring-2 ring-primary" : "",
       )}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}

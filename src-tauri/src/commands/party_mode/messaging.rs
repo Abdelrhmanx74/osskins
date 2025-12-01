@@ -1,11 +1,11 @@
 // Chat messaging and skin sharing
 
+use super::lcu::get_conversation_id;
+use super::types::{LcuConnection, PARTY_MODE_MESSAGE_PREFIX};
+use crate::commands::types::PartyModeMessage;
 use base64::{engine::general_purpose, Engine};
 use serde_json;
 use tauri::AppHandle;
-use crate::commands::types::PartyModeMessage;
-use super::types::{LcuConnection, PARTY_MODE_MESSAGE_PREFIX};
-use super::lcu::get_conversation_id;
 
 // Internal function to send chat message
 pub async fn send_chat_message(
@@ -79,8 +79,8 @@ pub async fn delete_conversation_messages(
   // For now, we disable this automatic cleanup until we can implement a safer
   // version that only deletes messages with the "OSS:" prefix.
   println!("[Party Mode] Automatic message cleanup is currently disabled for safety.");
-  
-  /* 
+
+  /*
   // Resolve conversation ID (may create one as a fallback, but deletion will work only if conversation exists)
   let conversation_id = get_conversation_id(app, lcu_connection, friend_summoner_id).await?;
 
