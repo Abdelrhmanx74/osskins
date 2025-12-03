@@ -61731,10 +61731,10 @@
   "external_releases": [
     {
       "repo": "LeagueToolkit/cslol-manager",
-      "tag_name": "2025-11-19-c1a81da",
+      "tag_name": "2025-12-03-2dfb8fe",
       "asset_name": "cslol-manager-windows.exe",
-      "browser_download_url": "https://github.com/LeagueToolkit/cslol-manager/releases/download/2025-11-19-c1a81da/cslol-manager-windows.exe",
-      "size": 35721061
+      "browser_download_url": "https://github.com/LeagueToolkit/cslol-manager/releases/download/2025-12-03-2dfb8fe/cslol-manager-windows.exe",
+      "size": 35800017
     }
   ]
 }
