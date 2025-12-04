@@ -129,64 +129,143 @@ jobs:
 
           echo "external_releases.json written successfully."
 
-      - name: Check LeagueSkins commit and skip build if unchanged
+      - name: Check LeagueSkins commit and compute changes
         id: check_upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          
+          # Get current manifest from our repo
           current_commit=""
-          # Use main:/docs because Pages is configured to serve from that location
+          previous_commit=""
           REMOTE_MANIFEST_URL="https://raw.githubusercontent.com/${{ github.repository }}/main/docs/manifest.json"
+          
           if curl --output /dev/null --silent --head --fail "$REMOTE_MANIFEST_URL"; then
-             current_commit=$(curl -s "$REMOTE_MANIFEST_URL" | jq -r '.source_repo' 2>/dev/null | sed -E 's/.*@(.+)$/\1/' || true)
+            EXISTING_MANIFEST=$(curl -s "$REMOTE_MANIFEST_URL")
+            current_commit=$(echo "$EXISTING_MANIFEST" | jq -r '.source_commit // ""' 2>/dev/null || true)
+            previous_commit=$(echo "$EXISTING_MANIFEST" | jq -r '.previous_commit // ""' 2>/dev/null || true)
           fi
 
+          # Get latest commit from LeagueSkins
           remote_commit=$(git ls-remote https://github.com/Alban1911/LeagueSkins.git refs/heads/main | cut -f1 || true)
           echo "current_commit=${current_commit} remote_commit=${remote_commit}"
           echo "SRC_SHA=${remote_commit}" >> $GITHUB_ENV
+          echo "PREV_SHA=${current_commit}" >> $GITHUB_ENV
 
           if [ -n "$current_commit" ] && [ "$current_commit" = "$remote_commit" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
             echo "No upstream changes (manifest already at ${current_commit})."
           else
             echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Changes detected: ${current_commit:-none} -> ${remote_commit}"
           fi
 
-      - name: Build updated manifest
+      - name: Compute changed champions between commits
+        id: compute_changes
+        if: steps.check_upstream.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          
+          CHANGES_FILE="app/tmp/changed_champions.json"
+          mkdir -p app/tmp
+          
+          # If no previous commit, mark as full update
+          if [ -z "${PREV_SHA}" ] || [ "${PREV_SHA}" = "null" ]; then
+            echo '{"type": "full", "champions": []}' > "$CHANGES_FILE"
+            echo "No previous commit - full update required"
+            exit 0
+          fi
+          
+          echo "Computing changes between ${PREV_SHA} and ${SRC_SHA}..."
+          
+          # Use GitHub compare API to get changed files
+          COMPARE_URL="https://api.github.com/repos/Alban1911/LeagueSkins/compare/${PREV_SHA}...${SRC_SHA}"
+          
+          COMPARE_RESULT=$(curl -s -H "Authorization: token ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "$COMPARE_URL" || echo '{"files": []}')
+          
+          # Extract changed champion IDs from file paths
+          # File paths look like: skins/{champion_id}/{skin_id}/{skin_id}.zip
+          CHANGED_CHAMPIONS=$(echo "$COMPARE_RESULT" | jq -r '
+            [.files[]? | 
+              select(.filename | startswith("skins/")) |
+              .filename | 
+              split("/") | 
+              select(length >= 2) |
+              .[1] |
+              select(. != "" and . != null) |
+              tonumber
+            ] | unique | sort
+          ' 2>/dev/null || echo '[]')
+          
+          # Count changes
+          NUM_CHANGES=$(echo "$CHANGED_CHAMPIONS" | jq 'length')
+          echo "Found ${NUM_CHANGES} changed champions"
+          
+          # Build the changes object
+          jq -n \
+            --argjson champions "$CHANGED_CHAMPIONS" \
+            --arg prev "${PREV_SHA}" \
+            --arg curr "${SRC_SHA}" \
+            '{
+              type: "incremental",
+              previous_commit: $prev,
+              current_commit: $curr,
+              champions: $champions
+            }' > "$CHANGES_FILE"
+          
+          echo "Changes computed and saved to $CHANGES_FILE"
+          cat "$CHANGES_FILE"
+
+      - name: Build updated manifest with change tracking
         if: steps.check_upstream.outputs.changed == 'true'
         run: |
           set -euo pipefail
 
           RELEASES_FILE="app/tmp/external_releases.json"
+          CHANGES_FILE="app/tmp/changed_champions.json"
           mkdir -p app/docs app/tmp
 
           if [ ! -f "$RELEASES_FILE" ]; then
             jq -n '[]' > "$RELEASES_FILE"
           fi
+          
+          if [ ! -f "$CHANGES_FILE" ]; then
+            jq -n '{"type": "full", "champions": []}' > "$CHANGES_FILE"
+          fi
 
-          # Build a streamlined manifest with LeagueSkins info
-          # Note: The app now uses direct ID-based downloads from LeagueSkins,
-          # so we don't need the full skin/champion index here anymore.
-          # This manifest just tracks the commit and external releases.
+          # Build manifest with change tracking
+          # This allows the app to fetch just this manifest and know exactly what changed
           jq -n \
             --arg gen "$(date -u +%FT%TZ)" \
-            --arg repo "Alban1911/LeagueSkins@${SRC_SHA}" \
+            --arg commit "${SRC_SHA}" \
+            --arg prev_commit "${PREV_SHA:-}" \
             --arg branch "main" \
             --arg license_url "https://github.com/Alban1911/LeagueSkins/blob/main/LICENSE" \
             --arg source_url "https://github.com/Alban1911/LeagueSkins" \
             --arg attribution "Skins © their respective creators. Not affiliated with or endorsed by Riot Games." \
             --slurpfile releases "${RELEASES_FILE}" \
+            --slurpfile changes "${CHANGES_FILE}" \
             '{
-              schema: 3,
+              schema: 4,
               generated_at: $gen,
-              source_repo: $repo,
+              source_commit: $commit,
+              previous_commit: (if $prev_commit == "" then null else $prev_commit end),
               branch: $branch,
               license: $license_url,
               source: $source_url,
               attribution: $attribution,
-              note: "Skins are downloaded directly from LeagueSkins using champion/skin IDs from Community Dragon. No skin index is required.",
+              changes: ($changes[0] // {type: "full", champions: []}),
               external_releases: ($releases[0] // [])
             }' \
             > app/docs/manifest.json
+          
+          echo "Manifest built successfully:"
+          cat app/docs/manifest.json
 
       - name: Merge external_releases into existing manifest (if upstream unchanged)
         if: steps.check_upstream.outputs.changed == 'false'
@@ -207,7 +286,7 @@ jobs:
             jq -n '[]' > "$RELEASES_FILE"
           fi
 
-          # Merge releases into the existing manifest, write directly to app/docs/manifest.json
+          # Merge releases into the existing manifest, preserve change tracking
           jq --slurpfile releases "${RELEASES_FILE}" \
              '. + { external_releases: ($releases[0] // []) }' \
              "$EXISTING_TMP" > app/docs/manifest.json
@@ -215,39 +294,38 @@ jobs:
       - name: Deploy only docs/ to main (non-destructive)
         run: |
           set -euo pipefail
-          # We already checked out the repository at the start (actions/checkout) and persist-credentials=true.
-          # Just ensure we're on the main branch (no fetching into a checked-out ref).
           git checkout main
-
-          # Ensure docs exists and copy generated manifest into it
           mkdir -p docs
 
           if [ -f app/docs/manifest.json ]; then
             cp app/docs/manifest.json docs/manifest.json
           else
-            # If the manifest was not produced for some reason, create a minimal empty manifest
-            jq -n '{schema:3, generated_at: ("'$(date -u +%FT%TZ)'"), external_releases: [] }' > docs/manifest.json
+            jq -n '{schema:4, generated_at: ("'$(date -u +%FT%TZ)'"), external_releases: [] }' > docs/manifest.json
           fi
 
-          # Minimal index and .nojekyll so Pages won't run Jekyll/SCSS if you prefer
-          cat > docs/index.html <<'EOF'
-          <!doctype html>
-          <html>
-            <head><meta charset="utf-8"><title>OSS Kins Manifest</title></head>
-            <body>
-              <h1>OSS Kins Manifest</h1>
-              <p>The manifest is available at <a href="./manifest.json">manifest.json</a></p>
-              <p>Skins are downloaded directly from <a href="https://github.com/Alban1911/LeagueSkins">LeagueSkins</a> using ID-based paths.</p>
-            </body>
-          </html>
-          EOF
+          cat > docs/index.html << 'EOF'
+<!doctype html>
+<html>
+  <head><meta charset="utf-8"><title>OSS Kins Manifest</title></head>
+  <body>
+    <h1>OSS Kins Manifest</h1>
+    <p>The manifest is available at <a href="./manifest.json">manifest.json</a></p>
+    <p>Skins are downloaded directly from <a href="https://github.com/Alban1911/LeagueSkins">LeagueSkins</a> using ID-based paths.</p>
+    <h2>Schema v4 Features</h2>
+    <ul>
+      <li><code>source_commit</code> - Current LeagueSkins commit SHA</li>
+      <li><code>previous_commit</code> - Previous manifest commit (for delta tracking)</li>
+      <li><code>changes</code> - Object containing changed champion IDs since last update</li>
+      <li><code>external_releases</code> - cslol-manager release info</li>
+    </ul>
+  </body>
+</html>
+EOF
 
           touch docs/.nojekyll
 
-          # Stage only docs/ paths to avoid touching other files
           git add docs/manifest.json docs/index.html docs/.nojekyll
 
-          # If there are no changes, exit cleanly. If there are, commit and push.
           if git diff --cached --quiet; then
             echo "No docs changes to commit."
           else
