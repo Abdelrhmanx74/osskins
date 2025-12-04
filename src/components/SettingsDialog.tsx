@@ -338,7 +338,7 @@ export function SettingsDialog() {
                   variant="secondary"
                   size="sm"
                   disabled={isUpdating}
-                  onClick={() => updateData({ force: true })}
+                  onClick={() => updateData(undefined, { force: true })}
                 >
                   {isUpdating ? "Updating..." : "Update Now"}
                 </Button>

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState, useTransition, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getLolSkinsManifest, getLolSkinsManifestCommit } from "@/lib/data-utils";
-import { toast } from "sonner";
 import type { DataUpdateProgress, DataUpdateResult } from "@/lib/types";
+
+// New LeagueSkins repository info
+const LEAGUE_SKINS_REPO = "Alban1911/LeagueSkins";
+const GITHUB_API_URL = `https://api.github.com/repos/${LEAGUE_SKINS_REPO}/commits/main`;
 
 export interface UseDownloadingModalProps {
     isOpen: boolean;
@@ -24,58 +26,40 @@ export function useDownloadingModal({
     const [checkingForUpdates, setCheckingForUpdates] = useState(false);
     const [updatingData, setUpdatingData] = useState(false);
     const [isReinstalling, setIsReinstalling] = useState(false);
-    const [manifestCommit, setManifestCommit] = useState<string | null>(null);
-    const [manifestRepo, setManifestRepo] = useState<string | null>(null);
-    const [manifestGeneratedAt, setManifestGeneratedAt] = useState<string | null>(null);
-    // Commit actually displayed in the modal (may differ from manifestCommit when we can infer a more relevant one)
+    const [latestCommit, setLatestCommit] = useState<string | null>(null);
+    const [commitDate, setCommitDate] = useState<string | null>(null);
     const [displayCommit, setDisplayCommit] = useState<string | null>(null);
     const isBusy = isUpdating || updatingData || isReinstalling;
     const modalBusy = isBusy;
 
+    // Fetch latest commit info from LeagueSkins repo
     useEffect(() => {
         if (isOpen) {
             checkForUpdates();
             void (async () => {
                 try {
-                    const manifest = await getLolSkinsManifest();
-                    if (manifest) {
-                        const commit = getLolSkinsManifestCommit(manifest);
-                        setManifestCommit(commit);
-                        setDisplayCommit(commit); // initial displayed commit
-                        try {
-                            const repoParts = manifest.source_repo.split("@");
-                            setManifestRepo(repoParts[0]);
-                        } catch { }
-                        setManifestGeneratedAt(manifest.generated_at || null);
+                    const response = await fetch(GITHUB_API_URL, {
+                        headers: { Accept: "application/vnd.github.v3+json" },
+                        cache: "no-store",
+                    });
+                    if (response.ok) {
+                        const data = await response.json() as {
+                            sha: string;
+                            commit: {
+                                committer: { date: string };
+                                message: string;
+                            };
+                        };
+                        setLatestCommit(data.sha);
+                        setDisplayCommit(data.sha);
+                        setCommitDate(data.commit.committer.date);
                     }
                 } catch (err) {
-                    console.debug("Failed to load manifest for commit info:", err);
-                }
-                // Fallback: fetch latest HEAD commit if manifest commit looks like an asset-level commit
-                try {
-                    // If we don't have a commit yet or it's very short / suspicious, attempt to fetch HEAD
-                    if (!displayCommit || (displayCommit && displayCommit.length < 12)) {
-                        const headRes = await fetch("https://api.github.com/repos/darkseal-org/lol-skins/commits/main", {
-                            headers: { "Accept": "application/vnd.github.v3+json" }, cache: "no-store"
-                        });
-                        if (headRes.ok) {
-                            const headData = await headRes.json() as Record<string, unknown>;
-                            const sha = typeof headData.sha === "string" ? headData.sha : null;
-                            if (sha) {
-                                setDisplayCommit(sha);
-                                if (!manifestRepo) setManifestRepo("darkseal-org/lol-skins");
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.debug("HEAD commit fetch failed (non-fatal)", e);
+                    console.debug("Failed to fetch latest commit:", err);
                 }
             })();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen]);
-
-    const checkRequestId = useRef(0);
+    }, [isOpen]); const checkRequestId = useRef(0);
     const checkForUpdates = useCallback(() => {
         const id = ++checkRequestId.current;
         setCheckingForUpdates(true);
@@ -90,11 +74,7 @@ export function useDownloadingModal({
                 if (id !== checkRequestId.current) return;
                 setUpdateResult(result);
             } catch (error) {
-                if ((error as Error).message === "timeout") {
-                    toast.error("Data update check timed out — network may be slow or blocked");
-                } else {
-                    toast.error("Failed to check for updates");
-                }
+                console.error("Update check failed:", error);
             } finally {
                 if (typeof timerId === "number") {
                     clearTimeout(timerId);
@@ -108,13 +88,10 @@ export function useDownloadingModal({
         setUpdatingData(true);
         startTransition(async () => {
             try {
-                const updateToast = toast.loading("Updating champion data...");
                 await onUpdateData();
-                toast.dismiss(updateToast);
-                toast.success("Data update triggered successfully");
                 checkForUpdates();
             } catch (error) {
-                toast.error(`Failed to update data: ${String(error)}`);
+                console.error("Update data failed:", error);
             } finally {
                 setUpdatingData(false);
             }
@@ -124,22 +101,18 @@ export function useDownloadingModal({
     const handleReinstall = useCallback(() => {
         setIsReinstalling(true);
         startTransition(async () => {
-            const reinstallToast = toast.loading("Reinstalling champion data...");
             try {
                 await onReinstallData();
-                toast.dismiss(reinstallToast);
-                toast.success("Champion data reinstalled successfully");
                 checkForUpdates();
             } catch (error) {
-                toast.dismiss(reinstallToast);
-                toast.error(`Failed to reinstall data: ${String(error)}`);
+                console.error("Reinstall failed:", error);
             } finally {
                 setIsReinstalling(false);
             }
         });
     }, [onReinstallData, checkForUpdates]);
 
-    const shortCommit = manifestCommit ? manifestCommit.slice(0, 8) : null;
+    const shortCommit = latestCommit ? latestCommit.slice(0, 8) : null;
     const allowCloseWhenDownloading = Boolean(progress && progress.status === "downloading");
 
     const getStatusMessage = useCallback(() => {
@@ -174,30 +147,16 @@ export function useDownloadingModal({
         return "Ready";
     }, [checkingForUpdates, progress, isBusy, updateResult]);
 
+    // Updated skins list - now based on champion IDs from the new repo
     const [updatedSkins, setUpdatedSkins] = useState<string[]>([]);
     useEffect(() => {
-        async function fetchUpdatedSkins() {
-            if (!updateResult?.updatedChampions || updateResult.updatedChampions.length === 0) {
-                setUpdatedSkins([]);
-                return;
-            }
-            const manifest = await getLolSkinsManifest();
-            if (!manifest || !manifest.champions) {
-                setUpdatedSkins([]);
-                return;
-            }
-            const skinNames: string[] = [];
-            for (const champName of updateResult.updatedChampions) {
-                const champ = manifest.champions.find(c => (c.name?.toLowerCase() === champName.toLowerCase() || c.key.toLowerCase() === champName.toLowerCase()));
-                if (champ && champ.assets.skins.length > 0) {
-                    for (const skin of champ.assets.skins) {
-                        if (skin.name) skinNames.push(`${champ.name ?? champ.key}: ${skin.name}`);
-                    }
-                }
-            }
-            setUpdatedSkins(skinNames);
+        if (!updateResult?.updatedChampions || updateResult.updatedChampions.length === 0) {
+            setUpdatedSkins([]);
+            return;
         }
-        void fetchUpdatedSkins();
+        // For the new ID-based system, we just show champion IDs/names
+        // The actual skin details would come from the local champion data
+        setUpdatedSkins(updateResult.updatedChampions.map(c => `Champion ${c}`));
     }, [updateResult]);
 
     const items = updateResult?.updatedChampions && updateResult.updatedChampions.length > 0 ? updateResult.updatedChampions : null;
@@ -217,7 +176,7 @@ export function useDownloadingModal({
     const updatedCount = updateResult?.updatedChampions?.length ?? 0;
     const champListPreview = updateResult?.updatedChampions && updateResult.updatedChampions.length > 0 ? updateResult.updatedChampions.slice(0, 5).join(", ") : null;
     const pillMetaParts: string[] = [];
-    const formattedDate = formatDate(manifestGeneratedAt);
+    const formattedDate = formatDate(commitDate);
     if (formattedDate) pillMetaParts.push(formattedDate);
     if (updatedCount > 0) pillMetaParts.push(`${updatedCount} champion${updatedCount > 1 ? "s" : ""}`);
     if (champListPreview) pillMetaParts.push(champListPreview);
@@ -239,9 +198,9 @@ export function useDownloadingModal({
         checkingForUpdates,
         updatingData,
         isReinstalling,
-        manifestCommit,
-        manifestRepo,
-        manifestGeneratedAt,
+        manifestCommit: latestCommit,
+        manifestRepo: LEAGUE_SKINS_REPO,
+        manifestGeneratedAt: commitDate,
         shortCommit,
         displayCommit,
         allowCloseWhenDownloading,

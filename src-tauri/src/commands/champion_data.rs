@@ -5,132 +5,114 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
-const LOL_SKINS_MANIFEST_URL: &str = "https://abdelrhmanx74.github.io/osskins/manifest.json";
+// LeagueSkins repo configuration
+const LEAGUE_SKINS_REPO: &str = "Alban1911/LeagueSkins";
+const LEAGUE_SKINS_RAW_BASE: &str =
+  "https://raw.githubusercontent.com/Alban1911/LeagueSkins/main";
+const GITHUB_API_BASE: &str = "https://api.github.com";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct LolSkinsManifestItem {
-  path: String,
-  url: String,
-  size: u64,
-  sha256: String,
-  commit: String,
+// Data update progress event
+const DATA_UPDATE_EVENT: &str = "data-update-progress";
+
+/// Lightweight manifest structure for tracking local state
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LocalManifest {
+  pub version: u32,
+  pub last_commit: Option<String>,
+  pub last_updated: Option<String>,
+  pub champions: HashMap<u32, ChampionManifestEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ManifestAssetV2 {
-  #[serde(default)]
-  key: Option<String>,
-  #[serde(default)]
-  name: Option<String>,
-  url: String,
-  size: u64,
-  sha256: String,
-  commit: String,
+pub struct ChampionManifestEntry {
+  pub id: u32,
+  pub name: String,
+  pub skins: HashMap<u32, SkinManifestEntry>,
+  pub last_updated: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ManifestChampionV2 {
-  key: String,
-  #[serde(default)]
-  name: Option<String>,
-  #[serde(default)]
-  id: Option<u32>,
-  #[serde(default)]
-  alias: Option<String>,
-  #[serde(default)]
-  fingerprint: Option<String>,
-  #[serde(default)]
-  size: Option<u64>,
-  assets: ManifestChampionAssetsV2,
+pub struct SkinManifestEntry {
+  pub id: u32,
+  pub name: String,
+  pub has_chromas: bool,
+  pub chroma_ids: Vec<u32>,
+  pub has_forms: bool,
+  pub form_ids: Vec<u32>,
+  pub file_size: Option<u64>,
+  pub downloaded: bool,
+}
+
+/// Progress payload for data updates
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataUpdateProgressPayload {
+  pub phase: String, // "checking" | "fetching" | "comparing" | "downloading" | "complete" | "error"
+  pub message: String,
+  pub current_champion: Option<String>,
+  pub total_champions: Option<usize>,
+  pub processed_champions: Option<usize>,
+  pub total_skins: Option<usize>,
+  pub processed_skins: Option<usize>,
+  pub bytes_downloaded: Option<u64>,
+  pub total_bytes: Option<u64>,
+  pub speed: Option<f64>,
+  pub changed_champions: Option<Vec<String>>,
+  pub new_skins_count: Option<usize>,
+  pub updated_skins_count: Option<usize>,
+}
+
+fn emit_update_progress(app: &AppHandle, payload: DataUpdateProgressPayload) {
+  let _ = app.emit(DATA_UPDATE_EVENT, payload);
+}
+
+/// GitHub commit info
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct GitHubCommit {
+  sha: String,
+  commit: GitHubCommitDetails,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ManifestChampionAssetsV2 {
-  #[serde(default)]
-  skins: Vec<ManifestAssetV2>,
-  #[serde(default)]
-  chromas: Vec<ManifestAssetV2>,
+struct GitHubCommitDetails {
+  message: String,
+  committer: GitHubCommitter,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct LolSkinsManifest {
-  schema: u32,
-  generated_at: String,
-  source_repo: String,
-  branch: String,
-  license: Option<String>,
-  source: Option<String>,
-  attribution: Option<String>,
-  #[serde(default)]
-  items: Vec<LolSkinsManifestItem>, // v1
-  #[serde(default)]
-  champions: Vec<ManifestChampionV2>, // v2
+struct GitHubCommitter {
+  date: String,
 }
 
-fn extract_manifest_commit(manifest: &LolSkinsManifest) -> Option<String> {
-  let parts: Vec<&str> = manifest.source_repo.split('@').collect();
-  if parts.len() == 2 && !parts[1].is_empty() {
-    return Some(parts[1].to_string());
-  }
-
-  if let Some(item) = manifest.items.first() {
-    if !item.commit.is_empty() {
-      return Some(item.commit.clone());
-    }
-  }
-
-  if let Some(champ) = manifest.champions.first() {
-    if let Some(asset) = champ
-      .assets
-      .skins
-      .first()
-      .or_else(|| champ.assets.chromas.first())
-    {
-      if !asset.commit.is_empty() {
-        return Some(asset.commit.clone());
-      }
-    }
-  }
-
-  None
+/// GitHub compare result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct GitHubCompareResult {
+  ahead_by: u32,
+  behind_by: u32,
+  total_commits: u32,
+  files: Option<Vec<GitHubChangedFile>>,
 }
 
-async fn fetch_latest_manifest() -> Result<LolSkinsManifest, String> {
-  // Use a tuned HTTP client so we fail fast on poor networks and let the UI fallback
-  let client = reqwest::Client::builder()
-    .connect_timeout(Duration::from_secs(5))
-    .timeout(Duration::from_secs(10))
-    .pool_idle_timeout(Duration::from_secs(30))
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct GitHubChangedFile {
+  filename: String,
+  status: String, // "added", "modified", "removed"
+  additions: u32,
+  deletions: u32,
+}
+
+/// Build HTTP client for API requests
+fn build_http_client() -> Result<reqwest::Client, String> {
+  reqwest::Client::builder()
+    .connect_timeout(Duration::from_secs(10))
+    .timeout(Duration::from_secs(30))
+    .pool_idle_timeout(Duration::from_secs(60))
+    .pool_max_idle_per_host(10)
+    .user_agent("osskins-tauri/3.0")
     .build()
-    .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
-
-  let resp = client
-    .get(LOL_SKINS_MANIFEST_URL)
-    .header("User-Agent", "osskins-tauri")
-    .header("Accept", "application/json")
-    .header("Cache-Control", "no-cache")
-    .send()
-    .await
-    .map_err(|e| format!("Failed to fetch manifest: {}", e))?;
-
-  if !resp.status().is_success() {
-    let status = resp.status();
-    let body = resp
-      .text()
-      .await
-      .unwrap_or_else(|_| "<unable to read body>".to_string());
-    return Err(format!(
-      "Manifest request returned status {} - body: {}",
-      status, body
-    ));
-  }
-
-  resp
-    .json::<LolSkinsManifest>()
-    .await
-    .map_err(|e| format!("Invalid manifest JSON: {}", e))
+    .map_err(|e| format!("Failed to build HTTP client: {}", e))
 }
 
 fn manifest_storage_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -141,206 +123,164 @@ fn manifest_storage_dir(app: &AppHandle) -> Result<PathBuf, String> {
   Ok(app_data_dir.join("manifest"))
 }
 
-fn load_cached_manifest(app: &AppHandle) -> Result<Option<LolSkinsManifest>, String> {
+/// Load local manifest from disk
+fn load_local_manifest(app: &AppHandle) -> Result<LocalManifest, String> {
   let dir = manifest_storage_dir(app)?;
-  let file_path = dir.join("latest.json");
+  let file_path = dir.join("local_manifest.json");
   if !file_path.exists() {
-    return Ok(None);
+    return Ok(LocalManifest::default());
   }
 
   let content =
-    fs::read_to_string(&file_path).map_err(|e| format!("Failed to read cached manifest: {}", e))?;
-  let manifest = serde_json::from_str::<LolSkinsManifest>(&content)
-    .map_err(|e| format!("Failed to parse cached manifest: {}", e))?;
-  Ok(Some(manifest))
+    fs::read_to_string(&file_path).map_err(|e| format!("Failed to read local manifest: {}", e))?;
+  serde_json::from_str::<LocalManifest>(&content)
+    .map_err(|e| format!("Failed to parse local manifest: {}", e))
 }
 
-fn save_manifest_snapshot(app: &AppHandle, manifest: &LolSkinsManifest) -> Result<(), String> {
+/// Save local manifest to disk
+fn save_local_manifest(app: &AppHandle, manifest: &LocalManifest) -> Result<(), String> {
   let dir = manifest_storage_dir(app)?;
   fs::create_dir_all(&dir).map_err(|e| format!("Failed to create manifest directory: {}", e))?;
-  let file_path = dir.join("latest.json");
+  let file_path = dir.join("local_manifest.json");
   let data = serde_json::to_string_pretty(manifest)
-    .map_err(|e| format!("Failed to serialize manifest: {}", e))?;
-  fs::write(&file_path, data).map_err(|e| format!("Failed to persist manifest snapshot: {}", e))?;
+    .map_err(|e| format!("Failed to serialize local manifest: {}", e))?;
+  fs::write(&file_path, data).map_err(|e| format!("Failed to persist local manifest: {}", e))?;
   Ok(())
 }
 
-fn champion_from_path(path: &str) -> Option<String> {
-  let mut segments = path.split('/');
-  let prefix = segments.next()?;
-  if !prefix.eq_ignore_ascii_case("skins") {
-    return None;
-  }
-  let champion_segment = segments.next()?;
-  let decoded = percent_decode_str(champion_segment).decode_utf8().ok()?;
-  if decoded.is_empty() {
-    None
-  } else {
-    Some(decoded.to_string())
-  }
-}
-
-fn diff_manifests(previous: &LolSkinsManifest, current: &LolSkinsManifest) -> Vec<String> {
-  let mut changes: HashSet<String> = HashSet::new();
-  // Prefer v2 champion-based diff if both provide champions
-  if !previous.champions.is_empty() && !current.champions.is_empty() {
-    let prev_map: HashMap<&str, &ManifestChampionV2> = previous
-      .champions
-      .iter()
-      .map(|c| (c.key.as_str(), c))
-      .collect();
-    let curr_map: HashMap<&str, &ManifestChampionV2> = current
-      .champions
-      .iter()
-      .map(|c| (c.key.as_str(), c))
-      .collect();
-
-    for (key, curr) in &curr_map {
-      let changed = match prev_map.get(key) {
-        Some(prev) => prev.fingerprint != curr.fingerprint || prev.size != curr.size,
-        None => true,
-      };
-      if changed {
-        let name = curr.name.clone().unwrap_or_else(|| (*key).to_string());
-        changes.insert(name);
-      }
-    }
-    for key in prev_map.keys() {
-      if !curr_map.contains_key(key) {
-        changes.insert((*key).to_string());
-      }
-    }
-  } else {
-    // v1 path: compare items by path and sha
-    let prev_map: HashMap<&str, &LolSkinsManifestItem> = previous
-      .items
-      .iter()
-      .map(|item| (item.path.as_str(), item))
-      .collect();
-    let curr_map: HashMap<&str, &LolSkinsManifestItem> = current
-      .items
-      .iter()
-      .map(|item| (item.path.as_str(), item))
-      .collect();
-
-    for (path, current_item) in &curr_map {
-      let needs_update = match prev_map.get(path) {
-        Some(previous_item) => previous_item.sha256 != current_item.sha256,
-        None => true,
-      };
-      if needs_update {
-        if let Some(champion) = champion_from_path(path) {
-          changes.insert(champion);
-        }
-      }
-    }
-    for path in prev_map.keys() {
-      if !curr_map.contains_key(path) {
-        if let Some(champion) = champion_from_path(path) {
-          changes.insert(champion);
-        }
-      }
-    }
-  }
-
-  let mut result: Vec<String> = changes.into_iter().collect();
-  result.sort_unstable_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
-  result
-}
-
-async fn get_changed_champions_via_github(
-  base_sha: &str,
-  head_sha: &str,
-) -> Result<Vec<String>, String> {
+/// Fetch the latest commit SHA from LeagueSkins repo
+async fn fetch_latest_commit_sha() -> Result<String, String> {
+  let client = build_http_client()?;
   let url = format!(
-    "https://api.github.com/repos/darkseal-org/lol-skins/compare/{}...{}",
-    base_sha, head_sha
+    "{}/repos/{}/commits/main",
+    GITHUB_API_BASE, LEAGUE_SKINS_REPO
   );
-  println!("[DataUpdate] Comparing commits via: {}", url);
-  // Apply reasonable timeouts to avoid hanging the UI
-  let client = reqwest::Client::builder()
-    .connect_timeout(Duration::from_secs(5))
-    .timeout(Duration::from_secs(10))
-    .pool_idle_timeout(Duration::from_secs(30))
-    .build()
-    .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
-  let mut req = client.get(&url).header("User-Agent", "osskins-tauri");
+
+  let mut req = client.get(&url).header("Accept", "application/vnd.github.v3+json");
+
+  // Add GitHub token if available for higher rate limits
   if let Ok(token) = std::env::var("GITHUB_TOKEN") {
     if !token.trim().is_empty() {
       req = req.header("Authorization", format!("token {}", token));
     }
   }
 
-  let resp = req
-    .send()
+  let resp = req.send().await.map_err(|e| format!("Failed to fetch commit: {}", e))?;
+
+  if !resp.status().is_success() {
+    return Err(format!("GitHub API returned status {}", resp.status()));
+  }
+
+  let commit: GitHubCommit = resp
+    .json()
     .await
-    .map_err(|e| format!("Failed to compare commits: {}", e))?;
+    .map_err(|e| format!("Failed to parse commit response: {}", e))?;
+
+  Ok(commit.sha)
+}
+
+/// Extract champion ID from a file path in the repo
+/// e.g., "skins/1/1000/1000.zip" -> Some(1)
+fn extract_champion_id_from_path(path: &str) -> Option<u32> {
+  let segments: Vec<&str> = path.split('/').collect();
+  if segments.len() >= 2 && segments[0] == "skins" {
+    segments[1].parse().ok()
+  } else {
+    None
+  }
+}
+
+/// Extract skin ID from a file path
+/// e.g., "skins/1/1000/1000.zip" -> Some(1000)
+fn extract_skin_id_from_path(path: &str) -> Option<u32> {
+  let segments: Vec<&str> = path.split('/').collect();
+  if segments.len() >= 3 && segments[0] == "skins" {
+    segments[2].parse().ok()
+  } else {
+    None
+  }
+}
+
+/// Compare commits and get changed files
+async fn get_changed_files_between_commits(
+  base_sha: &str,
+  head_sha: &str,
+) -> Result<Vec<GitHubChangedFile>, String> {
+  let client = build_http_client()?;
+  let url = format!(
+    "{}/repos/{}/compare/{}...{}",
+    GITHUB_API_BASE, LEAGUE_SKINS_REPO, base_sha, head_sha
+  );
+
+  println!("[DataUpdate] Comparing commits: {} -> {}", base_sha, head_sha);
+
+  let mut req = client.get(&url).header("Accept", "application/vnd.github.v3+json");
+
+  if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+    if !token.trim().is_empty() {
+      req = req.header("Authorization", format!("token {}", token));
+    }
+  }
+
+  let resp = req.send().await.map_err(|e| format!("Failed to compare commits: {}", e))?;
 
   if !resp.status().is_success() {
     let status = resp.status();
-    let headers = resp.headers().clone();
-    let body = resp
-      .text()
-      .await
-      .unwrap_or_else(|_| "<unable to read body>".to_string());
-    let rl_remaining = headers
-      .get("x-ratelimit-remaining")
-      .and_then(|v| v.to_str().ok())
-      .unwrap_or("-");
-    let rl_reset = headers
-      .get("x-ratelimit-reset")
-      .and_then(|v| v.to_str().ok())
-      .unwrap_or("-");
-    return Err(format!(
-            "GitHub compare API returned status {} (x-ratelimit-remaining={}, x-ratelimit-reset={}) - body: {}",
-            status, rl_remaining, rl_reset, body
-        ));
+    let body = resp.text().await.unwrap_or_default();
+    return Err(format!("GitHub compare API returned {} - {}", status, body));
   }
 
-  let json: serde_json::Value = resp
+  let compare: GitHubCompareResult = resp
     .json()
     .await
-    .map_err(|e| format!("Invalid JSON: {}", e))?;
-  let mut champs: HashSet<String> = HashSet::new();
+    .map_err(|e| format!("Failed to parse compare response: {}", e))?;
 
-  if let Some(files) = json.get("files").and_then(|v| v.as_array()) {
-    println!(
-      "[DataUpdate] Compare returned {} changed files",
-      files.len()
-    );
-    for f in files {
-      if let Some(filename) = f.get("filename").and_then(|v| v.as_str()) {
-        // We care about paths like skins/<Champion>/...
-        if let Some(rest) = filename.strip_prefix("skins/") {
-          if let Some((champ, _)) = rest.split_once('/') {
-            // Decode percent-encodings just in case
-            let decoded = percent_encoding::percent_decode_str(champ)
-              .decode_utf8_lossy()
-              .to_string();
-            champs.insert(decoded);
-          }
-        }
+  Ok(compare.files.unwrap_or_default())
+}
+
+/// Get list of champion IDs that have changed between commits
+async fn get_changed_champion_ids(base_sha: &str, head_sha: &str) -> Result<HashSet<u32>, String> {
+  let files = get_changed_files_between_commits(base_sha, head_sha).await?;
+  let mut champion_ids = HashSet::new();
+
+  for file in files {
+    if file.filename.starts_with("skins/") && file.filename.ends_with(".zip") {
+      if let Some(champ_id) = extract_champion_id_from_path(&file.filename) {
+        champion_ids.insert(champ_id);
       }
     }
   }
 
-  let mut list: Vec<String> = champs.into_iter().collect();
-  list.sort();
-  let preview = list.iter().take(20).cloned().collect::<Vec<_>>().join(", ");
   println!(
-    "[DataUpdate] Changed champions ({}): {}{}",
-    list.len(),
-    preview,
-    if list.len() > 20 { " ..." } else { "" }
+    "[DataUpdate] Found {} changed champions",
+    champion_ids.len()
   );
-
-  Ok(list)
+  Ok(champion_ids)
 }
 
 // Champion data management commands
 
 #[tauri::command]
 pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResult, String> {
+  emit_update_progress(
+    &app,
+    DataUpdateProgressPayload {
+      phase: "checking".into(),
+      message: "Checking for updates...".into(),
+      current_champion: None,
+      total_champions: None,
+      processed_champions: None,
+      total_skins: None,
+      processed_skins: None,
+      bytes_downloaded: None,
+      total_bytes: None,
+      speed: None,
+      changed_champions: None,
+      new_skins_count: None,
+      updated_skins_count: None,
+    },
+  );
+
   let app_data_dir = app
     .path()
     .app_data_dir()
@@ -356,26 +296,16 @@ pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResul
     });
   }
 
-  // Try to load last saved commit from config
-  let config = super::config::load_config(app.clone())
-    .await
-    .unwrap_or(SavedConfig {
-      league_path: None,
-      skins: vec![],
-      custom_skins: vec![],
-      favorites: vec![],
-      theme: None,
-      party_mode: super::types::PartyModeConfig::default(),
-      selected_misc_items: std::collections::HashMap::new(),
-      auto_update_data: true,
-      last_data_commit: None,
-    });
+  // Load local manifest to check last commit
+  let local_manifest = load_local_manifest(&app).unwrap_or_default();
+  let stored_commit = local_manifest.last_commit.clone();
 
-  let manifest = match fetch_latest_manifest().await {
-    Ok(manifest) => manifest,
+  // Fetch latest commit from repo
+  let latest_commit = match fetch_latest_commit_sha().await {
+    Ok(sha) => sha,
     Err(err) => {
       println!(
-        "[DataUpdate] Failed to fetch manifest: {}. Falling back to default update behavior.",
+        "[DataUpdate] Failed to fetch latest commit: {}. Assuming update needed.",
         err
       );
       return Ok(DataUpdateResult {
@@ -386,21 +316,37 @@ pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResul
     }
   };
 
-  let latest_commit = extract_manifest_commit(&manifest);
-  let stored_commit = config.last_data_commit.clone();
-
   println!(
-    "[DataUpdate] Last saved commit: {:?} | Latest manifest commit: {:?}",
+    "[DataUpdate] Last saved commit: {:?} | Latest commit: {}",
     stored_commit, latest_commit
   );
 
-  let needs_update = match (&stored_commit, &latest_commit) {
-    (Some(stored), Some(latest)) if stored == latest => false,
+  // Check if update is needed
+  let needs_update = match &stored_commit {
+    Some(stored) if stored == &latest_commit => false,
     _ => true,
   };
 
   if !needs_update {
     println!("[DataUpdate] Data up-to-date. No update required.");
+    emit_update_progress(
+      &app,
+      DataUpdateProgressPayload {
+        phase: "complete".into(),
+        message: "Already up to date".into(),
+        current_champion: None,
+        total_champions: None,
+        processed_champions: None,
+        total_skins: None,
+        processed_skins: None,
+        bytes_downloaded: None,
+        total_bytes: None,
+        speed: None,
+        changed_champions: Some(vec![]),
+        new_skins_count: Some(0),
+        updated_skins_count: Some(0),
+      },
+    );
     return Ok(DataUpdateResult {
       success: true,
       error: None,
@@ -408,37 +354,75 @@ pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResul
     });
   }
 
+  // Get changed champion IDs if we have a previous commit
   let mut updated_champions: Vec<String> = Vec::new();
-  match load_cached_manifest(&app) {
-    Ok(Some(previous_manifest)) => {
-      let diff = diff_manifests(&previous_manifest, &manifest);
-      if diff.is_empty() {
-        println!(
-          "[DataUpdate] Manifest diff empty despite commit change; defaulting to repo update"
-        );
-      } else {
-        println!(
-          "[DataUpdate] Manifest diff detected for {} champions",
-          diff.len()
-        );
-        updated_champions = diff;
+
+  if let Some(ref base_commit) = stored_commit {
+    emit_update_progress(
+      &app,
+      DataUpdateProgressPayload {
+        phase: "comparing".into(),
+        message: "Comparing changes...".into(),
+        current_champion: None,
+        total_champions: None,
+        processed_champions: None,
+        total_skins: None,
+        processed_skins: None,
+        bytes_downloaded: None,
+        total_bytes: None,
+        speed: None,
+        changed_champions: None,
+        new_skins_count: None,
+        updated_skins_count: None,
+      },
+    );
+
+    match get_changed_champion_ids(base_commit, &latest_commit).await {
+      Ok(changed_ids) => {
+        if changed_ids.is_empty() {
+          println!("[DataUpdate] No champion changes detected");
+        } else {
+          // Convert IDs to strings for the result
+          updated_champions = changed_ids.iter().map(|id| id.to_string()).collect();
+          println!(
+            "[DataUpdate] Found {} changed champions: {:?}",
+            updated_champions.len(),
+            updated_champions.iter().take(10).collect::<Vec<_>>()
+          );
+        }
+      }
+      Err(err) => {
+        println!("[DataUpdate] Failed to get changed champions: {}. Defaulting to full update.", err);
+        updated_champions = vec!["repo".into()];
       }
     }
-    Ok(None) => {
-      println!("[DataUpdate] No cached manifest found; requiring full update");
-      updated_champions = vec!["all".to_string()];
-    }
-    Err(err) => {
-      println!(
-        "[DataUpdate] Failed to load cached manifest: {}. Falling back to repo update",
-        err
-      );
-    }
+  } else {
+    // No previous commit, need full update
+    updated_champions = vec!["all".into()];
   }
 
   if updated_champions.is_empty() {
     updated_champions.push("repo".into());
   }
+
+  emit_update_progress(
+    &app,
+    DataUpdateProgressPayload {
+      phase: "complete".into(),
+      message: format!("Found {} champions to update", updated_champions.len()),
+      current_champion: None,
+      total_champions: Some(updated_champions.len()),
+      processed_champions: None,
+      total_skins: None,
+      processed_skins: None,
+      bytes_downloaded: None,
+      total_bytes: None,
+      speed: None,
+      changed_champions: Some(updated_champions.clone()),
+      new_skins_count: None,
+      updated_skins_count: None,
+    },
+  );
 
   Ok(DataUpdateResult {
     success: true,
@@ -447,23 +431,19 @@ pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResul
   })
 }
 
-async fn fetch_latest_commit_sha() -> Result<String, String> {
-  let manifest = fetch_latest_manifest().await?;
-  if let Some(commit) = extract_manifest_commit(&manifest) {
-    println!("[DataUpdate] Fetched manifest commit: {}", commit);
-    Ok(commit)
-  } else {
-    Err("Manifest did not include commit information".into())
-  }
-}
-
 #[tauri::command]
 pub async fn set_last_data_commit(
   app: tauri::AppHandle,
   sha: String,
-  manifest_json: Option<String>,
+  _manifest_json: Option<String>,
 ) -> Result<(), String> {
-  // Load and update config.json
+  // Update local manifest with new commit
+  let mut local_manifest = load_local_manifest(&app).unwrap_or_default();
+  local_manifest.last_commit = Some(sha.clone());
+  local_manifest.last_updated = Some(chrono::Utc::now().to_rfc3339());
+  save_local_manifest(&app, &local_manifest)?;
+
+  // Also update config.json for backward compatibility
   let config_dir = app
     .path()
     .app_data_dir()
@@ -483,59 +463,7 @@ pub async fn set_last_data_commit(
 
   let data = serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?;
   std::fs::write(&file, data).map_err(|e| e.to_string())?;
-  println!("[DataUpdate] Saved last_data_commit to config: {}", sha);
-
-  if let Some(manifest_str) = manifest_json {
-    match serde_json::from_str::<LolSkinsManifest>(&manifest_str) {
-      Ok(manifest) => {
-        if let Some(manifest_commit) = extract_manifest_commit(&manifest) {
-          if manifest_commit != sha {
-            println!(
-              "[DataUpdate] Warning: provided manifest commit ({}) does not match recorded commit ({})",
-              manifest_commit, sha
-            );
-          }
-        }
-        if let Err(err) = save_manifest_snapshot(&app, &manifest) {
-          println!(
-            "[DataUpdate] Failed to persist manifest snapshot from frontend: {}",
-            err
-          );
-        }
-      }
-      Err(err) => {
-        println!(
-          "[DataUpdate] Invalid manifest JSON supplied while saving commit {}: {}",
-          sha, err
-        );
-      }
-    }
-  } else if !sha.is_empty() {
-    match fetch_latest_manifest().await {
-      Ok(manifest) => {
-        if extract_manifest_commit(&manifest).as_deref() == Some(sha.as_str()) {
-          if let Err(err) = save_manifest_snapshot(&app, &manifest) {
-            println!(
-              "[DataUpdate] Failed to persist manifest snapshot fetched server-side: {}",
-              err
-            );
-          }
-        } else {
-          println!(
-            "[DataUpdate] Skipped manifest snapshot fetch because fetched commit differed ({} != {:?})",
-            sha,
-            extract_manifest_commit(&manifest)
-          );
-        }
-      }
-      Err(err) => {
-        println!(
-          "[DataUpdate] Failed to fetch manifest for snapshot storage: {}",
-          err
-        );
-      }
-    }
-  }
+  println!("[DataUpdate] Saved last_data_commit: {}", sha);
 
   Ok(())
 }
@@ -547,56 +475,37 @@ pub async fn get_latest_data_commit() -> Result<String, String> {
 
 #[tauri::command]
 pub async fn get_changed_champions_since(last_sha: String) -> Result<Vec<String>, String> {
-  match fetch_latest_commit_sha().await {
-    Ok(head_sha) => get_changed_champions_via_github(last_sha.as_str(), &head_sha).await,
-    Err(err) => {
-      println!(
-        "[DataUpdate] Failed to resolve latest commit via manifest ({}); falling back to main",
-        err
-      );
-      get_changed_champions_via_github(last_sha.as_str(), "main").await
-    }
-  }
+  let latest_sha = fetch_latest_commit_sha().await?;
+  let changed_ids = get_changed_champion_ids(&last_sha, &latest_sha).await?;
+  Ok(changed_ids.iter().map(|id| id.to_string()).collect())
 }
 
 #[tauri::command]
 pub async fn get_changed_champions_from_config(
   app: tauri::AppHandle,
 ) -> Result<Vec<String>, String> {
-  let cfg = super::config::load_config(app.clone()).await?;
-  let Some(last_commit) = cfg.last_data_commit else {
+  let local_manifest = load_local_manifest(&app).unwrap_or_default();
+  let Some(last_commit) = local_manifest.last_commit else {
     return Ok(Vec::new());
   };
 
-  let latest_manifest = match fetch_latest_manifest().await {
-    Ok(manifest) => manifest,
+  let latest_commit = match fetch_latest_commit_sha().await {
+    Ok(sha) => sha,
     Err(err) => {
       println!(
-        "[DataUpdate] Failed to fetch manifest while resolving changed champions: {}",
+        "[DataUpdate] Failed to fetch latest commit: {}",
         err
       );
       return Ok(Vec::new());
     }
   };
 
-  let Some(latest_commit) = extract_manifest_commit(&latest_manifest) else {
-    println!("[DataUpdate] Manifest missing commit; skipping changed champion detection");
-    return Ok(Vec::new());
-  };
-
   if last_commit == latest_commit {
     return Ok(Vec::new());
   }
 
-  if let Ok(Some(previous_manifest)) = load_cached_manifest(&app) {
-    let diff = diff_manifests(&previous_manifest, &latest_manifest);
-    if !diff.is_empty() {
-      return Ok(diff);
-    }
-  }
-
-  // Fall back to GitHub compare when local diffing is unavailable
-  get_changed_champions_via_github(last_commit.as_str(), &latest_commit).await
+  let changed_ids = get_changed_champion_ids(&last_commit, &latest_commit).await?;
+  Ok(changed_ids.iter().map(|id| id.to_string()).collect())
 }
 
 #[tauri::command]

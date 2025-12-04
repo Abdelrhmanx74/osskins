@@ -194,6 +194,12 @@ fn main() {
       stop_manual_injection,
       get_changed_champions_since,
       get_changed_champions_from_config,
+      // new ID-based skin download commands
+      download_skin_by_id,
+      batch_download_skins,
+      check_skin_exists,
+      get_skin_file_size,
+      cancel_batch_download,
       // app control
       exit_app,
       hide_window,

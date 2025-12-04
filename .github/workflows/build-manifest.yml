@@ -1,4 +1,4 @@
-name: Build and publish lol-skins manifest
+name: Build and publish data manifest
 
 on:
   workflow_dispatch:
@@ -100,35 +100,36 @@ jobs:
             done
           fi
 
-          # 3) If still not found, write empty array and exit gracefully (workflow continues)
-          if [ -z "${selected_asset_b64}" ]; then
-            echo "No matching cslol-manager archive found in latest or recent releases."
+          # 3) If we still have nothing, write an empty releases array and exit gracefully
+          if [ -z "$selected_asset_b64" ]; then
+            echo "::warning::No suitable cslol-manager archive found in any release; writing empty external_releases.json"
             jq -n '[]' > "$TMP_RELEASES"
             echo "selected_tag=" >> $GITHUB_OUTPUT
             echo "selected_asset_name=" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # Decode selected asset JSON and write expected external_releases shape
-          selected_asset_json=$(echo "$selected_asset_b64" | base64 --decode)
-          ASSET_NAME=$(echo "$selected_asset_json" | jq -r '.name // ""')
-          DOWNLOAD_URL=$(echo "$selected_asset_json" | jq -r '.browser_download_url // .url // ""')
-          SIZE=$(echo "$selected_asset_json" | jq -r '.size // 0')
-
-          jq -n --arg repo "$REPO" \
-                --arg tag "$selected_tag" \
-                --arg name "$ASSET_NAME" \
-                --arg url "$DOWNLOAD_URL" \
-                --argjson size "$SIZE" \
-                '[{ "repo": $repo, "tag_name": $tag, "asset_name": $name, "browser_download_url": $url, "size": $size }]' \
-                > "$TMP_RELEASES"
-
-          echo "Selected external release: tag=${selected_tag}, asset=${ASSET_NAME}"
-          echo "External releases saved to $TMP_RELEASES"
+          # Decode the selected asset and emit outputs
+          asset_name=$(echo "$selected_asset_b64" | base64 -d | jq -r '.name // "(unnamed)"')
+          download_url=$(echo "$selected_asset_b64" | base64 -d | jq -r '.browser_download_url // ""')
+          size=$(echo "$selected_asset_b64" | base64 -d | jq -r '.size // 0')
           echo "selected_tag=${selected_tag}" >> $GITHUB_OUTPUT
-          echo "selected_asset_name=${ASSET_NAME}" >> $GITHUB_OUTPUT
+          echo "selected_asset_name=${asset_name}" >> $GITHUB_OUTPUT
+          echo "Selected: tag=${selected_tag}, asset=${asset_name}, url=${download_url}, size=${size}"
 
-      - name: Check upstream commit and skip build if unchanged
+          # Build a single-element array for external_releases
+          jq -n \
+            --arg name "cslol-manager" \
+            --arg tag "$selected_tag" \
+            --arg asset "$asset_name" \
+            --arg url "$download_url" \
+            --argjson size "$size" \
+            '[{ name:$name, tag:$tag, asset:$asset, url:$url, size:$size }]' \
+            > "$TMP_RELEASES"
+
+          echo "external_releases.json written successfully."
+
+      - name: Check LeagueSkins commit and skip build if unchanged
         id: check_upstream
         run: |
           set -euo pipefail
@@ -139,8 +140,9 @@ jobs:
              current_commit=$(curl -s "$REMOTE_MANIFEST_URL" | jq -r '.source_repo' 2>/dev/null | sed -E 's/.*@(.+)$/\1/' || true)
           fi
 
-          remote_commit=$(git ls-remote https://github.com/darkseal-org/lol-skins.git refs/heads/main | cut -f1 || true)
+          remote_commit=$(git ls-remote https://github.com/Alban1911/LeagueSkins.git refs/heads/main | cut -f1 || true)
           echo "current_commit=${current_commit} remote_commit=${remote_commit}"
+          echo "SRC_SHA=${remote_commit}" >> $GITHUB_ENV
 
           if [ -n "$current_commit" ] && [ "$current_commit" = "$remote_commit" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
@@ -149,117 +151,41 @@ jobs:
             echo "changed=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Clone upstream lol-skins
-        if: steps.check_upstream.outputs.changed == 'true'
-        run: |
-          git clone --depth=1 --no-single-branch https://github.com/darkseal-org/lol-skins.git upstream
-
-      - name: Generate champions JSON in upstream
+      - name: Build updated manifest
         if: steps.check_upstream.outputs.changed == 'true'
         run: |
           set -euo pipefail
-          cd upstream
-          SRC_SHA=$(git rev-parse HEAD)
-          SRC_BRANCH="main"
 
-          ITEMS_JSON="upstream_items.json"
-          CHAMPS_JSON="upstream_champs.json"
-          CHAMPS_FP_JSON="upstream_champs_fp.json"
-          : > "$ITEMS_JSON"
-          : > "$CHAMPS_FP_JSON"
-
-          find . -type f -regextype posix-extended -regex '.*\.(zip|fantome)$' -print0 | while IFS= read -r -d '' f; do
-            path="${f#./}"
-            size=$(stat -c%s "$path")
-            sha256=$(sha256sum "$path" | awk '{print $1}')
-            last_commit=$(git log -1 --format=%H -- "$path" || echo "")
-            url="https://raw.githubusercontent.com/darkseal-org/lol-skins/${SRC_BRANCH}/$path"
-            jq -n --arg path "$path" --arg url "$url" --argjson size "$size" --arg sha "$sha256" --arg commit "$last_commit" \
-              '{path:$path, url:$url, size:$size, sha256:$sha, commit:$commit}' >> "$ITEMS_JSON"
-            echo "" >> "$ITEMS_JSON"
-          done
-
-          if [ -s "$ITEMS_JSON" ]; then
-            jq -s '.' "$ITEMS_JSON" > "${ITEMS_JSON}.arr"
-            mv "${ITEMS_JSON}.arr" "$ITEMS_JSON"
-          else
-            jq -n '[]' > "$ITEMS_JSON"
-          fi
-
-          jq -r '
-            map(select(.path | test("^skins/"))) |
-            group_by(.path | split("/")[1]) |
-            map({
-              key: (.[0].path | split("/")[1] | ascii_downcase | gsub("[^a-z0-9]"; "")),
-              name: (.[0].path | split("/")[1]),
-              assets: {
-                skins: (
-                  [ .[] |
-                    select((.path | split("/")[2] // "") | test("chromas"; "i") | not) |
-                    { key: (.path | split("/") | last | sub("\\.zip$";"") ), url: .url, size: .size, sha256: .sha256, commit: .commit }
-                  ]
-                ),
-                chromas: (
-                  [ .[] |
-                    select((.path | split("/")[2] // "") | test("chromas"; "i")) |
-                    { key: (.path | split("/") | last | sub("\\.zip$";"") ), url: .url, size: .size, sha256: .sha256, commit: .commit }
-                  ]
-                )
-              },
-              size: (map(.size) | add // 0)
-            })' "$ITEMS_JSON" > "$CHAMPS_JSON"
-
-          jq -c '.[]' "$CHAMPS_JSON" | while read -r champ; do
-            sha_list=$(echo "$champ" | jq -r '[ (.assets.skins // [])[], (.assets.chromas // [])[] ] | map(.sha256) | sort | .[]' 2>/dev/null || true)
-            if [ -z "$sha_list" ]; then
-              fp=$(printf "" | sha256sum | awk '{print $1}')
-            else
-              sorted=$(printf "%s\n" $sha_list | tr '\n' ':' | sed 's/:$//')
-              fp=$(printf "%s" "$sorted" | sha256sum | awk '{print $1}')
-            fi
-            echo "$champ" | jq --arg fp "$fp" '. + { fingerprint: $fp }' >> "$CHAMPS_FP_JSON"
-            echo "" >> "$CHAMPS_FP_JSON"
-          done
-
-          if [ -s "$CHAMPS_FP_JSON" ]; then
-            jq -s '.' "$CHAMPS_FP_JSON" > "$CHAMPS_JSON"
-          else
-            jq -n '[]' > "$CHAMPS_JSON"
-          fi
-
-          mkdir -p ../app/tmp
-          cp "$CHAMPS_JSON" ../app/tmp/champions.json
-
-      - name: Build final manifest in app from upstream data
-        if: steps.check_upstream.outputs.changed == 'true'
-        run: |
-          set -euo pipefail
-          SRC_SHA=$(git -C ../upstream rev-parse HEAD || echo "")
-          SRC_BRANCH="main"
-
-          CHAMPS_FILE="app/tmp/champions.json"
           RELEASES_FILE="app/tmp/external_releases.json"
-
           mkdir -p app/docs app/tmp
-
-          if [ ! -f "$CHAMPS_FILE" ]; then
-            jq -n '[]' > "$CHAMPS_FILE"
-          fi
 
           if [ ! -f "$RELEASES_FILE" ]; then
             jq -n '[]' > "$RELEASES_FILE"
           fi
 
+          # Build a streamlined manifest with LeagueSkins info
+          # Note: The app now uses direct ID-based downloads from LeagueSkins,
+          # so we don't need the full skin/champion index here anymore.
+          # This manifest just tracks the commit and external releases.
           jq -n \
             --arg gen "$(date -u +%FT%TZ)" \
-            --arg repo "darkseal-org/lol-skins@${SRC_SHA}" \
-            --arg branch "${SRC_BRANCH}" \
-            --arg license_url "https://github.com/darkseal-org/lol-skins/blob/main/LICENSE" \
-            --arg source_url "https://github.com/darkseal-org/lol-skins" \
-            --arg attribution "Skins © their respective creators. DSCL license applies. Not affiliated with or endorsed by Dark Seal or Riot Games." \
-            --slurpfile champions "${CHAMPS_FILE}" \
+            --arg repo "Alban1911/LeagueSkins@${SRC_SHA}" \
+            --arg branch "main" \
+            --arg license_url "https://github.com/Alban1911/LeagueSkins/blob/main/LICENSE" \
+            --arg source_url "https://github.com/Alban1911/LeagueSkins" \
+            --arg attribution "Skins © their respective creators. Not affiliated with or endorsed by Riot Games." \
             --slurpfile releases "${RELEASES_FILE}" \
-            '{schema:2, generated_at:$gen, source_repo:$repo, branch:$branch, license:$license_url, source:$source_url, attribution:$attribution, champions: ($champions[0] // []), external_releases: ($releases[0] // []) }' \
+            '{
+              schema: 3,
+              generated_at: $gen,
+              source_repo: $repo,
+              branch: $branch,
+              license: $license_url,
+              source: $source_url,
+              attribution: $attribution,
+              note: "Skins are downloaded directly from LeagueSkins using champion/skin IDs from Community Dragon. No skin index is required.",
+              external_releases: ($releases[0] // [])
+            }' \
             > app/docs/manifest.json
 
       - name: Merge external_releases into existing manifest (if upstream unchanged)
@@ -300,20 +226,21 @@ jobs:
             cp app/docs/manifest.json docs/manifest.json
           else
             # If the manifest was not produced for some reason, create a minimal empty manifest
-            jq -n '{schema:2, generated_at: ("'$(date -u +%FT%TZ)'"), champions: [], external_releases: [] }' > docs/manifest.json
+            jq -n '{schema:3, generated_at: ("'$(date -u +%FT%TZ)'"), external_releases: [] }' > docs/manifest.json
           fi
 
           # Minimal index and .nojekyll so Pages won't run Jekyll/SCSS if you prefer
-          cat > docs/index.html <<'HTML'
+          cat > docs/index.html <<'EOF'
           <!doctype html>
           <html>
             <head><meta charset="utf-8"><title>OSS Kins Manifest</title></head>
             <body>
               <h1>OSS Kins Manifest</h1>
               <p>The manifest is available at <a href="./manifest.json">manifest.json</a></p>
+              <p>Skins are downloaded directly from <a href="https://github.com/Alban1911/LeagueSkins">LeagueSkins</a> using ID-based paths.</p>
             </body>
           </html>
-          HTML
+          EOF
 
           touch docs/.nojekyll
 

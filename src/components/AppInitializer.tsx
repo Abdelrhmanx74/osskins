@@ -7,7 +7,6 @@ import { useConfigLoader } from "@/lib/hooks/use-config-loader";
 import { useGameStore } from "@/lib/store";
 import { ToolsPhase, ToolsSource, useToolsStore } from "@/lib/store/tools";
 import { useDownloadsStore } from "@/lib/store/downloads";
-import { toast } from "sonner";
 
 export function AppInitializer({ children }: { children: React.ReactNode }) {
   // Hydrate manualInjectionMode from localStorage on client mount
@@ -112,15 +111,6 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             destPath: (p as any).dest_path ?? (p as any).destPath ?? null,
             error: p.error ?? undefined,
           });
-
-          // Toasts on terminal states
-          if (p.status === "completed") {
-            const name = (p as any).file_name ?? p.url;
-            try { toast.success(`Downloaded: ${name}`); } catch { /* ignore toast errors */ }
-          } else if (p.status === "failed") {
-            const name = (p as any).file_name ?? p.url;
-            try { toast.error(`Download failed: ${name}`); } catch { /* ignore toast errors */ }
-          }
         });
       })
       .catch((error: unknown) => {

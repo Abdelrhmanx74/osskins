@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type DownloadCategory = "skin" | "data" | "tools" | "misc";
+export type DownloadCategory = "skin" | "data" | "tools" | "misc" | "batch";
 export type DownloadStatus = "queued" | "downloading" | "completed" | "failed" | "canceled";
 
 export interface DownloadItem {
@@ -18,10 +18,37 @@ export interface DownloadItem {
     updatedAt: number;
 }
 
+// New batch download progress type
+export interface BatchDownloadProgress {
+    batchId: string;
+    totalItems: number;
+    completedItems: number;
+    failedItems: number;
+    currentItems: string[];
+    totalBytes: number;
+    downloadedBytes: number;
+    speed: number;
+    status: "downloading" | "completed" | "failed" | "canceled";
+}
+
+// Skin download request type (mirrors Rust struct)
+export interface SkinDownloadRequest {
+    championId: number;
+    skinId: number;
+    chromaId?: number;
+    formId?: number;
+    championName: string;
+    fileName: string;
+}
+
 interface DownloadsStore {
     items: Record<string, DownloadItem>;
     order: string[]; // newest first
+    // Batch download state
+    activeBatch: BatchDownloadProgress | null;
     upsert: (item: Partial<DownloadItem> & Pick<DownloadItem, "id">) => void;
+    updateBatch: (progress: BatchDownloadProgress) => void;
+    clearBatch: () => void;
     clearCompleted: () => void;
     remove: (id: string) => void;
 }
@@ -29,6 +56,7 @@ interface DownloadsStore {
 export const useDownloadsStore = create<DownloadsStore>((set, get) => ({
     items: {},
     order: [],
+    activeBatch: null,
     upsert: (partial) => {
         set((state) => {
             const prev = state.items[partial.id];
@@ -52,6 +80,12 @@ export const useDownloadsStore = create<DownloadsStore>((set, get) => ({
             const order = exists ? state.order : [next.id, ...state.order];
             return { items, order };
         });
+    },
+    updateBatch: (progress) => {
+        set({ activeBatch: progress });
+    },
+    clearBatch: () => {
+        set({ activeBatch: null });
     },
     clearCompleted: () => {
         set((state) => {
