@@ -80,8 +80,9 @@ export function AppUpdateBanner() {
       toast.success("Update installed. Restarting...");
       await relaunch();
     } catch (error) {
-      console.error("Failed to update:", error);
-      toast.error("Failed to update");
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Failed to update:", errorMessage);
+      toast.error(errorMessage || "Failed to update");
       setDownloading(false);
     }
   };

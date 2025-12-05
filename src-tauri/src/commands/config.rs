@@ -164,6 +164,7 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
       selected_misc_items: std::collections::HashMap::new(),
       auto_update_data: true,
       last_data_commit: None,
+      cslol_tools_version: None,
     });
   }
   let content = match std::fs::read_to_string(&file) {
@@ -183,6 +184,7 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
         selected_misc_items: std::collections::HashMap::new(),
         auto_update_data: true,
         last_data_commit: None,
+        cslol_tools_version: None,
       });
     }
   };
@@ -204,6 +206,7 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
         selected_misc_items: std::collections::HashMap::new(),
         auto_update_data: true,
         last_data_commit: None,
+        cslol_tools_version: None,
       });
     }
   };
@@ -249,6 +252,7 @@ pub async fn select_skin_for_champion(
       selected_misc_items: std::collections::HashMap::new(),
       auto_update_data: true,
       last_data_commit: None,
+      cslol_tools_version: None,
     }
   };
 
@@ -344,6 +348,7 @@ pub async fn save_custom_skin(
       selected_misc_items: std::collections::HashMap::new(),
       auto_update_data: true,
       last_data_commit: None,
+      cslol_tools_version: None,
     }
   };
 

@@ -97,8 +97,8 @@ export function useDataUpdate() {
             });
             const hasUpdate = Boolean(
               toolsResult.latestVersion &&
-              toolsResult.version &&
-              toolsResult.version !== toolsResult.latestVersion,
+                toolsResult.version &&
+                toolsResult.version !== toolsResult.latestVersion,
             );
             toolsStore.updateStatus({
               installed: toolsResult.installed,
@@ -130,22 +130,29 @@ export function useDataUpdate() {
         if (!force && latestCommit) {
           try {
             const config = await invoke<{ last_data_commit?: string }>("load_config");
-            if (config.last_data_commit === latestCommit) {
+            const storedCommit = config.last_data_commit;
+            console.log(`[Update] Stored commit: ${storedCommit ?? "none"}, Latest: ${latestCommit}`);
+            if (storedCommit && storedCommit === latestCommit) {
               console.log("[Update] Local data is up to date. Skipping update.");
               setIsUpdating(false);
               setProgress(null);
               return;
             }
+            console.log("[Update] Update needed - commits differ or no stored commit");
           } catch (err) {
-            console.warn("[Update] Failed to check config:", err);
+            console.warn("[Update] Failed to check config (will proceed with update):", err);
           }
         }
 
         // Fetch champion summaries from Community Dragon
         console.log("[Update] Fetching champion summaries from Community Dragon...");
         const allSummaries = await fetchChampionSummaries();
+        // Filter out non-playable champions:
+        // - ID <= 0 are placeholders/none
+        // - ID >= 900 are doom bots, target dummies, tutorial bots, etc.
+        // Real playable champions have IDs from 1-887 (as of late 2024)
         const validSummaries = allSummaries.filter(
-          (s) => s.id >= 0 && s.id !== -1,
+          (s) => s.id > 0 && s.id < 900,
         );
 
         // Determine which champions to update
@@ -200,33 +207,73 @@ export function useDataUpdate() {
             const skins = details.skins.filter((s) => !s.isBase);
 
             // Download skins using the new ID-based system
+            // The LeagueSkins repo has mixed extensions (.zip and .fantome)
             const downloadSkin = async (skin: (typeof skins)[0]) => {
               try {
-                const url = buildSkinDownloadUrl(summary.id, skin.id);
-                const fileName = `${sanitizeForFileName(skin.name)}.zip`;
-
-                // Use backend download with progress
-                await invoke("download_file_to_champion_with_progress", {
-                  url,
-                  championName: sanitizeForFileName(summary.name),
-                  fileName,
-                });
+                const championName = sanitizeForFileName(summary.name);
+                const baseName = sanitizeForFileName(skin.name);
+                
+                // Try .zip first, then .fantome if 404
+                let downloaded = false;
+                for (const ext of ["zip", "fantome"] as const) {
+                  if (downloaded) break;
+                  const url = buildSkinDownloadUrl(summary.id, skin.id, undefined, undefined, ext);
+                  const fileName = `${baseName}.${ext}`;
+                  
+                  try {
+                    await invoke("download_file_to_champion_with_progress", {
+                      url,
+                      championName,
+                      fileName,
+                    });
+                    downloaded = true;
+                  } catch (err) {
+                    // If it's a 404, try the next extension
+                    const errStr = String(err);
+                    if (errStr.includes("404") && ext === "zip") {
+                      continue; // Try .fantome
+                    }
+                    // For non-404 errors on .zip, or any error on .fantome, skip this skin
+                    if (ext === "fantome" || !errStr.includes("404")) {
+                      // Skin doesn't exist in repo - this is expected for some skins
+                      return;
+                    }
+                  }
+                }
+                
+                if (!downloaded) {
+                  // Skin not available in either format - silently skip
+                  return;
+                }
 
                 // Download chromas if present
                 if (skin.chromas && skin.chromas.length > 0) {
                   for (const chroma of skin.chromas) {
-                    const chromaUrl = buildSkinDownloadUrl(
-                      summary.id,
-                      skin.id,
-                      chroma.id,
-                    );
-                    const chromaFileName = `${sanitizeForFileName(skin.name)}_chroma_${chroma.id}.zip`;
+                    // Try both extensions for chromas too
+                    let chromaDownloaded = false;
+                    for (const ext of ["zip", "fantome"] as const) {
+                      if (chromaDownloaded) break;
+                      const chromaUrl = buildSkinDownloadUrl(
+                        summary.id,
+                        skin.id,
+                        chroma.id,
+                        undefined,
+                        ext,
+                      );
+                      const chromaFileName = `${baseName}_chroma_${chroma.id}.${ext}`;
 
-                    await invoke("download_file_to_champion_with_progress", {
-                      url: chromaUrl,
-                      championName: sanitizeForFileName(summary.name),
-                      fileName: chromaFileName,
-                    });
+                      try {
+                        await invoke("download_file_to_champion_with_progress", {
+                          url: chromaUrl,
+                          championName,
+                          fileName: chromaFileName,
+                        });
+                        chromaDownloaded = true;
+                      } catch {
+                        // Try next extension or skip if chroma doesn't exist
+                        continue;
+                      }
+                    }
 
                     if (tuning.perSkinDelayMs > 0) {
                       await delay(tuning.perSkinDelayMs);
@@ -237,12 +284,9 @@ export function useDataUpdate() {
                 if (tuning.perSkinDelayMs > 0) {
                   await delay(tuning.perSkinDelayMs);
                 }
-              } catch (err) {
-                // Log but don't fail the entire update for a single skin
-                console.warn(
-                  `[Update] Failed to download skin ${skin.name} for ${summary.name}:`,
-                  err,
-                );
+              } catch {
+                // Skin download failed or skin doesn't exist - silently skip
+                // Many skins from Community Dragon don't exist in LeagueSkins repo
               }
             };
 

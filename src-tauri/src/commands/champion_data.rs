@@ -1,7 +1,6 @@
-use crate::commands::types::{DataUpdateResult, SavedConfig};
-use percent_encoding::percent_decode_str;
+use crate::commands::types::DataUpdateResult;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -9,41 +8,10 @@ use tauri::{AppHandle, Emitter, Manager};
 
 // LeagueSkins repo configuration
 const LEAGUE_SKINS_REPO: &str = "Alban1911/LeagueSkins";
-const LEAGUE_SKINS_RAW_BASE: &str =
-  "https://raw.githubusercontent.com/Alban1911/LeagueSkins/main";
 const GITHUB_API_BASE: &str = "https://api.github.com";
 
 // Data update progress event
 const DATA_UPDATE_EVENT: &str = "data-update-progress";
-
-/// Lightweight manifest structure for tracking local state
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct LocalManifest {
-  pub version: u32,
-  pub last_commit: Option<String>,
-  pub last_updated: Option<String>,
-  pub champions: HashMap<u32, ChampionManifestEntry>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChampionManifestEntry {
-  pub id: u32,
-  pub name: String,
-  pub skins: HashMap<u32, SkinManifestEntry>,
-  pub last_updated: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkinManifestEntry {
-  pub id: u32,
-  pub name: String,
-  pub has_chromas: bool,
-  pub chroma_ids: Vec<u32>,
-  pub has_forms: bool,
-  pub form_ids: Vec<u32>,
-  pub file_size: Option<u64>,
-  pub downloaded: bool,
-}
 
 /// Progress payload for data updates
 #[derive(Debug, Clone, Serialize)]
@@ -115,37 +83,26 @@ fn build_http_client() -> Result<reqwest::Client, String> {
     .map_err(|e| format!("Failed to build HTTP client: {}", e))
 }
 
-fn manifest_storage_dir(app: &AppHandle) -> Result<PathBuf, String> {
+/// Get config directory path
+fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
   let app_data_dir = app
     .path()
     .app_data_dir()
     .or_else(|e| Err(format!("Failed to get app data directory: {}", e)))?;
-  Ok(app_data_dir.join("manifest"))
+  Ok(app_data_dir.join("config"))
 }
 
-/// Load local manifest from disk
-fn load_local_manifest(app: &AppHandle) -> Result<LocalManifest, String> {
-  let dir = manifest_storage_dir(app)?;
-  let file_path = dir.join("local_manifest.json");
-  if !file_path.exists() {
-    return Ok(LocalManifest::default());
+/// Read last_data_commit from config.json
+fn read_last_data_commit(app: &AppHandle) -> Result<Option<String>, String> {
+  let config_file = config_dir(app)?.join("config.json");
+  if !config_file.exists() {
+    return Ok(None);
   }
-
-  let content =
-    fs::read_to_string(&file_path).map_err(|e| format!("Failed to read local manifest: {}", e))?;
-  serde_json::from_str::<LocalManifest>(&content)
-    .map_err(|e| format!("Failed to parse local manifest: {}", e))
-}
-
-/// Save local manifest to disk
-fn save_local_manifest(app: &AppHandle, manifest: &LocalManifest) -> Result<(), String> {
-  let dir = manifest_storage_dir(app)?;
-  fs::create_dir_all(&dir).map_err(|e| format!("Failed to create manifest directory: {}", e))?;
-  let file_path = dir.join("local_manifest.json");
-  let data = serde_json::to_string_pretty(manifest)
-    .map_err(|e| format!("Failed to serialize local manifest: {}", e))?;
-  fs::write(&file_path, data).map_err(|e| format!("Failed to persist local manifest: {}", e))?;
-  Ok(())
+  let content = fs::read_to_string(&config_file)
+    .map_err(|e| format!("Failed to read config.json: {}", e))?;
+  let cfg: serde_json::Value = serde_json::from_str(&content)
+    .map_err(|e| format!("Failed to parse config.json: {}", e))?;
+  Ok(cfg.get("last_data_commit").and_then(|v| v.as_str()).map(String::from))
 }
 
 /// Fetch the latest commit SHA from LeagueSkins repo
@@ -185,17 +142,6 @@ fn extract_champion_id_from_path(path: &str) -> Option<u32> {
   let segments: Vec<&str> = path.split('/').collect();
   if segments.len() >= 2 && segments[0] == "skins" {
     segments[1].parse().ok()
-  } else {
-    None
-  }
-}
-
-/// Extract skin ID from a file path
-/// e.g., "skins/1/1000/1000.zip" -> Some(1000)
-fn extract_skin_id_from_path(path: &str) -> Option<u32> {
-  let segments: Vec<&str> = path.split('/').collect();
-  if segments.len() >= 3 && segments[0] == "skins" {
-    segments[2].parse().ok()
   } else {
     None
   }
@@ -243,17 +189,30 @@ async fn get_changed_champion_ids(base_sha: &str, head_sha: &str) -> Result<Hash
   let files = get_changed_files_between_commits(base_sha, head_sha).await?;
   let mut champion_ids = HashSet::new();
 
-  for file in files {
-    if file.filename.starts_with("skins/") && file.filename.ends_with(".zip") {
+  println!("[DataUpdate] Compare returned {} files", files.len());
+  
+  for file in &files {
+    // Check for both .zip and .fantome files (repo uses mixed extensions)
+    let is_skin_file = file.filename.starts_with("skins/") 
+      && (file.filename.ends_with(".zip") || file.filename.ends_with(".fantome"));
+    
+    if is_skin_file {
       if let Some(champ_id) = extract_champion_id_from_path(&file.filename) {
         champion_ids.insert(champ_id);
       }
     }
   }
+  
+  // Log some example files for debugging
+  if !files.is_empty() {
+    let sample_files: Vec<_> = files.iter().take(5).map(|f| f.filename.as_str()).collect();
+    println!("[DataUpdate] Sample files: {:?}", sample_files);
+  }
 
   println!(
-    "[DataUpdate] Found {} changed champions",
-    champion_ids.len()
+    "[DataUpdate] Found {} changed champions from {} files",
+    champion_ids.len(),
+    files.len()
   );
   Ok(champion_ids)
 }
@@ -296,9 +255,8 @@ pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResul
     });
   }
 
-  // Load local manifest to check last commit
-  let local_manifest = load_local_manifest(&app).unwrap_or_default();
-  let stored_commit = local_manifest.last_commit.clone();
+  // Read last commit from config.json
+  let stored_commit = read_last_data_commit(&app).unwrap_or(None);
 
   // Fetch latest commit from repo
   let latest_commit = match fetch_latest_commit_sha().await {
@@ -380,7 +338,9 @@ pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResul
     match get_changed_champion_ids(base_commit, &latest_commit).await {
       Ok(changed_ids) => {
         if changed_ids.is_empty() {
-          println!("[DataUpdate] No champion changes detected");
+          println!("[DataUpdate] No champion changes detected between commits");
+          // Commits differ but no skin files changed - still consider up to date
+          // This can happen if only non-skin files (README, etc) were modified
         } else {
           // Convert IDs to strings for the result
           updated_champions = changed_ids.iter().map(|id| id.to_string()).collect();
@@ -392,8 +352,23 @@ pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResul
         }
       }
       Err(err) => {
-        println!("[DataUpdate] Failed to get changed champions: {}. Defaulting to full update.", err);
-        updated_champions = vec!["repo".into()];
+        // Check if it's a rate limit error
+        if err.contains("403") || err.contains("rate limit") {
+          println!("[DataUpdate] GitHub API rate limited: {}", err);
+          // Return error instead of triggering full update
+          return Ok(DataUpdateResult {
+            success: false,
+            error: Some("GitHub API rate limited. Please try again later or use 'Reinstall Data' for a full update.".into()),
+            updated_champions: Vec::new(),
+          });
+        }
+        // For other errors, log but don't trigger full update
+        println!("[DataUpdate] Failed to compare commits: {}. Cannot determine changes.", err);
+        return Ok(DataUpdateResult {
+          success: false,
+          error: Some(format!("Failed to check for updates: {}. Use 'Reinstall Data' for a full update.", err)),
+          updated_champions: Vec::new(),
+        });
       }
     }
   } else {
@@ -401,9 +376,7 @@ pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResul
     updated_champions = vec!["all".into()];
   }
 
-  if updated_champions.is_empty() {
-    updated_champions.push("repo".into());
-  }
+  // Note: Don't fallback to full update if empty - empty means no skin changes detected
 
   emit_update_progress(
     &app,
@@ -437,13 +410,7 @@ pub async fn set_last_data_commit(
   sha: String,
   _manifest_json: Option<String>,
 ) -> Result<(), String> {
-  // Update local manifest with new commit
-  let mut local_manifest = load_local_manifest(&app).unwrap_or_default();
-  local_manifest.last_commit = Some(sha.clone());
-  local_manifest.last_updated = Some(chrono::Utc::now().to_rfc3339());
-  save_local_manifest(&app, &local_manifest)?;
-
-  // Also update config.json for backward compatibility
+  // Update config.json with the new commit
   let config_dir = app
     .path()
     .app_data_dir()
@@ -484,8 +451,7 @@ pub async fn get_changed_champions_since(last_sha: String) -> Result<Vec<String>
 pub async fn get_changed_champions_from_config(
   app: tauri::AppHandle,
 ) -> Result<Vec<String>, String> {
-  let local_manifest = load_local_manifest(&app).unwrap_or_default();
-  let Some(last_commit) = local_manifest.last_commit else {
+  let Some(last_commit) = read_last_data_commit(&app).unwrap_or(None) else {
     return Ok(Vec::new());
   };
 

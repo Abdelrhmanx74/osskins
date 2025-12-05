@@ -9,7 +9,7 @@ const GITHUB_API_URL = `https://api.github.com/repos/${LEAGUE_SKINS_REPO}/commit
 export interface UseDownloadingModalProps {
     isOpen: boolean;
     progress: DataUpdateProgress | null;
-    onUpdateData: () => Promise<void>;
+    onUpdateData: (championsToUpdate?: string[]) => Promise<void>;
     onReinstallData: () => Promise<void>;
     isUpdating: boolean;
 }
@@ -88,7 +88,10 @@ export function useDownloadingModal({
         setUpdatingData(true);
         startTransition(async () => {
             try {
-                await onUpdateData();
+                // Pass the list of champions that need updating from check_data_updates
+                const championsToUpdate = updateResult?.updatedChampions;
+                console.log("[Update] Pulling updates for champions:", championsToUpdate);
+                await onUpdateData(championsToUpdate);
                 checkForUpdates();
             } catch (error) {
                 console.error("Update data failed:", error);
@@ -96,7 +99,7 @@ export function useDownloadingModal({
                 setUpdatingData(false);
             }
         });
-    }, [onUpdateData, checkForUpdates]);
+    }, [onUpdateData, checkForUpdates, updateResult]);
 
     const handleReinstall = useCallback(() => {
         setIsReinstalling(true);

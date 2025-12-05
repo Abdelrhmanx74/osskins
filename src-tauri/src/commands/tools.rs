@@ -17,7 +17,6 @@ const RELEASE_API_URL: &str =
   "https://api.github.com/repos/LeagueToolkit/cslol-manager/releases/latest";
 const PROGRESS_EVENT: &str = "cslol-tools-progress";
 const TOOLS_DIR_NAME: &str = "cslol-tools";
-const VERSION_FILE_NAME: &str = "cslol-tools-version.txt";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -80,7 +79,6 @@ struct ReleaseInfo {
 struct LocalToolsPaths {
   app_data_dir: PathBuf,
   tools_dir: PathBuf,
-  version_file: PathBuf,
 }
 
 fn emit_progress(app: &tauri::AppHandle, payload: ToolsProgressPayload) {
@@ -106,29 +104,40 @@ async fn resolve_paths(app: &tauri::AppHandle) -> Result<LocalToolsPaths, String
     .map_err(|e| format!("Failed to resolve app data directory: {}", e))?;
 
   let tools_dir = app_data_dir.join(TOOLS_DIR_NAME);
-  let version_file = app_data_dir.join(VERSION_FILE_NAME);
 
   Ok(LocalToolsPaths {
     app_data_dir,
     tools_dir,
-    version_file,
   })
 }
 
 async fn read_installed_version(paths: &LocalToolsPaths) -> Result<Option<String>, String> {
-  if async_fs::metadata(&paths.version_file).await.is_err() {
-    return Ok(None);
+  // First try reading from config.json (new location)
+  let config_file = paths.app_data_dir.join("config").join("config.json");
+  if async_fs::metadata(&config_file).await.is_ok() {
+    let data = async_fs::read_to_string(&config_file)
+      .await
+      .map_err(|e| format!("Failed to read config file: {}", e))?;
+    if let Ok(cfg) = serde_json::from_str::<serde_json::Value>(&data) {
+      if let Some(version) = cfg.get("cslol_tools_version").and_then(|v| v.as_str()) {
+        return Ok(Some(version.to_string()));
+      }
+    }
   }
-
-  let data = async_fs::read_to_string(&paths.version_file)
-    .await
-    .map_err(|e| format!("Failed to read tools version file: {}", e))?;
-  let trimmed = data.trim();
-  if trimmed.is_empty() {
-    Ok(None)
-  } else {
-    Ok(Some(trimmed.to_string()))
+  
+  // Fallback to old version file location for backwards compatibility
+  let old_version_file = paths.app_data_dir.join("cslol-tools-version.txt");
+  if async_fs::metadata(&old_version_file).await.is_ok() {
+    let data = async_fs::read_to_string(&old_version_file)
+      .await
+      .map_err(|e| format!("Failed to read old version file: {}", e))?;
+    let trimmed = data.trim();
+    if !trimmed.is_empty() {
+      return Ok(Some(trimmed.to_string()));
+    }
   }
+  
+  Ok(None)
 }
 
 async fn mod_tools_exists(paths: &LocalToolsPaths) -> bool {
@@ -657,9 +666,29 @@ async fn download_and_install_tools(
     return Err("Installed CSLOL tools are missing mod-tools.exe".into());
   }
 
-  async_fs::write(&paths.version_file, release.version.as_bytes())
+  // Write version to config.json
+  let config_dir = paths.app_data_dir.join("config");
+  async_fs::create_dir_all(&config_dir)
     .await
-    .map_err(|e| format!("Failed to write CSLOL tools version file: {}", e))?;
+    .map_err(|e| format!("Failed to create config dir: {}", e))?;
+  let config_file = config_dir.join("config.json");
+  
+  let mut cfg: serde_json::Value = if async_fs::metadata(&config_file).await.is_ok() {
+    let content = async_fs::read_to_string(&config_file)
+      .await
+      .map_err(|e| format!("Failed to read config: {}", e))?;
+    serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
+  } else {
+    serde_json::json!({})
+  };
+  
+  cfg["cslol_tools_version"] = serde_json::json!(release.version.clone());
+  
+  let data = serde_json::to_string_pretty(&cfg)
+    .map_err(|e| format!("Failed to serialize config: {}", e))?;
+  async_fs::write(&config_file, data)
+    .await
+    .map_err(|e| format!("Failed to write config: {}", e))?;
 
   // Clean up temporary directory (best effort)
   let _ = async_fs::remove_dir_all(&temp_dir).await;

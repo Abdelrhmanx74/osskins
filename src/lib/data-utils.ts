@@ -10,25 +10,28 @@ const LEAGUE_SKINS_BASE_URL =
 
 /**
  * Build download URL for a skin from the LeagueSkins repository
- * Structure: skins/{champion_id}/{skin_id}/{skin_id}.zip
- * For chromas: skins/{champion_id}/{skin_id}/{chroma_id}/{chroma_id}.zip
- * For forms: skins/{champion_id}/{skin_id}/{form_id}/{form_id}.zip
+ * Structure: skins/{champion_id}/{skin_id}/{skin_id}.zip or .fantome
+ * For chromas: skins/{champion_id}/{skin_id}/{chroma_id}/{chroma_id}.zip or .fantome
+ * For forms: skins/{champion_id}/{skin_id}/{form_id}/{form_id}.zip or .fantome
+ * 
+ * Note: The repo has mixed extensions (.zip and .fantome) - caller should try both
  */
 export function buildSkinDownloadUrl(
   championId: number,
   skinId: number,
   chromaId?: number,
   formId?: number,
+  extension: "zip" | "fantome" = "zip",
 ): string {
   const base = `${LEAGUE_SKINS_BASE_URL}/skins/${championId}/${skinId}`;
 
   if (chromaId) {
-    return `${base}/${chromaId}/${chromaId}.zip`;
+    return `${base}/${chromaId}/${chromaId}.${extension}`;
   }
   if (formId) {
-    return `${base}/${formId}/${formId}.zip`;
+    return `${base}/${formId}/${formId}.${extension}`;
   }
-  return `${base}/${skinId}.zip`;
+  return `${base}/${skinId}.${extension}`;
 }
 
 /**

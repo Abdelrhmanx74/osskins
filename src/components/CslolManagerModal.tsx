@@ -43,8 +43,9 @@ export default function CslolManagerModal({ isOpen, onClose }: Props) {
             });
             toast.success("Refreshed status");
         } catch (e) {
-            console.error(e);
-            toast.error("Failed to refresh status");
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            console.error("Failed to refresh cslol status:", errorMessage);
+            toast.error(errorMessage || "Failed to refresh status");
         } finally {
             setLoading(false);
         }
@@ -70,8 +71,9 @@ export default function CslolManagerModal({ isOpen, onClose }: Props) {
             clearProgress("manual");
             setTimeout(() => { setDone(false); }, 2000);
         } catch (e) {
-            console.error(e);
-            toast.error("Failed to install tools");
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            console.error("Failed to install tools:", errorMessage);
+            toast.error(errorMessage || "Failed to install tools");
         } finally {
             setLoading(false);
         }

@@ -48,7 +48,7 @@ interface TopBarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onChampionSelect: (id: number) => void;
-  onUpdateData: () => Promise<void>;
+  onUpdateData: (championsToUpdate?: string[]) => Promise<void>;
   onReinstallData: () => Promise<void>;
   isUpdating?: boolean;
   progress: DataUpdateProgress | null;

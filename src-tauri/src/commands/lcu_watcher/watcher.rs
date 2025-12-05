@@ -84,6 +84,15 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
     // Reuse a Tokio runtime for async WebSocket operations
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
 
+    // Reusable async HTTP client for REST calls (created once, reused)
+    let http_client = reqwest::Client::builder()
+      .danger_accept_invalid_certs(true)
+      .timeout(Duration::from_secs(5))
+      .connect_timeout(Duration::from_secs(2))
+      .pool_max_idle_per_host(2)
+      .build()
+      .expect("http client");
+
     loop {
       // 1) Read lockfile to get port/token
       let (port, token, lockfile_path) = match read_lockfile_once(&league_path_clone) {
@@ -145,17 +154,23 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
       let _ = rt.block_on(async { socket.send(subscribe_msg).await });
       let _ = app_handle.emit("lcu-status", "Connected");
 
-      // Async HTTP client for occasional REST lookups
-      // Keep this client handy if we later need REST in the async loop
-      let _http_client = reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .build()
-        .expect("http client");
-
       // 3) Event loop while lockfile exists and socket is alive
       let mut socket_alive = true;
       let mut last_lobby_check = Instant::now();
-      while lockfile_path.exists() && socket_alive {
+      let mut last_lockfile_check = Instant::now();
+      let mut lockfile_exists = true;
+      
+      while lockfile_exists && socket_alive {
+        // Check lockfile existence every 2 seconds (not every iteration)
+        if last_lockfile_check.elapsed() >= Duration::from_secs(2) {
+          last_lockfile_check = Instant::now();
+          lockfile_exists = lockfile_path.exists();
+          if !lockfile_exists {
+            println!("[LCU Watcher] Lockfile removed, stopping watcher");
+            break;
+          }
+        }
+
         // Periodically check party-mode inbox via REST (WebSocket doesn't cover all chat events)
         if last_party_mode_check.elapsed().as_millis() >= 1500 {
           last_party_mode_check = Instant::now();
@@ -185,40 +200,43 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
           last_lobby_check = Instant::now();
           let port_clone = port.clone();
           let token_clone = token.clone();
-          let auth = general_purpose::STANDARD.encode(format!("riot:{}", token_clone));
+          let auth_header = format!("Basic {}", general_purpose::STANDARD.encode(format!("riot:{}", token_clone)));
+          let client = http_client.clone();
 
-          // Check lobby state via REST
-          let http_client = reqwest::blocking::Client::builder()
-            .danger_accept_invalid_certs(true)
-            .build();
-          if let Ok(client) = http_client {
-            let session_url = format!("https://127.0.0.1:{}/lol-gameflow/v1/session", port_clone);
-            if let Ok(resp) = client
+          // Use async client for non-blocking REST call
+          let session_url = format!("https://127.0.0.1:{}/lol-gameflow/v1/session", port_clone);
+          let lobby_result = rt.block_on(async {
+            client
               .get(&session_url)
-              .header("Authorization", format!("Basic {}", auth))
+              .header("Authorization", &auth_header)
               .send()
-            {
-              if resp.status().is_success() {
-                if let Ok(json) = resp.json::<serde_json::Value>() {
-                  // Check for Swift Play champion selections in lobby
-                  let selections = get_swift_play_champion_selections(&json);
-                  if !selections.is_empty() {
-                    // Log for debugging
-                    println!(
-                      "[LCU Watcher][Lobby] Detected {} Swift Play champion selections",
-                      selections.len()
-                    );
-                  }
+              .await
+          });
+          
+          if let Ok(resp) = lobby_result {
+            if resp.status().is_success() {
+              if let Ok(json) = rt.block_on(async { resp.json::<serde_json::Value>().await }) {
+                // Check for Swift Play champion selections in lobby
+                let selections = get_swift_play_champion_selections(&json);
+                if !selections.is_empty() {
+                  // Log for debugging
+                  println!(
+                    "[LCU Watcher][Lobby] Detected {} Swift Play champion selections",
+                    selections.len()
+                  );
                 }
               }
             }
           }
         }
 
-        // Read next event
-        let next_msg = rt.block_on(async { socket.next().await });
+        // Read next event with timeout (100ms) - allows periodic tasks to run
+        let next_msg = rt.block_on(async {
+          tokio::time::timeout(Duration::from_millis(100), socket.next()).await
+        });
+        
         match next_msg {
-          Some(Ok(msg)) => {
+          Ok(Some(Ok(msg))) => {
             if let Some(evt) = parse_lcu_ws_event(msg) {
               match evt.uri.as_str() {
                 "/lol-gameflow/v1/gameflow-phase" => {
@@ -287,13 +305,17 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
               }
             }
           }
-          Some(Err(e)) => {
+          Ok(Some(Err(e))) => {
             eprintln!("[LCU Watcher] WebSocket read error: {}", e);
             socket_alive = false;
           }
-          None => {
+          Ok(None) => {
             eprintln!("[LCU Watcher] WebSocket stream ended");
             socket_alive = false;
+          }
+          Err(_) => {
+            // Timeout - this is expected, allows periodic tasks to run
+            // Continue the loop to check timers and try reading again
           }
         }
       }

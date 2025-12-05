@@ -71,6 +71,8 @@ pub struct SavedConfig {
   pub auto_update_data: bool,
   #[serde(default)]
   pub last_data_commit: Option<String>,
+  #[serde(default)]
+  pub cslol_tools_version: Option<String>,
 }
 
 fn default_auto_update_data() -> bool {

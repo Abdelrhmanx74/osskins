@@ -84,11 +84,11 @@ export default function Home() {
     (champ) => champ.id === selectedChampion,
   );
 
-  const handleUpdateData = useCallback(async () => {
+  const handleUpdateData = useCallback(async (championsToUpdate?: string[]) => {
     // Clear previous failure state when starting a new attempt
     setUpdateFailed(false);
     try {
-      await updateData();
+      await updateData(championsToUpdate);
       await refreshChampions();
       // Success: ensure failure flag is cleared
       setUpdateFailed(false);
@@ -106,7 +106,7 @@ export default function Home() {
 
   const handleReinstallData = useCallback(async () => {
     await invoke("delete_champions_cache");
-    await handleUpdateData();
+    await handleUpdateData(); // No champions list = full reinstall
   }, [handleUpdateData]);
 
   // If the store requests showing the update modal (e.g., after selecting directory), start the update and show modal
