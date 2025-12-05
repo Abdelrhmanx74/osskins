@@ -8,7 +8,7 @@ export interface DownloadingModalProps {
     isOpen: boolean;
     onClose: () => void;
     progress: DataUpdateProgress | null;
-    onUpdateData: (championsToUpdate?: string[]) => Promise<void>;
+    onUpdateData: () => Promise<void>;
     onReinstallData: () => Promise<void>;
     isUpdating: boolean;
 }

@@ -149,10 +149,10 @@ export function useDataUpdate() {
         const allSummaries = await fetchChampionSummaries();
         // Filter out non-playable champions:
         // - ID <= 0 are placeholders/none
-        // - ID >= 900 are doom bots, target dummies, tutorial bots, etc.
-        // Real playable champions have IDs from 1-887 (as of late 2024)
+        // - ID >= 1000 are doom bots (66xxx), test champions, etc.
+        // Real playable champions have IDs from 1-999
         const validSummaries = allSummaries.filter(
-          (s) => s.id > 0 && s.id < 900,
+          (s) => s.id > 0 && s.id < 1000,
         );
 
         // Determine which champions to update
