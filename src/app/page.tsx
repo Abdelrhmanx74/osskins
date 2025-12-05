@@ -15,9 +15,10 @@ import { useI18n } from "@/lib/i18n";
 import { type MiscItemType, useGameStore } from "@/lib/store";
 import { filterAndSortChampions } from "@/lib/utils/champion-utils";
 import { invoke } from "@tauri-apps/api/core";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 
 // Loading component using React 19 suspense
 const ChampionsLoader = () => {
@@ -105,9 +106,26 @@ export default function Home() {
   }, [refreshChampions, updateData]);
 
   const handleReinstallData = useCallback(async () => {
-    await invoke("delete_champions_cache");
-    await handleUpdateData();
-  }, [handleUpdateData]);
+    setUpdateFailed(false);
+    try {
+      // Clear the stored commit so update check doesn't skip
+      try {
+        await invoke("set_last_data_commit", { sha: null, manifestJson: null });
+      } catch (e) {
+        console.warn("Failed to clear last commit:", e);
+      }
+      await invoke("delete_champions_cache");
+      // Force update to bypass any cached state checks
+      await updateData(undefined, { force: true });
+      await refreshChampions();
+      setUpdateFailed(false);
+    } catch (error) {
+      setUpdateFailed(true);
+      console.error("Failed to reinstall data:", error);
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error("Failed to reinstall data: " + msg);
+    }
+  }, [updateData, refreshChampions]);
 
   // If the store requests showing the update modal (e.g., after selecting directory), start the update and show modal
   // We start the update when the flag is set; modal UI is driven by `isUpdating` and `progress`.
@@ -199,7 +217,33 @@ export default function Home() {
   // update attempt failed, allow the user to proceed into the app (so they
   // can fix settings/select directory) while the error is shown via toast.
   if (hasData === false && !updateFailed) {
-    return <ChampionsLoader />;
+    return (
+      <div className="flex items-center justify-center h-screen w-full flex-col gap-4">
+        <Loader2 className="h-12 w-12 animate-spin" />
+        <p className="text-muted-foreground text-lg">
+          {t("loading.champions_data")}
+        </p>
+        {initialUpdateTriggered && !isUpdating && (
+          <div className="flex flex-col items-center gap-2 mt-4">
+            <p className="text-sm text-muted-foreground">
+              {t("update.stuck_hint") || "Update seems stuck?"}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setInitialUpdateTriggered(false);
+                setUpdateFailed(false);
+                void handleReinstallData();
+              }}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              {t("update.retry") || "Retry Download"}
+            </Button>
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (

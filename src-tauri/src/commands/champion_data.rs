@@ -407,7 +407,7 @@ pub async fn check_data_updates(app: tauri::AppHandle) -> Result<DataUpdateResul
 #[tauri::command]
 pub async fn set_last_data_commit(
   app: tauri::AppHandle,
-  sha: String,
+  sha: Option<String>,
   _manifest_json: Option<String>,
 ) -> Result<(), String> {
   // Update config.json with the new commit
@@ -426,11 +426,20 @@ pub async fn set_last_data_commit(
     serde_json::json!({"auto_update_data": true})
   };
 
-  cfg["last_data_commit"] = serde_json::json!(sha.clone());
+  // Set or clear the last_data_commit based on sha value
+  match &sha {
+    Some(commit_sha) => {
+      cfg["last_data_commit"] = serde_json::json!(commit_sha.clone());
+      println!("[DataUpdate] Saved last_data_commit: {}", commit_sha);
+    }
+    None => {
+      cfg.as_object_mut().map(|obj| obj.remove("last_data_commit"));
+      println!("[DataUpdate] Cleared last_data_commit");
+    }
+  }
 
   let data = serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?;
   std::fs::write(&file, data).map_err(|e| e.to_string())?;
-  println!("[DataUpdate] Saved last_data_commit: {}", sha);
 
   Ok(())
 }

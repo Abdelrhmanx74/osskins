@@ -127,18 +127,24 @@ export function useDataUpdate() {
         }
 
         // Check if we are already up to date (skip if not forced)
+        // But always update if data doesn't exist locally
         if (!force && latestCommit) {
           try {
-            const config = await invoke<{ last_data_commit?: string }>("load_config");
-            const storedCommit = config.last_data_commit;
-            console.log(`[Update] Stored commit: ${storedCommit ?? "none"}, Latest: ${latestCommit}`);
-            if (storedCommit && storedCommit === latestCommit) {
-              console.log("[Update] Local data is up to date. Skipping update.");
-              setIsUpdating(false);
-              setProgress(null);
-              return;
+            const dataExists = await invoke<boolean>("check_champions_data");
+            if (!dataExists) {
+              console.log("[Update] No local data exists, proceeding with download");
+            } else {
+              const config = await invoke<{ last_data_commit?: string }>("load_config");
+              const storedCommit = config.last_data_commit;
+              console.log(`[Update] Stored commit: ${storedCommit ?? "none"}, Latest: ${latestCommit}`);
+              if (storedCommit && storedCommit === latestCommit) {
+                console.log("[Update] Local data is up to date. Skipping update.");
+                setIsUpdating(false);
+                setProgress(null);
+                return;
+              }
+              console.log("[Update] Update needed - commits differ or no stored commit");
             }
-            console.log("[Update] Update needed - commits differ or no stored commit");
           } catch (err) {
             console.warn("[Update] Failed to check config (will proceed with update):", err);
           }
