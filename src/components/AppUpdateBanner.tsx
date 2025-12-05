@@ -35,17 +35,17 @@ export function AppUpdateBanner() {
     const checkForUpdates = async () => {
       // Wait a bit for Tauri to fully initialize
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
+
       if (cancelled) return;
 
       try {
         const updaterModule = await import("@tauri-apps/plugin-updater");
         if (!updaterModule?.check) return;
-        
+
         const update = await updaterModule.check();
-        
+
         if (cancelled) return;
-        
+
         // Safely check if update exists and has required properties
         if (
           update &&
@@ -64,7 +64,7 @@ export function AppUpdateBanner() {
     };
 
     void checkForUpdates();
-    
+
     return () => { cancelled = true; };
   }, []);
 
