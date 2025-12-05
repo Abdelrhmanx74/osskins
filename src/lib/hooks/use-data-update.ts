@@ -97,8 +97,8 @@ export function useDataUpdate() {
             });
             const hasUpdate = Boolean(
               toolsResult.latestVersion &&
-                toolsResult.version &&
-                toolsResult.version !== toolsResult.latestVersion,
+              toolsResult.version &&
+              toolsResult.version !== toolsResult.latestVersion,
             );
             toolsStore.updateStatus({
               installed: toolsResult.installed,
@@ -212,14 +212,14 @@ export function useDataUpdate() {
               try {
                 const championName = sanitizeForFileName(summary.name);
                 const baseName = sanitizeForFileName(skin.name);
-                
+
                 // Try .zip first, then .fantome if 404
                 let downloaded = false;
                 for (const ext of ["zip", "fantome"] as const) {
                   if (downloaded) break;
                   const url = buildSkinDownloadUrl(summary.id, skin.id, undefined, undefined, ext);
                   const fileName = `${baseName}.${ext}`;
-                  
+
                   try {
                     await invoke("download_file_to_champion_with_progress", {
                       url,
@@ -240,7 +240,7 @@ export function useDataUpdate() {
                     }
                   }
                 }
-                
+
                 if (!downloaded) {
                   // Skin not available in either format - silently skip
                   return;
