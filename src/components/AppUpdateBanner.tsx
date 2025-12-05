@@ -1,50 +1,71 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { check } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Loader2, Download, RefreshCw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 
+type UpdateEvent =
+  | { event: "Started"; data?: { contentLength?: number } }
+  | { event: "Progress"; data?: { chunkLength?: number } }
+  | { event: "Finished" }
+  | { event: string; data?: unknown };
+
+type UpdaterUpdate = {
+  version: string;
+  downloadAndInstall: (cb?: (event: UpdateEvent) => void) => Promise<void>;
+};
+
 export function AppUpdateBanner() {
-  type UpdateEvent =
-    | { event: "Started"; data?: { contentLength?: number } }
-    | { event: "Progress"; data?: { chunkLength?: number } }
-    | { event: "Finished" }
-    | { event: string; data?: unknown };
-
-  type UpdaterUpdate = {
-    version?: string;
-    downloadAndInstall?: (cb?: (event: UpdateEvent) => void) => Promise<void>;
-  };
-
   const [updateAvailable, setUpdateAvailable] = useState<UpdaterUpdate | null>(null);
-  const [checking, setChecking] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [downloaded, setDownloaded] = useState(0);
   const [total, setTotal] = useState(0);
 
   useEffect(() => {
+    // Skip updater in development - it breaks the dev server on relaunch
+    if (process.env.NODE_ENV === "development") {
+      return;
+    }
+
+    let cancelled = false;
+
     const checkForUpdates = async () => {
+      // Wait a bit for Tauri to fully initialize
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      if (cancelled) return;
+
       try {
-        const update = await check();
-        // The `check` return can be null; the `available` property is deprecated and always `true`
-        // so check `update` for null instead
-        if (update) {
-          setUpdateAvailable(update);
+        const updaterModule = await import("@tauri-apps/plugin-updater");
+        if (!updaterModule?.check) return;
+        
+        const update = await updaterModule.check();
+        
+        if (cancelled) return;
+        
+        // Safely check if update exists and has required properties
+        if (
+          update &&
+          typeof update === "object" &&
+          "version" in update &&
+          "downloadAndInstall" in update &&
+          typeof update.version === "string" &&
+          typeof update.downloadAndInstall === "function"
+        ) {
+          setUpdateAvailable(update as UpdaterUpdate);
           toast.info(`Update available: ${update.version}`);
         }
-      } catch (error) {
-        console.error("Failed to check for updates:", error);
-      } finally {
-        setChecking(false);
+      } catch {
+        // Silently ignore - updater errors are expected in dev mode
       }
     };
 
     void checkForUpdates();
+    
+    return () => { cancelled = true; };
   }, []);
 
   const handleUpdate = async () => {
@@ -52,12 +73,9 @@ export function AppUpdateBanner() {
 
     setDownloading(true);
     try {
-      const downloader = updateAvailable.downloadAndInstall;
-      if (!downloader) return;
-
       const toNumber = (v: unknown) => (typeof v === "number" ? v : 0);
 
-      await downloader((event: UpdateEvent) => {
+      await updateAvailable.downloadAndInstall((event: UpdateEvent) => {
         switch (event.event) {
           case 'Started': {
             const data = event.data as { contentLength?: unknown } | undefined;
@@ -72,12 +90,12 @@ export function AppUpdateBanner() {
             break;
           }
           case 'Finished':
-            // setDownloading(false); // Keep it open until relaunch
             break;
         }
       });
 
       toast.success("Update installed. Restarting...");
+      const { relaunch } = await import("@tauri-apps/plugin-process");
       await relaunch();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
