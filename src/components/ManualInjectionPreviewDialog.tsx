@@ -33,6 +33,7 @@ export function ManualInjectionPreviewDialog({
     const clearManualSelection = useGameStore((state) => state.clearManualSelection);
     const toggleMiscItemSelection = useGameStore((state) => state.toggleMiscItemSelection);
     const selectMiscItem = useGameStore((state) => state.selectMiscItem);
+    const customSkins = useGameStore((state) => state.customSkins);
 
     // Built-in fonts (same as in MiscItemView.tsx) - these are static files in resources/fonts
     const builtinFonts = useMemo(() => [
@@ -73,35 +74,56 @@ export function ManualInjectionPreviewDialog({
             skinImage: string;
             chromaId?: number;
             chromaName?: string;
+            isCustom?: boolean;
         }> = [];
 
         manualSelectedSkins.forEach((selection, championId) => {
             const champion = champions.find((c) => c.id === championId);
-            if (!champion) return;
+            const fallbackImage = champion?.iconSrc ?? "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
 
-            const skin = champion.skins.find((s) => s.id === selection.skinId);
-            if (!skin) return;
+            const skin = champion?.skins.find((s) => s.id === selection.skinId);
+            if (skin) {
+                let chromaName: string | undefined;
+                if (selection.chromaId) {
+                    const chroma = skin.chromas.find((c) => c.id === selection.chromaId);
+                    chromaName = chroma?.name;
+                }
 
-            let chromaName: string | undefined;
-            if (selection.chromaId) {
-                const chroma = skin.chromas.find((c) => c.id === selection.chromaId);
-                chromaName = chroma?.name;
+                details.push({
+                    championId: champion.id,
+                    championName: champion.name,
+                    championIcon: champion.iconSrc,
+                    skinId: skin.id,
+                    skinName: skin.name,
+                    skinImage: skin.skinSrc || fallbackImage,
+                    chromaId: selection.chromaId,
+                    chromaName,
+                    isCustom: false,
+                });
+                return;
             }
 
-            details.push({
-                championId: champion.id,
-                championName: champion.name,
-                championIcon: champion.iconSrc,
-                skinId: skin.id,
-                skinName: skin.name,
-                skinImage: skin.skinSrc,
-                chromaId: selection.chromaId,
-                chromaName,
-            });
+            // Fallback to custom skins for this champion when the skin is not part of official data
+            const customList = customSkins.get(championId) ?? [];
+            const customSkin = customList.find(
+                (c) => c.file_path === selection.skin_file,
+            );
+
+            if (customSkin) {
+                details.push({
+                    championId: champion?.id ?? championId,
+                    championName: champion?.name ?? customSkin.champion_name,
+                    championIcon: champion?.iconSrc ?? fallbackImage,
+                    skinId: selection.skinId,
+                    skinName: customSkin.name,
+                    skinImage: customSkin.preview_image ?? fallbackImage,
+                    isCustom: true,
+                });
+            }
         });
 
         return details;
-    }, [manualSelectedSkins, champions]);
+    }, [manualSelectedSkins, champions, customSkins]);
 
     // Get selected misc items with details
     const selectedMiscDetails = useMemo(() => {
@@ -257,6 +279,12 @@ export function ManualInjectionPreviewDialog({
                                                 {detail.skinName}
                                             </p>
                                         </div>
+
+                                        {detail.isCustom && (
+                                            <p className="text-xs text-primary font-semibold drop-shadow-md">
+                                                Custom
+                                            </p>
+                                        )}
 
                                         {/* Chroma name if exists */}
                                         {detail.chromaName && (

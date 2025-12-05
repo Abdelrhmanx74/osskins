@@ -138,49 +138,46 @@ export function TopBar({
             }}
             className="w-full justify-center items-center"
           >
-            <TabsList>
-              <div className="relative flex items-center group">
-                <TabsTrigger value="official" className="relative pr-8">
-                  {t("tabs.official")}
-                </TabsTrigger>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      disabled={activeTab !== "official"}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 h-5 w-5 p-2 text-white hover:bg-primary dark:hover:bg-primary group-hover:bg-primary"
-                    >
-                      <ChevronDown className="size-5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-40">
-                    <DropdownMenuItem
-                      onSelect={() => {
-                        setManualInjectionMode(false);
-                      }}
-                    >
-                      <Zap className="h-4 w-4 mr-2" />
-                      Auto
-                      {!manualInjectionMode && (
-                        <Check className="h-4 w-4 ml-auto" />
-                      )}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onSelect={() => {
-                        setManualInjectionMode(true);
-                      }}
-                    >
-                      <Hand className="h-4 w-4 mr-2" />
-                      Manual
-                      {manualInjectionMode && (
-                        <Check className="h-4 w-4 ml-auto" />
-                      )}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+            <TabsList className="flex items-center gap-1 pr-1">
+              <TabsTrigger value="official">{t("tabs.official")}</TabsTrigger>
               <TabsTrigger value="custom">{t("tabs.custom")}</TabsTrigger>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-full w-fit px-1 text-muted-foreground hover:bg-primary/30 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label="Toggle injection mode"
+                  >
+                    <ChevronDown className="size-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-40">
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setManualInjectionMode(false);
+                    }}
+                  >
+                    <Zap className="h-4 w-4 mr-2" />
+                    Auto
+                    {!manualInjectionMode && (
+                      <Check className="h-4 w-4 ml-auto" />
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setManualInjectionMode(true);
+                    }}
+                  >
+                    <Hand className="h-4 w-4 mr-2" />
+                    Manual
+                    {manualInjectionMode && (
+                      <Check className="h-4 w-4 ml-auto" />
+                    )}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </TabsList>
           </Tabs>
           {/* Show status dot in auto mode, injection button in manual mode */}

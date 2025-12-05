@@ -20,11 +20,19 @@ export function CustomSkinCard({ skin, onDelete }: CustomSkinCardProps) {
   const [isHovering, setIsHovering] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const { selectedSkins, selectSkin, clearSelection } = useGameStore();
+  const {
+    manualInjectionMode,
+    selectedSkins,
+    manualSelectedSkins,
+    selectSkin,
+    selectManualSkin,
+    clearSelection,
+    clearManualSelection,
+  } = useGameStore();
 
   // Check if this skin is selected
-  const isSelected =
-    selectedSkins.get(skin.champion_id)?.skin_file === skin.file_path;
+  const selectedMap = manualInjectionMode ? manualSelectedSkins : selectedSkins;
+  const isSelected = selectedMap.get(skin.champion_id)?.skin_file === skin.file_path;
 
   // Generate a fake skin ID for custom skins (used for selection tracking)
   const fakeSkinId = parseInt(skin.id.replace(/\D/g, "").slice(0, 8)) || 999999;
@@ -67,6 +75,15 @@ export function CustomSkinCard({ skin, onDelete }: CustomSkinCardProps) {
 
   // Select or deselect this skin
   const handleClick = () => {
+    if (manualInjectionMode) {
+      if (isSelected) {
+        clearManualSelection(skin.champion_id);
+      } else {
+        selectManualSkin(skin.champion_id, fakeSkinId, undefined, skin.file_path);
+      }
+      return;
+    }
+
     if (isSelected) {
       clearSelection(skin.champion_id);
     } else {
