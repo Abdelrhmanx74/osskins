@@ -82,7 +82,7 @@ export function ManualInjectionPreviewDialog({
             const fallbackImage = champion?.iconSrc ?? "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
 
             const skin = champion?.skins.find((s) => s.id === selection.skinId);
-            if (skin) {
+            if (skin && champion) {
                 let chromaName: string | undefined;
                 if (selection.chromaId) {
                     const chroma = skin.chromas.find((c) => c.id === selection.chromaId);
