@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 use tauri::{AppHandle, Manager};
 
-use super::types::{InjectionMode, PHASE_STATE};
+use super::types::{InjectionMode, LAST_SHARED_CHAMPION_ID, PHASE_STATE};
 use crate::commands::party_mode::RECEIVED_SKINS;
 use std::sync::atomic::Ordering;
 
@@ -37,11 +37,33 @@ pub fn read_injection_mode(app: &AppHandle) -> InjectionMode {
   InjectionMode::ChampSelect
 }
 
+/// Compute a signature for the current party mode injection state.
+/// This signature is used to detect when re-injection is needed.
+///
+/// The signature changes when:
+/// 1. The local champion changes (reroll in ARAM/URF)
+/// 2. A friend's shared skin changes (they rerolled)
+/// 3. New friend skins are received
+///
+/// This allows re-injection when champions change during ARAM/URF rerolls.
 pub fn compute_party_injection_signature(current_champion_id: u32) -> String {
-  // Build a stable signature that includes the local locked champion id plus the
-  // currently received friend skins. This ensures a champion change forces
-  // injection even if the set of received friend skins didn't change.
   let map = RECEIVED_SKINS.lock().unwrap();
+
+  // Track the last champion we computed a signature for
+  let last_champ = LAST_SHARED_CHAMPION_ID.load(Ordering::SeqCst) as u32;
+  let champion_changed = last_champ != 0 && last_champ != current_champion_id;
+
+  if champion_changed {
+    println!(
+      "[Party Mode][SIGNATURE] Champion changed from {} to {} - this will trigger re-injection",
+      last_champ, current_champion_id
+    );
+  }
+
+  // Update the last shared champion
+  LAST_SHARED_CHAMPION_ID.store(current_champion_id as u64, Ordering::SeqCst);
+
+  // Build signature from received skins
   let mut parts: Vec<String> = map
     .values()
     .map(|s| {
@@ -55,12 +77,47 @@ pub fn compute_party_injection_signature(current_champion_id: u32) -> String {
     })
     .collect();
   parts.sort();
-  // Prefix with champion id so local champion selection influences the signature
-  if parts.is_empty() {
-    format!("champion:{}", current_champion_id)
+
+  // Include the number of received skins to detect new arrivals
+  let received_count = map.len();
+
+  // Build the final signature
+  let signature = if parts.is_empty() {
+    format!(
+      "champion:{}:received:{}",
+      current_champion_id, received_count
+    )
   } else {
-    format!("champion:{}|{}", current_champion_id, parts.join("|"))
-  }
+    format!(
+      "champion:{}:received:{}|{}",
+      current_champion_id,
+      received_count,
+      parts.join("|")
+    )
+  };
+
+  println!(
+    "[Party Mode][SIGNATURE] Computed signature for champ {}: {} ({} received skins)",
+    current_champion_id,
+    &signature[..signature.len().min(80)],
+    received_count
+  );
+
+  signature
+}
+
+/// Check if a champion change occurred (useful for ARAM/URF reroll detection)
+#[allow(dead_code)]
+pub fn did_champion_change(new_champion_id: u32) -> bool {
+  let last_champ = LAST_SHARED_CHAMPION_ID.load(Ordering::SeqCst) as u32;
+  last_champ != 0 && last_champ != new_champion_id
+}
+
+/// Reset the last shared champion tracking (call when entering new ChampSelect)
+#[allow(dead_code)]
+pub fn reset_champion_tracking() {
+  LAST_SHARED_CHAMPION_ID.store(0, Ordering::SeqCst);
+  println!("[Party Mode][TRACKING] Reset champion tracking for new session");
 }
 
 pub fn get_lcu_client() -> reqwest::blocking::Client {
@@ -75,6 +132,27 @@ pub fn get_lcu_client() -> reqwest::blocking::Client {
         .unwrap_or_else(|_| reqwest::blocking::Client::new())
     })
     .clone()
+}
+
+/// Log a summary of received skins for debugging
+#[allow(dead_code)]
+pub fn log_received_skins_summary() {
+  let map = RECEIVED_SKINS.lock().unwrap();
+  if map.is_empty() {
+    println!("[Party Mode][DEBUG] No received skins in cache");
+    return;
+  }
+
+  println!(
+    "[Party Mode][DEBUG] Received skins cache ({} entries):",
+    map.len()
+  );
+  for (key, skin) in map.iter() {
+    println!(
+      "[Party Mode][DEBUG]   {} -> {} from {} (champ {} skin {})",
+      key, skin.from_summoner_name, skin.from_summoner_id, skin.champion_id, skin.skin_id
+    );
+  }
 }
 
 #[allow(dead_code)]

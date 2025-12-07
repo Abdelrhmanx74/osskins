@@ -1,7 +1,12 @@
 // Tauri commands for party mode
 
 use super::lcu::{get_friend_display_name, get_friends_with_connection, get_lcu_connection};
-use super::types::PARTY_MODE_VERBOSE;
+use super::types::{PARTY_MODE_VERBOSE, RECEIVED_SKINS, SENT_SKIN_SHARES};
+use crate::commands::lcu_watcher::types::{
+  current_time_ms, CHAMP_SELECT_SESSION_COUNTER, CHAMP_SELECT_START_TIME_MS,
+  LAST_SHARED_CHAMPION_ID, LCU_WATCHER_ACTIVE, LCU_WATCHER_INSTANCE_ID,
+  PARTY_INJECTION_DONE_THIS_PHASE,
+};
 use crate::commands::types::{FriendInfo, PairedFriend, PartyModeConfig, SavedConfig};
 use crate::commands::ConfigLock;
 use serde_json;
@@ -333,6 +338,239 @@ pub async fn update_party_mode_settings(
     .map_err(|e| format!("Failed to save config: {}", e))?;
 
   Ok(())
+}
+
+/// Diagnostic command to dump the current party mode state for debugging.
+/// This is useful for understanding what's happening when party mode isn't working as expected.
+#[tauri::command]
+pub async fn get_party_mode_diagnostic_state(
+  app: AppHandle,
+  config_lock: State<'_, ConfigLock>,
+) -> Result<serde_json::Value, String> {
+  let _lock = config_lock
+    .0
+    .lock()
+    .map_err(|_| "Failed to lock config".to_string())?;
+
+  // Gather session state
+  let now_ms = current_time_ms();
+  let session_start_ms = CHAMP_SELECT_START_TIME_MS.load(Ordering::SeqCst);
+  let session_counter = CHAMP_SELECT_SESSION_COUNTER.load(Ordering::SeqCst);
+  let last_shared_champ = LAST_SHARED_CHAMPION_ID.load(Ordering::SeqCst);
+  let injection_done = PARTY_INJECTION_DONE_THIS_PHASE.load(Ordering::Relaxed);
+  let watcher_active = LCU_WATCHER_ACTIVE.load(Ordering::SeqCst);
+  let watcher_id = LCU_WATCHER_INSTANCE_ID.load(Ordering::SeqCst);
+  let verbose_enabled = PARTY_MODE_VERBOSE.load(Ordering::Relaxed);
+
+  // Calculate session age
+  let session_age_secs = if session_start_ms > 0 {
+    (now_ms.saturating_sub(session_start_ms)) / 1000
+  } else {
+    0
+  };
+
+  // Gather received skins
+  let received_skins: Vec<serde_json::Value> = {
+    let map = RECEIVED_SKINS
+      .lock()
+      .map_err(|e| format!("Failed to lock RECEIVED_SKINS: {}", e))?;
+    map
+      .iter()
+      .map(|(key, skin)| {
+        let age_ms = now_ms.saturating_sub(skin.received_at);
+        serde_json::json!({
+          "key": key,
+          "from_summoner_id": skin.from_summoner_id,
+          "from_summoner_name": skin.from_summoner_name,
+          "champion_id": skin.champion_id,
+          "skin_id": skin.skin_id,
+          "chroma_id": skin.chroma_id,
+          "skin_file_path": skin.skin_file_path,
+          "received_at": skin.received_at,
+          "age_seconds": age_ms / 1000,
+        })
+      })
+      .collect()
+  };
+
+  // Gather sent shares
+  let sent_shares: Vec<String> = {
+    let set = SENT_SKIN_SHARES
+      .lock()
+      .map_err(|e| format!("Failed to lock SENT_SKIN_SHARES: {}", e))?;
+    set.iter().cloned().collect()
+  };
+
+  // Get paired friends from config
+  let config_dir = app
+    .path()
+    .app_data_dir()
+    .unwrap_or_else(|_| PathBuf::from("."))
+    .join("config");
+  let config_file = config_dir.join("config.json");
+
+  let paired_friends: Vec<serde_json::Value> = if config_file.exists() {
+    let config_data =
+      std::fs::read_to_string(&config_file).map_err(|e| format!("Failed to read config: {}", e))?;
+    let config: SavedConfig =
+      serde_json::from_str(&config_data).map_err(|e| format!("Failed to parse config: {}", e))?;
+    config
+      .party_mode
+      .paired_friends
+      .iter()
+      .map(|f| {
+        serde_json::json!({
+          "summoner_id": f.summoner_id,
+          "display_name": f.display_name,
+          "share_enabled": f.share_enabled,
+        })
+      })
+      .collect()
+  } else {
+    Vec::new()
+  };
+
+  // Build diagnostic output
+  let diagnostic = serde_json::json!({
+    "timestamp": now_ms,
+    "session": {
+      "counter": session_counter,
+      "start_time_ms": session_start_ms,
+      "age_seconds": session_age_secs,
+      "last_shared_champion_id": last_shared_champ,
+      "injection_done_this_phase": injection_done,
+    },
+    "watcher": {
+      "active": watcher_active,
+      "instance_id": watcher_id,
+    },
+    "config": {
+      "verbose_logging": verbose_enabled,
+      "paired_friends_count": paired_friends.len(),
+      "paired_friends": paired_friends,
+    },
+    "state": {
+      "received_skins_count": received_skins.len(),
+      "received_skins": received_skins,
+      "sent_shares_count": sent_shares.len(),
+      "sent_shares": sent_shares,
+    },
+  });
+
+  // Also print to console for easy access in logs
+  println!("=== PARTY MODE DIAGNOSTIC STATE ===");
+  println!(
+    "{}",
+    serde_json::to_string_pretty(&diagnostic).unwrap_or_default()
+  );
+  println!("=== END DIAGNOSTIC STATE ===");
+
+  Ok(diagnostic)
+}
+
+/// Manually trigger a resend of the current skin to all paired friends.
+/// This is useful when the automatic sharing didn't work or when you want to
+/// update friends after changing your skin selection.
+#[tauri::command]
+pub async fn resend_skin_to_friends(
+  app: AppHandle,
+  config_lock: State<'_, ConfigLock>,
+) -> Result<serde_json::Value, String> {
+  use crate::commands::party_mode::send_skin_share_to_paired_friends;
+
+  println!("[Party Mode] Manual resend triggered by user");
+
+  // Read config while holding the lock, then release it before async operations
+  let (champion_id, skin_id, chroma_id, skin_file) = {
+    let _lock = config_lock
+      .0
+      .lock()
+      .map_err(|_| "Failed to lock config".to_string())?;
+
+    // Get config to find current champion and skin selection
+    let config_dir = app
+      .path()
+      .app_data_dir()
+      .unwrap_or_else(|_| PathBuf::from("."))
+      .join("config");
+    let config_file = config_dir.join("config.json");
+
+    if !config_file.exists() {
+      return Err("Config file not found".to_string());
+    }
+
+    let config_data =
+      std::fs::read_to_string(&config_file).map_err(|e| format!("Failed to read config: {}", e))?;
+    let config: SavedConfig =
+      serde_json::from_str(&config_data).map_err(|e| format!("Failed to parse config: {}", e))?;
+
+    // Get the last shared champion ID
+    let last_shared = LAST_SHARED_CHAMPION_ID.load(Ordering::SeqCst) as u32;
+
+    if last_shared == 0 {
+      return Err(
+        "No champion has been shared yet in this session. Select a champion first.".to_string(),
+      );
+    }
+
+    // Find the skin for this champion
+    let skin = config
+      .skins
+      .iter()
+      .find(|s| s.champion_id == last_shared)
+      .ok_or_else(|| format!("No skin configured for champion {}", last_shared))?;
+
+    println!(
+      "[Party Mode] Resending skin {} for champion {} to all friends (force_send_to_all=true)",
+      skin.skin_id, skin.champion_id
+    );
+
+    // Clear the sent shares so we can resend
+    {
+      let mut sent = SENT_SKIN_SHARES
+        .lock()
+        .map_err(|e| format!("Failed to lock SENT_SKIN_SHARES: {}", e))?;
+      let before = sent.len();
+      sent.clear();
+      println!(
+        "[Party Mode] Cleared {} sent share entries to allow resend",
+        before
+      );
+    }
+
+    (
+      skin.champion_id,
+      skin.skin_id,
+      skin.chroma_id,
+      skin.skin_file.clone(),
+    )
+  }; // _lock is dropped here
+
+  // Send to all paired friends with force=true to bypass party detection
+  match send_skin_share_to_paired_friends(
+    &app,
+    champion_id,
+    skin_id,
+    chroma_id,
+    skin_file,
+    true, // force_send_to_all
+  )
+  .await
+  {
+    Ok(_) => {
+      println!("[Party Mode] Manual resend completed successfully");
+      Ok(serde_json::json!({
+        "success": true,
+        "champion_id": champion_id,
+        "skin_id": skin_id,
+        "message": "Skin share resent to all paired friends"
+      }))
+    }
+    Err(e) => {
+      println!("[Party Mode] Manual resend failed: {}", e);
+      Err(format!("Failed to resend skin: {}", e))
+    }
+  }
 }
 
 // Internal function to add paired friend

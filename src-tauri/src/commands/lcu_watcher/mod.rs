@@ -4,7 +4,7 @@ mod injection;
 mod logging;
 mod party_mode;
 mod session;
-mod types;
+pub mod types;
 mod utils;
 mod watcher;
 

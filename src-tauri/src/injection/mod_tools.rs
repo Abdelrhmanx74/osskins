@@ -350,14 +350,14 @@ impl crate::injection::core::SkinInjector {
           // Store error for potential later use
           last_run_error = Some(match e.kind() {
                         io::ErrorKind::NotFound => InjectionError::ProcessError(format!(
-                            "mod-tools.exe not found or is inaccessible at path: {}. Please install CSLOL Manager or copy the correct mod-tools.exe to the application directory.", 
+                            "mod-tools.exe not found or is inaccessible at path: {}. Please install CSLOL Manager or copy the correct mod-tools.exe to the application directory.",
                             mod_tools_path.display()
                         )),
                         io::ErrorKind::PermissionDenied => InjectionError::ProcessError(format!(
                             "Permission denied when trying to run mod-tools.exe. Try running the application as administrator."
                         )),
                         _ => InjectionError::ProcessError(format!(
-                            "Error running mod-tools.exe: {}. Please ensure it's correctly installed and compatible with your system.", 
+                            "Error running mod-tools.exe: {}. Please ensure it's correctly installed and compatible with your system.",
                             e
                         ))
                     });

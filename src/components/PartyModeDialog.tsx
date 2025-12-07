@@ -100,7 +100,7 @@ export default function PartyModeDialog() {
     return friends.filter(
       (friend) =>
         friend.summoner_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        friend.display_name.toLowerCase().includes(searchTerm.toLowerCase())
+        friend.display_name.toLowerCase().includes(searchTerm.toLowerCase()),
     );
   };
 
@@ -117,7 +117,7 @@ export default function PartyModeDialog() {
   const handleAddFriend = async (friendSummonerId: string) => {
     console.log(
       "[DEBUG] handleAddFriend called with friendSummonerId:",
-      friendSummonerId
+      friendSummonerId,
     );
     setIsLoading(true);
     try {
@@ -233,7 +233,7 @@ export default function PartyModeDialog() {
                       <p className="text-sm text-muted-foreground mt-2">
                         {
                           t(
-                            "loading.champions_data"
+                            "loading.champions_data",
                           ) /* reuse a loading key; consider dedicated key if needed */
                         }
                       </p>
@@ -248,7 +248,7 @@ export default function PartyModeDialog() {
                     filteredFriends.map((friend) => {
                       const pairedFriend = pairedFriends.find(
                         (cf) =>
-                          String(cf.summoner_id) === String(friend.summoner_id)
+                          String(cf.summoner_id) === String(friend.summoner_id),
                       );
                       const isConnected = !!pairedFriend;
 
@@ -260,7 +260,7 @@ export default function PartyModeDialog() {
                           <div className="flex items-center gap-3">
                             <div
                               className={`w-3 h-3 rounded-full ${getStatusColorForFriend(
-                                friend
+                                friend,
                               )}`}
                             ></div>
                             <div>

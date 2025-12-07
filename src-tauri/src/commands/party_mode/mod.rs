@@ -20,9 +20,10 @@ pub use utils::clear_sent_shares;
 pub use session::clear_received_skins;
 
 pub use commands::{
-  add_party_friend, get_lcu_friends, get_paired_friends, get_party_mode_settings,
-  get_party_mode_verbose_logging, remove_paired_friend, set_party_mode_max_share_age,
-  set_party_mode_verbose_logging, update_party_mode_settings,
+  add_party_friend, get_lcu_friends, get_paired_friends, get_party_mode_diagnostic_state,
+  get_party_mode_settings, get_party_mode_verbose_logging, remove_paired_friend,
+  resend_skin_to_friends, set_party_mode_max_share_age, set_party_mode_verbose_logging,
+  update_party_mode_settings,
 };
 
 pub use handlers::{

@@ -19,7 +19,7 @@ fn extract_fonts(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error
   // Check if we need to extract
   // For now, we extract if fonts_dir doesn't exist
   if fonts_dir.exists() {
-      return Ok(());
+    return Ok(());
   }
 
   // Try to find the zip file
@@ -27,30 +27,35 @@ fn extract_fonts(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error
   let mut resource_path = app.path().resolve("fonts.zip", BaseDirectory::Resource)?;
 
   if !resource_path.exists() {
-      // 2. In resources/fonts.zip (dev?)
-      if let Ok(p) = app.path().resolve("resources/fonts.zip", BaseDirectory::Resource) {
-          if p.exists() {
-              resource_path = p;
-          }
+    // 2. In resources/fonts.zip (dev?)
+    if let Ok(p) = app
+      .path()
+      .resolve("resources/fonts.zip", BaseDirectory::Resource)
+    {
+      if p.exists() {
+        resource_path = p;
       }
+    }
   }
 
   // 3. Fallback to CARGO_MANIFEST_DIR for dev
   if !resource_path.exists() {
-      let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
-      if !manifest_dir.is_empty() {
-          let p = std::path::Path::new(&manifest_dir).join("resources").join("fonts.zip");
-          if p.exists() {
-              resource_path = p;
-          }
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+    if !manifest_dir.is_empty() {
+      let p = std::path::Path::new(&manifest_dir)
+        .join("resources")
+        .join("fonts.zip");
+      if p.exists() {
+        resource_path = p;
       }
+    }
   }
 
   if resource_path.exists() {
-      fs::create_dir_all(&fonts_dir)?;
-      let file = fs::File::open(&resource_path)?;
-      let mut archive = zip::ZipArchive::new(file)?;
-      archive.extract(&fonts_dir)?;
+    fs::create_dir_all(&fonts_dir)?;
+    let file = fs::File::open(&resource_path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
+    archive.extract(&fonts_dir)?;
   }
   Ok(())
 }
@@ -65,9 +70,9 @@ fn main() {
       // Extract fonts in background
       let app_handle = app.handle().clone();
       std::thread::spawn(move || {
-          if let Err(e) = extract_fonts(&app_handle) {
-              eprintln!("Failed to extract fonts: {}", e);
-          }
+        if let Err(e) = extract_fonts(&app_handle) {
+          eprintln!("Failed to extract fonts: {}", e);
+        }
       });
 
       // Native injection is now used - no need to check for mod-tools.exe
@@ -184,6 +189,8 @@ fn main() {
       set_party_mode_verbose_logging,
       get_party_mode_verbose_logging,
       set_party_mode_max_share_age,
+      get_party_mode_diagnostic_state,
+      resend_skin_to_friends,
       start_party_mode_chat_monitor,
       print_logs,
       // data commit tracking

@@ -16,7 +16,8 @@ use super::session::{
   get_swift_play_champion_selections,
 };
 use super::types::{
-  InjectionMode, LAST_CHAMPION_SHARE_TIME, LAST_PARTY_INJECTION_SIGNATURE,
+  generate_watcher_instance_id, is_current_watcher_instance, start_new_champ_select_session,
+  InjectionMode, LAST_CHAMPION_SHARE_TIME, LAST_PARTY_INJECTION_SIGNATURE, LCU_WATCHER_ACTIVE,
   PARTY_INJECTION_DONE_THIS_PHASE, PHASE_STATE,
 };
 use super::utils::{compute_party_injection_signature, read_injection_mode};
@@ -34,14 +35,28 @@ use tokio_tungstenite::Connector;
 
 #[tauri::command]
 pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), String> {
+  // Generate a new unique instance ID for this watcher
+  let watcher_id = generate_watcher_instance_id();
+
   println!(
-    "Starting LCU watcher (WebSocket-based) for path: {}",
-    league_path
+    "[LCU Watcher] Starting watcher instance {} for path: {}",
+    watcher_id, league_path
   );
+
+  // Check if another watcher is already running
+  let was_active = LCU_WATCHER_ACTIVE.swap(true, Ordering::SeqCst);
+  if was_active {
+    println!(
+      "[LCU Watcher] Another watcher was already active, it will be superseded by instance {}",
+      watcher_id
+    );
+  }
+
   let app_handle = app.clone();
   let league_path_clone = league_path.clone();
 
   thread::spawn(move || {
+    println!("[LCU Watcher][{}] Thread started", watcher_id);
     // Decide injection mode early
     let injection_mode = read_injection_mode(&app_handle);
     println!(
@@ -60,12 +75,25 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
           if let Some(pm) = json.get("party_mode") {
             if let Some(flag) = pm.get("verbose_logging").and_then(|v| v.as_bool()) {
               PARTY_MODE_VERBOSE.store(flag, Ordering::Relaxed);
-              println!("[LCU Watcher] Party mode verbose logging = {}", flag);
+              println!(
+                "[LCU Watcher][{}] Party mode verbose logging = {}",
+                watcher_id, flag
+              );
             }
           }
         }
       }
     }
+
+    // Check if we're still the current watcher instance
+    if !is_current_watcher_instance(watcher_id) {
+      println!(
+        "[LCU Watcher][{}] Superseded by newer watcher instance, exiting",
+        watcher_id
+      );
+      return;
+    }
+
     let mut last_phase = String::from("None");
     let mut was_in_game = false;
     let mut was_reconnecting = false;
@@ -94,13 +122,22 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
       .expect("http client");
 
     loop {
+      // Check if we're still the current watcher instance at the start of each loop
+      if !is_current_watcher_instance(watcher_id) {
+        println!(
+          "[LCU Watcher][{}] Superseded by newer watcher instance, exiting main loop",
+          watcher_id
+        );
+        break;
+      }
+
       // 1) Read lockfile to get port/token
       let (port, token, lockfile_path) = match read_lockfile_once(&league_path_clone) {
         Some(t) => t,
         None => {
           let log_msg = format!(
-            "[LCU Watcher] No valid lockfile found. Is League running? The lockfile should be at: {}",
-            league_path_clone
+            "[LCU Watcher][{}] No valid lockfile found. Is League running? The lockfile should be at: {}",
+            watcher_id, league_path_clone
           );
           println!("{}", log_msg);
           emit_terminal_log(&app_handle, &log_msg);
@@ -118,7 +155,10 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
         .build()
         .expect("failed to build TLS connector");
 
-      println!("[LCU Watcher] Connecting to LCU WebSocket at {}", ws_url);
+      println!(
+        "[LCU Watcher][{}] Connecting to LCU WebSocket at {}",
+        watcher_id, ws_url
+      );
 
       // Use tokio_tungstenite's IntoClientRequest trait for proper WebSocket handshake
       use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -141,9 +181,18 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
       });
 
       let (mut socket, _response) = match connect_res {
-        Ok(ok) => ok,
+        Ok(ok) => {
+          println!(
+            "[LCU Watcher][{}] WebSocket connected successfully",
+            watcher_id
+          );
+          ok
+        }
         Err(e) => {
-          eprintln!("[LCU Watcher] WebSocket connect failed: {}", e);
+          eprintln!(
+            "[LCU Watcher][{}] WebSocket connect failed: {}",
+            watcher_id, e
+          );
           thread::sleep(Duration::from_secs(2));
           continue;
         }
@@ -159,14 +208,27 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
       let mut last_lobby_check = Instant::now();
       let mut last_lockfile_check = Instant::now();
       let mut lockfile_exists = true;
-      
+
       while lockfile_exists && socket_alive {
+        // Check if we're still the current watcher instance
+        if !is_current_watcher_instance(watcher_id) {
+          println!(
+            "[LCU Watcher][{}] Superseded by newer watcher, exiting event loop",
+            watcher_id
+          );
+          socket_alive = false;
+          break;
+        }
+
         // Check lockfile existence every 2 seconds (not every iteration)
         if last_lockfile_check.elapsed() >= Duration::from_secs(2) {
           last_lockfile_check = Instant::now();
           lockfile_exists = lockfile_path.exists();
           if !lockfile_exists {
-            println!("[LCU Watcher] Lockfile removed, stopping watcher");
+            println!(
+              "[LCU Watcher][{}] Lockfile removed, stopping watcher",
+              watcher_id
+            );
             break;
           }
         }
@@ -200,7 +262,10 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
           last_lobby_check = Instant::now();
           let port_clone = port.clone();
           let token_clone = token.clone();
-          let auth_header = format!("Basic {}", general_purpose::STANDARD.encode(format!("riot:{}", token_clone)));
+          let auth_header = format!(
+            "Basic {}",
+            general_purpose::STANDARD.encode(format!("riot:{}", token_clone))
+          );
           let client = http_client.clone();
 
           // Use async client for non-blocking REST call
@@ -212,7 +277,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
               .send()
               .await
           });
-          
+
           if let Ok(resp) = lobby_result {
             if resp.status().is_success() {
               if let Ok(json) = rt.block_on(async { resp.json::<serde_json::Value>().await }) {
@@ -234,7 +299,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
         let next_msg = rt.block_on(async {
           tokio::time::timeout(Duration::from_millis(100), socket.next()).await
         });
-        
+
         match next_msg {
           Ok(Some(Ok(msg))) => {
             if let Some(evt) = parse_lcu_ws_event(msg) {
@@ -249,13 +314,18 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                   // Check transitions BEFORE updating last_phase
                   let old_phase = last_phase.clone();
 
+                  println!(
+                    "[LCU Watcher][{}] Phase event: {} -> {}",
+                    watcher_id, old_phase, new_phase
+                  );
+
                   // Handle Lobby->Matchmaking instant-assign via REST resolution (Swift Play/lobby injection)
                   // This fires when you click "Find Match" with champions already selected
                   if old_phase == "Lobby"
                     && new_phase == "Matchmaking"
                     && !crate::commands::skin_injection::is_manual_injection_active()
                   {
-                    println!("[LCU Watcher] Lobby->Matchmaking transition - triggering instant-assign injection");
+                    println!("[LCU Watcher][{}] Lobby->Matchmaking transition - triggering instant-assign injection", watcher_id);
                     handle_instant_assign_injection(&app_handle, &league_path_clone, &port, &token);
                   }
 
@@ -306,11 +376,11 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
             }
           }
           Ok(Some(Err(e))) => {
-            eprintln!("[LCU Watcher] WebSocket read error: {}", e);
+            eprintln!("[LCU Watcher][{}] WebSocket read error: {}", watcher_id, e);
             socket_alive = false;
           }
           Ok(None) => {
-            eprintln!("[LCU Watcher] WebSocket stream ended");
+            eprintln!("[LCU Watcher][{}] WebSocket stream ended", watcher_id);
             socket_alive = false;
           }
           Err(_) => {
@@ -325,9 +395,10 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
 
       // Only run polling fallback if lockfile still exists (WS failed but LCU is running)
       // Don't run it if LCU closed (lockfile gone) - just wait and retry WS connection
-      if lockfile_path.exists() {
+      if lockfile_path.exists() && is_current_watcher_instance(watcher_id) {
         println!(
-          "[LCU Watcher] WebSocket disconnected but lockfile exists, trying polling fallback"
+          "[LCU Watcher][{}] WebSocket disconnected but lockfile exists, trying polling fallback",
+          watcher_id
         );
         run_polling_loop(
           &app_handle,
@@ -348,9 +419,15 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
 
       thread::sleep(Duration::from_secs(2));
     }
+
+    // Watcher is exiting - mark as inactive if we're still the current instance
+    if is_current_watcher_instance(watcher_id) {
+      LCU_WATCHER_ACTIVE.store(false, Ordering::SeqCst);
+    }
+    println!("[LCU Watcher][{}] Thread exiting", watcher_id);
   });
 
-  println!("LCU status watcher thread started");
+  println!("[LCU Watcher] Watcher thread {} started", watcher_id);
   Ok(())
 }
 
@@ -490,6 +567,9 @@ fn handle_phase_change(
   }
 
   if new_phase == "ChampSelect" {
+    // Start a new champ select session - this sets the timestamp for message filtering
+    start_new_champ_select_session();
+
     if let Ok(mut g) = LAST_PARTY_INJECTION_SIGNATURE.lock() {
       *g = None;
     }
@@ -499,7 +579,7 @@ fn handle_phase_change(
       times.clear();
     }
     PARTY_INJECTION_DONE_THIS_PHASE.store(false, Ordering::Relaxed);
-    println!("[LCU Watcher][DEBUG] Reset party-mode state for new ChampSelect");
+    println!("[LCU Watcher][DEBUG] Reset party-mode state for new ChampSelect session");
 
     let champions_dir = app_handle
       .path()
@@ -574,6 +654,22 @@ fn handle_champ_select_event_data(
     } else {
       true
     };
+
+    // Log champion changes for debugging (especially for ARAM rerolls)
+    if champion_changed {
+      println!(
+        "[LCU Watcher][ChampSelect] Champion changed: {:?} -> {} (reroll/swap detected)",
+        *last_champion_id, current_champion_id
+      );
+
+      // When champion changes (reroll/swap), reset the injection done flag to allow re-injection
+      // This is crucial for ARAM/URF where champions change frequently
+      PARTY_INJECTION_DONE_THIS_PHASE.store(false, Ordering::Relaxed);
+      println!(
+        "[LCU Watcher][ChampSelect] Reset PARTY_INJECTION_DONE_THIS_PHASE due to champion change"
+      );
+    }
+
     *last_champion_id = Some(current_champion_id);
 
     if champion_changed {
@@ -590,9 +686,21 @@ fn handle_champ_select_event_data(
             .iter()
             .find(|s| s.champion_id == current_champion_id)
           {
+            // When champion actually changed (reroll), ALWAYS allow share - bypass debounce
+            // Only use debounce when the same champion is being re-selected
             let should_share = {
               let mut last_shares = LAST_CHAMPION_SHARE_TIME.lock().unwrap();
-              if let Some(last_time) = last_shares.get(&current_champion_id) {
+              let prev_champ = last_champion_id.unwrap_or(0);
+
+              // If champion changed, always share (this is a reroll)
+              if prev_champ != current_champion_id && prev_champ != 0 {
+                println!(
+                  "[Party Mode][ChampSelect] Champion reroll detected ({} -> {}), bypassing debounce",
+                  prev_champ, current_champion_id
+                );
+                last_shares.insert(current_champion_id, std::time::Instant::now());
+                true
+              } else if let Some(last_time) = last_shares.get(&current_champion_id) {
                 let elapsed = last_time.elapsed();
                 if elapsed.as_secs() < 2 {
                   println!(
@@ -611,12 +719,16 @@ fn handle_champ_select_event_data(
               }
             };
             if should_share {
+              println!(
+                "[LCU Watcher][ChampSelect] Sending skin share for champion {} skin {} chroma {:?}",
+                skin.champion_id, skin.skin_id, skin.chroma_id
+              );
               let app_handle_clone = app_handle.clone();
               let skin_clone = skin.clone();
               std::thread::spawn(move || {
                 let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async move {
-                  let _ = crate::commands::party_mode::send_skin_share_to_paired_friends(
+                  match crate::commands::party_mode::send_skin_share_to_paired_friends(
                     &app_handle_clone,
                     skin_clone.champion_id,
                     skin_clone.skin_id,
@@ -624,11 +736,33 @@ fn handle_champ_select_event_data(
                     skin_clone.skin_file.clone(),
                     false,
                   )
-                  .await;
+                  .await
+                  {
+                    Ok(_) => println!(
+                      "[LCU Watcher][ChampSelect] Skin share sent successfully for champion {}",
+                      skin_clone.champion_id
+                    ),
+                    Err(e) => eprintln!(
+                      "[LCU Watcher][ChampSelect] Failed to send skin share: {}",
+                      e
+                    ),
+                  }
                 });
               });
+            } else {
+              println!(
+                "[LCU Watcher][ChampSelect] Skipping rapid share for champion {} (debounce)",
+                current_champion_id
+              );
             }
             last_selected_skins.insert(current_champion_id, skin.clone());
+          } else {
+            // No skin configured for this champion - log it clearly
+            println!(
+              "[LCU Watcher][ChampSelect] ⚠️ No skin configured for champion {} - nothing to share. \
+               This is normal if you haven't selected a skin for this champion.",
+              current_champion_id
+            );
           }
         }
       }
@@ -639,6 +773,12 @@ fn handle_champ_select_event_data(
       && !crate::commands::skin_injection::is_manual_injection_active()
     {
       *last_party_injection_check = Instant::now();
+
+      println!(
+        "[LCU Watcher][ChampSelect] Checking if should inject for champion {}...",
+        current_champion_id
+      );
+
       let should_inject = {
         let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
         rt.block_on(async {
@@ -647,11 +787,23 @@ fn handle_champ_select_event_data(
             .unwrap_or(false)
         })
       };
+
       let already_done = PARTY_INJECTION_DONE_THIS_PHASE.load(Ordering::Relaxed);
-      if should_inject && !already_done && last_party_injection_time.elapsed().as_secs() >= 5 {
+      let time_since_last = last_party_injection_time.elapsed().as_secs();
+
+      println!(
+        "[LCU Watcher][ChampSelect] Injection check: should_inject={}, already_done={}, time_since_last={}s",
+        should_inject, already_done, time_since_last
+      );
+
+      if should_inject && !already_done && time_since_last >= 5 {
         let current_sig = compute_party_injection_signature(current_champion_id);
         let mut guard = LAST_PARTY_INJECTION_SIGNATURE.lock().unwrap();
         if guard.as_ref() != Some(&current_sig) {
+          println!(
+            "[LCU Watcher][ChampSelect] Triggering party mode injection for champion {}",
+            current_champion_id
+          );
           PARTY_INJECTION_DONE_THIS_PHASE.store(true, Ordering::Relaxed);
           *guard = Some(current_sig);
           drop(guard);
@@ -659,10 +811,21 @@ fn handle_champ_select_event_data(
           std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
             rt.block_on(async move {
-              let _ = trigger_party_mode_injection(&app_handle_clone, current_champion_id).await;
+              match trigger_party_mode_injection(&app_handle_clone, current_champion_id).await {
+                Ok(_) => println!(
+                  "[LCU Watcher][ChampSelect] Party mode injection completed for champion {}",
+                  current_champion_id
+                ),
+                Err(e) => eprintln!(
+                  "[LCU Watcher][ChampSelect] Party mode injection failed: {}",
+                  e
+                ),
+              }
             });
           });
           *last_party_injection_time = Instant::now();
+        } else {
+          println!("[LCU Watcher][ChampSelect] Skipping injection - signature unchanged");
         }
       }
     }
