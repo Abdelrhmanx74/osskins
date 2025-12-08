@@ -17,10 +17,13 @@ use super::session::{
 };
 use super::types::{
   generate_watcher_instance_id, is_current_watcher_instance, start_new_champ_select_session,
-  InjectionMode, LAST_CHAMPION_SHARE_TIME, LAST_PARTY_INJECTION_SIGNATURE, LCU_WATCHER_ACTIVE,
-  PARTY_INJECTION_DONE_THIS_PHASE, PHASE_STATE,
+  InjectionMode, LAST_CHAMPION_SHARE_TIME, LAST_INSTANT_ASSIGN_CHAMPIONS,
+  LAST_PARTY_INJECTION_SIGNATURE, LCU_WATCHER_ACTIVE, PARTY_INJECTION_DONE_THIS_PHASE,
+  PHASE_STATE,
 };
-use super::utils::{compute_party_injection_signature, read_injection_mode};
+use super::utils::{
+  compute_instant_assign_signature, compute_party_injection_signature, read_injection_mode,
+};
 use crate::commands::misc_items::get_selected_misc_items;
 use crate::commands::party_mode::{
   clear_received_skins, clear_sent_shares, PARTY_MODE_VERBOSE, RECEIVED_SKINS,
@@ -209,6 +212,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
       let mut last_lobby_check = Instant::now();
       let mut last_lockfile_check = Instant::now();
       let mut last_champselect_poll = Instant::now();
+      let mut last_matchmaking_instant_assign_check = Instant::now();
       let mut lockfile_exists = true;
 
       while lockfile_exists && socket_alive {
@@ -335,6 +339,56 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
           }
         }
 
+        // While in Matchmaking (instant-assign flow), detect new skin selections/misc changes and reinject
+        if last_phase == "Matchmaking"
+          && last_matchmaking_instant_assign_check.elapsed().as_millis() >= 1200
+          && !crate::commands::skin_injection::is_manual_injection_active()
+        {
+          last_matchmaking_instant_assign_check = Instant::now();
+
+          let champs: Vec<u32> = {
+            let guard = LAST_INSTANT_ASSIGN_CHAMPIONS.lock().unwrap();
+            guard.clone()
+          };
+
+          if !champs.is_empty() {
+            let config_path = app_handle
+              .path()
+              .app_data_dir()
+              .unwrap_or_else(|_| PathBuf::from("."))
+              .join("config")
+              .join("config.json");
+            let saved_config: Option<SavedConfig> = std::fs::read_to_string(&config_path)
+              .ok()
+              .and_then(|data| serde_json::from_str::<SavedConfig>(&data).ok());
+            if let Some(cfg) = saved_config {
+              if let Ok(misc_items) = get_selected_misc_items(&app_handle) {
+                let new_sig = compute_instant_assign_signature(&champs, &cfg, &misc_items);
+                let mut sig_guard = LAST_PARTY_INJECTION_SIGNATURE.lock().unwrap();
+                if sig_guard.as_ref() != Some(&new_sig) {
+                  println!(
+                    "[LCU Watcher][instant-assign] Detected new skin/misc selection in Matchmaking; re-injecting"
+                  );
+                  *sig_guard = Some(new_sig);
+                  drop(sig_guard);
+                  let app_clone = app_handle.clone();
+                  let champs_clone = champs.clone();
+                  std::thread::spawn(move || {
+                    let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+                    rt.block_on(async move {
+                      if let Err(e) =
+                        trigger_party_mode_injection_for_champions(&app_clone, &champs_clone).await
+                      {
+                        eprintln!("[Party Mode][instant-assign] Reinjection failed: {}", e);
+                      }
+                    });
+                  });
+                }
+              }
+            }
+          }
+        }
+
         // Read next event with timeout (100ms) - allows periodic tasks to run
         let next_msg = rt.block_on(async {
           tokio::time::timeout(Duration::from_millis(100), socket.next()).await
@@ -361,12 +415,30 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
 
                   // Handle Lobby->Matchmaking instant-assign via REST resolution (Swift Play/lobby injection)
                   // This fires when you click "Find Match" with champions already selected
-                  if old_phase == "Lobby"
-                    && new_phase == "Matchmaking"
+                  if new_phase == "Matchmaking"
                     && !crate::commands::skin_injection::is_manual_injection_active()
                   {
-                    println!("[LCU Watcher][{}] Lobby->Matchmaking transition - triggering instant-assign injection", watcher_id);
-                    handle_instant_assign_injection(&app_handle, &league_path_clone, &port, &token);
+                    if old_phase == "Lobby" {
+                      println!("[LCU Watcher][{}] Lobby->Matchmaking transition - triggering instant-assign injection", watcher_id);
+                      handle_instant_assign_injection(
+                        &app_handle,
+                        &league_path_clone,
+                        &port,
+                        &token,
+                      );
+                    } else if old_phase == "None" {
+                      // Cover first-time Matchmaking when client starts already in queue
+                      println!(
+                        "[LCU Watcher][{}] Initial Matchmaking detected (no prior Lobby) - triggering instant-assign injection",
+                        watcher_id
+                      );
+                      handle_instant_assign_injection(
+                        &app_handle,
+                        &league_path_clone,
+                        &port,
+                        &token,
+                      );
+                    }
                   }
 
                   // Now update the phase
@@ -1011,13 +1083,6 @@ fn handle_instant_assign_injection(
   port: &str,
   token: &str,
 ) {
-  let already_done = PARTY_INJECTION_DONE_THIS_PHASE.load(Ordering::Relaxed);
-  if already_done {
-    println!("[LCU Watcher][instant-assign] Injection already completed for this phase; skipping");
-    return;
-  }
-  PARTY_INJECTION_DONE_THIS_PHASE.store(true, Ordering::Relaxed);
-  clear_sent_shares();
   emit_terminal_log(
     app_handle,
     "[LCU Watcher] Lobby->Matchmaking detected; resolving lobby-selected champions...",
@@ -1130,57 +1195,111 @@ fn handle_instant_assign_injection(
         resolved_champions
       ),
     );
+    let champs_u32: Vec<u32> = resolved_champions.iter().map(|c| *c as u32).collect();
+    {
+      let mut guard = LAST_INSTANT_ASSIGN_CHAMPIONS.lock().unwrap();
+      *guard = champs_u32.clone();
+    }
+
+    // Build signature from champions, current skin selections, and misc so we can re-inject
+    // if the user adds a skin after the first instant-assign injection.
+    let config_path = app_handle
+      .path()
+      .app_data_dir()
+      .unwrap_or_else(|_| PathBuf::from("."))
+      .join("config")
+      .join("config.json");
+    let saved_config: Option<SavedConfig> = std::fs::read_to_string(&config_path)
+      .ok()
+      .and_then(|data| serde_json::from_str::<SavedConfig>(&data).ok());
+    let misc_items = get_selected_misc_items(app_handle).unwrap_or_default();
+
+    let signature = saved_config
+      .as_ref()
+      .map(|cfg| compute_instant_assign_signature(&champs_u32, cfg, &misc_items))
+      .unwrap_or_else(|| {
+        let mut champs = champs_u32.clone();
+        champs.sort_unstable();
+        format!(
+          "champs_only:{}|misc_count:{}",
+          champs
+            .iter()
+            .map(|c| c.to_string())
+            .collect::<Vec<_>>()
+            .join(","),
+          misc_items.len()
+        )
+      });
+
+    let already_done = PARTY_INJECTION_DONE_THIS_PHASE.load(Ordering::Relaxed);
+    let mut sig_guard = LAST_PARTY_INJECTION_SIGNATURE.lock().unwrap();
+    if already_done && sig_guard.as_ref() == Some(&signature) {
+      println!(
+        "[LCU Watcher][instant-assign] Injection already completed for this champion set/signature; skipping"
+      );
+      return;
+    }
+    PARTY_INJECTION_DONE_THIS_PHASE.store(true, Ordering::Relaxed);
+    *sig_guard = Some(signature);
+    drop(sig_guard);
+    clear_sent_shares();
+
     // Send shares then inject (party mode)
     let app_for_async = app_handle.clone();
-    let champs_u32: Vec<u32> = resolved_champions.iter().map(|c| *c as u32).collect();
+    let champs_for_thread = champs_u32.clone();
+    let saved_config_for_thread = saved_config;
     std::thread::spawn(move || {
       let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
       rt.block_on(async move {
-        let config_dir = app_for_async
-          .path()
-          .app_data_dir()
-          .unwrap_or_else(|_| PathBuf::from("."))
-          .join("config");
-        let cfg_file = config_dir.join("config.json");
-        if let Ok(data) = std::fs::read_to_string(&cfg_file) {
-          if let Ok(config) = serde_json::from_str::<SavedConfig>(&data) {
-            for cid in &champs_u32 {
-              let mut sent_share = false;
-              if let Some(skin) = config.skins.iter().find(|s| s.champion_id == *cid) {
-                let _ = crate::commands::party_mode::send_skin_share_to_paired_friends(
-                  &app_for_async,
-                  skin.champion_id,
-                  skin.skin_id,
-                  skin.chroma_id,
-                  skin.skin_file.clone(),
-                  true,
-                )
-                .await
-                .map(|_| {
-                  sent_share = true;
-                });
-              } else if let Some(custom) =
-                config.custom_skins.iter().find(|s| s.champion_id == *cid)
-              {
-                let _ = crate::commands::party_mode::send_skin_share_to_paired_friends(
-                  &app_for_async,
-                  custom.champion_id,
-                  0,
-                  None,
-                  Some(custom.file_path.clone()),
-                  true,
-                )
-                .await
-                .map(|_| {
-                  sent_share = true;
-                });
-              }
-              if sent_share {
-                println!(
-                  "[Party Mode][instant-assign] Sent skin_share for champion {} on Matchmaking",
-                  cid
-                );
-              }
+        let config_opt = saved_config_for_thread.or_else(|| {
+          let config_dir = app_for_async
+            .path()
+            .app_data_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("config");
+          let cfg_file = config_dir.join("config.json");
+          std::fs::read_to_string(&cfg_file)
+            .ok()
+            .and_then(|data| serde_json::from_str::<SavedConfig>(&data).ok())
+        });
+
+        if let Some(config) = config_opt {
+          for cid in &champs_for_thread {
+            let mut sent_share = false;
+            if let Some(skin) = config.skins.iter().find(|s| s.champion_id == *cid) {
+              let _ = crate::commands::party_mode::send_skin_share_to_paired_friends(
+                &app_for_async,
+                skin.champion_id,
+                skin.skin_id,
+                skin.chroma_id,
+                skin.skin_file.clone(),
+                true,
+              )
+              .await
+              .map(|_| {
+                sent_share = true;
+              });
+            } else if let Some(custom) =
+              config.custom_skins.iter().find(|s| s.champion_id == *cid)
+            {
+              let _ = crate::commands::party_mode::send_skin_share_to_paired_friends(
+                &app_for_async,
+                custom.champion_id,
+                0,
+                None,
+                Some(custom.file_path.clone()),
+                true,
+              )
+              .await
+              .map(|_| {
+                sent_share = true;
+              });
+            }
+            if sent_share {
+              println!(
+                "[Party Mode][instant-assign] Sent skin_share for champion {} on Matchmaking",
+                cid
+              );
             }
           }
         }
@@ -1189,10 +1308,10 @@ fn handle_instant_assign_injection(
         let mut ready = false;
         let start = Instant::now();
         while start.elapsed() < std::time::Duration::from_secs(8) {
-          match crate::commands::party_mode::should_inject_now(
-            &app_for_async,
-            *champs_u32.get(0).unwrap_or(&0),
-          )
+            match crate::commands::party_mode::should_inject_now(
+              &app_for_async,
+              *champs_for_thread.get(0).unwrap_or(&0),
+            )
           .await
           {
             Ok(true) => {
@@ -1218,7 +1337,7 @@ fn handle_instant_assign_injection(
           println!("[Party Mode][instant-assign] Proceeding without all shares after timeout",);
         }
         if let Err(e) =
-          trigger_party_mode_injection_for_champions(&app_for_async, &champs_u32).await
+          trigger_party_mode_injection_for_champions(&app_for_async, &champs_for_thread).await
         {
           eprintln!("[Party Mode][instant-assign] Injection failed: {}", e);
         }

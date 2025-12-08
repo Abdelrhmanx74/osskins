@@ -18,6 +18,10 @@ pub static PHASE_STATE: Lazy<AtomicU8> = Lazy::new(|| AtomicU8::new(0));
 pub static LAST_PARTY_INJECTION_SIGNATURE: Lazy<std::sync::Mutex<Option<String>>> =
   Lazy::new(|| std::sync::Mutex::new(None));
 
+// Tracks the last champion set used for instant-assign multi-champion injection (Lobby->Matchmaking)
+pub static LAST_INSTANT_ASSIGN_CHAMPIONS: Lazy<std::sync::Mutex<Vec<u32>>> =
+  Lazy::new(|| std::sync::Mutex::new(Vec::new()));
+
 // Hard gate: inject at most once per ChampSelect phase (prevents thrash when champion_id flips)
 pub static PARTY_INJECTION_DONE_THIS_PHASE: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 

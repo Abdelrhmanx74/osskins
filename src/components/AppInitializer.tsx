@@ -89,8 +89,8 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
                     : phase === "skipped"
                       ? "completed"
                       : phase === "downloading" ||
-                          phase === "installing" ||
-                          phase === "checking"
+                        phase === "installing" ||
+                        phase === "checking"
                         ? "downloading"
                         : "queued",
               downloaded: payload.downloaded ?? undefined,

@@ -5,8 +5,12 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 use tauri::{AppHandle, Manager};
 
-use super::types::{InjectionMode, LAST_SHARED_CHAMPION_ID, PHASE_STATE};
+use super::types::{
+  InjectionMode, LAST_INSTANT_ASSIGN_CHAMPIONS, LAST_SHARED_CHAMPION_ID, PHASE_STATE,
+};
 use crate::commands::party_mode::RECEIVED_SKINS;
+use crate::commands::types::SavedConfig;
+use crate::injection::MiscItem;
 use std::sync::atomic::Ordering;
 
 pub fn is_in_champ_select() -> bool {
@@ -104,6 +108,54 @@ pub fn compute_party_injection_signature(current_champion_id: u32) -> String {
   );
 
   signature
+}
+
+/// Compute a signature for instant-assign (multi-champion) injections.
+/// Captures champion selections, local/custom skin choices, and misc selections
+/// so we can re-inject if the user picks a new skin after the first injection.
+pub fn compute_instant_assign_signature(
+  champion_ids: &[u32],
+  config: &SavedConfig,
+  misc_items: &[MiscItem],
+) -> String {
+  let mut champs = champion_ids.to_vec();
+  champs.sort_unstable();
+  champs.dedup();
+
+  let mut selections: Vec<String> = Vec::new();
+  for cid in champs.iter() {
+    if let Some(skin) = config.skins.iter().find(|s| s.champion_id == *cid) {
+      selections.push(format!(
+        "{}:skin:{}:{}:{}",
+        cid,
+        skin.skin_id,
+        skin.chroma_id.unwrap_or(0),
+        skin.skin_file.clone().unwrap_or_default()
+      ));
+    } else if let Some(custom) = config.custom_skins.iter().find(|s| s.champion_id == *cid) {
+      selections.push(format!("{}:custom:{}", cid, custom.file_path));
+    } else {
+      selections.push(format!("{}:none", cid));
+    }
+  }
+  selections.sort();
+
+  let mut misc_keys: Vec<String> = misc_items
+    .iter()
+    .map(|m| format!("{}:{}", m.item_type, m.id))
+    .collect();
+  misc_keys.sort();
+
+  format!(
+    "champs:{}|selections:{}|misc:{}",
+    champs
+      .iter()
+      .map(|c| c.to_string())
+      .collect::<Vec<_>>()
+      .join(","),
+    selections.join("|"),
+    misc_keys.join(",")
+  )
 }
 
 /// Check if a champion change occurred (useful for ARAM/URF reroll detection)
