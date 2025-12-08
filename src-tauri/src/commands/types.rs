@@ -69,6 +69,8 @@ pub struct SavedConfig {
   // New settings
   #[serde(default = "default_auto_update_data")]
   pub auto_update_data: bool,
+  #[serde(default = "default_start_hidden")]
+  pub start_hidden: bool,
   #[serde(default)]
   pub last_data_commit: Option<String>,
   #[serde(default)]
@@ -77,6 +79,10 @@ pub struct SavedConfig {
 
 fn default_auto_update_data() -> bool {
   true
+}
+
+fn default_start_hidden() -> bool {
+  false
 }
 
 // Party Mode related types

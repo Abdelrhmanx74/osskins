@@ -163,6 +163,7 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
       party_mode: PartyModeConfig::default(),
       selected_misc_items: std::collections::HashMap::new(),
       auto_update_data: true,
+      start_hidden: false,
       last_data_commit: None,
       cslol_tools_version: None,
     });
@@ -183,6 +184,7 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
         party_mode: PartyModeConfig::default(),
         selected_misc_items: std::collections::HashMap::new(),
         auto_update_data: true,
+        start_hidden: false,
         last_data_commit: None,
         cslol_tools_version: None,
       });
@@ -205,6 +207,7 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
         party_mode: PartyModeConfig::default(),
         selected_misc_items: std::collections::HashMap::new(),
         auto_update_data: true,
+        start_hidden: false,
         last_data_commit: None,
         cslol_tools_version: None,
       });
@@ -251,6 +254,7 @@ pub async fn select_skin_for_champion(
       party_mode: PartyModeConfig::default(),
       selected_misc_items: std::collections::HashMap::new(),
       auto_update_data: true,
+      start_hidden: false,
       last_data_commit: None,
       cslol_tools_version: None,
     }
@@ -347,6 +351,7 @@ pub async fn save_custom_skin(
       party_mode: PartyModeConfig::default(),
       selected_misc_items: std::collections::HashMap::new(),
       auto_update_data: true,
+      start_hidden: false,
       last_data_commit: None,
       cslol_tools_version: None,
     }
@@ -426,4 +431,62 @@ pub async fn set_auto_update_data(app: tauri::AppHandle, value: bool) -> Result<
   std::fs::write(&file, data).map_err(|e| format!("Failed to write config.json: {}", e))?;
 
   Ok(())
+}
+
+// Command to set whether the app should start hidden (remember last tray state)
+#[tauri::command]
+pub async fn set_start_hidden(app: tauri::AppHandle, value: bool) -> Result<(), String> {
+  let config_dir = app
+    .path()
+    .app_data_dir()
+    .map_err(|e| format!("Failed to get app data dir: {}", e))?
+    .join("config");
+  std::fs::create_dir_all(&config_dir)
+    .map_err(|e| format!("Failed to create config dir: {}", e))?;
+  let file = config_dir.join("config.json");
+
+  let mut cfg: serde_json::Value = if file.exists() {
+    let content =
+      std::fs::read_to_string(&file).map_err(|e| format!("Failed to read config.json: {}", e))?;
+    serde_json::from_str(&content).map_err(|e| format!("Failed to parse config.json: {}", e))?
+  } else {
+    serde_json::json!({})
+  };
+
+  cfg["start_hidden"] = serde_json::json!(value);
+
+  let data =
+    serde_json::to_string_pretty(&cfg).map_err(|e| format!("Failed to serialize config: {}", e))?;
+  std::fs::write(&file, data).map_err(|e| format!("Failed to write config.json: {}", e))?;
+
+  Ok(())
+}
+
+// Command to get whether the app should start hidden (remember last tray state)
+#[tauri::command]
+pub async fn get_start_hidden(app: tauri::AppHandle) -> Result<bool, String> {
+  let config_dir = app
+    .path()
+    .app_data_dir()
+    .map_err(|e| format!("Failed to get app data dir: {}", e))?
+    .join("config");
+  let file = config_dir.join("config.json");
+
+  if !file.exists() {
+    // Default to false when no config exists
+    return Ok(false);
+  }
+
+  let content =
+    std::fs::read_to_string(&file).map_err(|e| format!("Failed to read config.json: {}", e))?;
+
+  let cfg: serde_json::Value =
+    serde_json::from_str(&content).map_err(|e| format!("Failed to parse config.json: {}", e))?;
+
+  let v = cfg
+    .get("start_hidden")
+    .and_then(|val| val.as_bool())
+    .unwrap_or(false);
+
+  Ok(v)
 }

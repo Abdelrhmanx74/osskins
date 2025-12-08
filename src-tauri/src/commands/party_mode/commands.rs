@@ -130,6 +130,7 @@ pub async fn set_party_mode_verbose_logging(
       party_mode: PartyModeConfig::default(),
       selected_misc_items: std::collections::HashMap::new(),
       auto_update_data: true,
+      start_hidden: false,
       last_data_commit: None,
       cslol_tools_version: None,
     }
@@ -189,6 +190,7 @@ pub async fn set_party_mode_max_share_age(
       party_mode: PartyModeConfig::default(),
       selected_misc_items: std::collections::HashMap::new(),
       auto_update_data: true,
+      start_hidden: false,
       last_data_commit: None,
       cslol_tools_version: None,
     }
@@ -324,6 +326,7 @@ pub async fn update_party_mode_settings(
       party_mode: PartyModeConfig::default(),
       selected_misc_items: std::collections::HashMap::new(),
       auto_update_data: true,
+      start_hidden: false,
       last_data_commit: None,
       cslol_tools_version: None,
     }
@@ -611,6 +614,7 @@ async fn add_paired_friend(
       party_mode: PartyModeConfig::default(),
       selected_misc_items: std::collections::HashMap::new(),
       auto_update_data: true,
+      start_hidden: false,
       last_data_commit: None,
       cslol_tools_version: None,
     }

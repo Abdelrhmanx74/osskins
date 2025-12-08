@@ -5,6 +5,7 @@ mod commands;
 mod injection;
 
 use commands::*;
+use tauri::async_runtime::block_on;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
@@ -102,6 +103,25 @@ fn main() {
             }
           }
           "exit" => {
+            // Persist whether the app was hidden to tray before exiting.
+            // If main window is not visible we treat that as hidden.
+            if let Some(window) = app.get_webview_window("main") {
+              // Note: `is_visible` is used to determine current visibility.
+              // If it's not visible we save `start_hidden = true`.
+              match window.is_visible() {
+                Ok(is_visible) => {
+                  let hidden = !is_visible;
+                  let _ = block_on(set_start_hidden(app.clone(), hidden));
+                }
+                Err(_) => {
+                  // If we can't determine visibility, conservatively treat as hidden
+                  let _ = block_on(set_start_hidden(app.clone(), true));
+                }
+              }
+            } else {
+              // No main window found - default to start hidden
+              let _ = block_on(set_start_hidden(app.clone(), true));
+            }
             app.exit(0);
           }
           _ => {}
@@ -122,6 +142,16 @@ fn main() {
         .icon(app.default_window_icon().unwrap().clone())
         .build(app_handle)
         .unwrap();
+      // On startup, respect previously saved tray state and hide window if configured.
+      let start_hidden = match block_on(get_start_hidden(app_handle.clone())) {
+        Ok(v) => v,
+        Err(_) => false,
+      };
+      if start_hidden {
+        if let Some(window) = app_handle.get_webview_window("main") {
+          let _ = window.hide();
+        }
+      }
       // Listen for window close and hide instead
       if let Some(main_window) = app_handle.get_webview_window("main") {
         main_window.clone().on_window_event(move |event| {
