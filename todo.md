@@ -16,10 +16,10 @@
 - [x] The terminals that opens!! it should not!
 - [x] Handle game modes (arena, swift play)
 - [x] Better injection error handling and cleaning cases not just at the end of a game
-- [ ] Panic in changing champs swift and aram, etc..
+- [x] Panic in changing champs swift and aram, etc..
 - [ ] i feel like the first injection after opening the app is always slower than the next and might even break. can you investigate why and how can i help it
-- [ ] issue when picking the skin after locking in the champ in aram or selective modes 
-- [ ] checkout the cached mods
+- [x] issue when picking the skin after locking in the champ in aram or selective modes 
+- [-] checkout the cached mods
 - [x] when open stay at prev tray state
 
 # Front End ---------------------
