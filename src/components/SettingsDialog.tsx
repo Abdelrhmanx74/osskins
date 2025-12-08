@@ -46,12 +46,8 @@ export function SettingsDialog() {
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [autoUpdate, setAutoUpdate] = useState<boolean>(true);
-  const {
-    clearAllSelections,
-    selectSkin,
-    manualInjectionMode,
-    setManualInjectionMode,
-  } = useGameStore();
+  const [startOnTray, setStartOnTray] = useState(false);
+  const { clearAllSelections, selectSkin } = useGameStore();
   const { updateData, isUpdating } = useDataUpdate();
 
   // Load current auto update preference when dialog opens
@@ -66,6 +62,22 @@ export function SettingsDialog() {
         if (mounted) setAutoUpdate(cfg.auto_update_data !== false);
       } catch {
         if (mounted) setAutoUpdate(true);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let mounted = true;
+    void (async () => {
+      try {
+        const startHidden = await invoke<boolean>("get_start_hidden");
+        if (mounted) setStartOnTray(startHidden);
+      } catch {
+        if (mounted) setStartOnTray(false);
       }
     })();
     return () => {
@@ -314,7 +326,11 @@ export function SettingsDialog() {
                     void (async () => {
                       try {
                         await invoke("set_auto_update_data", { value: v });
-                        toast.success(v ? "Automatic updates enabled" : "Automatic updates disabled");
+                        toast.success(
+                          v
+                            ? "Automatic updates enabled"
+                            : "Automatic updates disabled",
+                        );
                       } catch (e) {
                         console.error(e);
                         toast.error("Failed to save preference");
@@ -347,21 +363,30 @@ export function SettingsDialog() {
 
             <Separator />
 
-            {/* Manual Injection Mode Toggle */}
             <div className="grid grid-cols-1 gap-2 mt-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label htmlFor="manual-injection-mode">
-                    {t("settings.manual_injection_mode")}
+                  <Label htmlFor="start-in-tray">
+                    {t("settings.start_in_tray")}
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    {t("settings.manual_injection_mode_description")}
+                    {t("settings.start_in_tray_description")}
                   </p>
                 </div>
                 <Switch
-                  id="manual-injection-mode"
-                  checked={manualInjectionMode}
-                  onCheckedChange={setManualInjectionMode}
+                  id="start-in-tray"
+                  checked={startOnTray}
+                  onCheckedChange={(value) => {
+                    setStartOnTray(value);
+                    void (async () => {
+                      try {
+                        await invoke("set_start_hidden", { value });
+                      } catch (error) {
+                        console.error(error);
+                        toast.error("Failed to save tray setting");
+                      }
+                    })();
+                  }}
                 />
               </div>
             </div>

@@ -103,25 +103,6 @@ fn main() {
             }
           }
           "exit" => {
-            // Persist whether the app was hidden to tray before exiting.
-            // If main window is not visible we treat that as hidden.
-            if let Some(window) = app.get_webview_window("main") {
-              // Note: `is_visible` is used to determine current visibility.
-              // If it's not visible we save `start_hidden = true`.
-              match window.is_visible() {
-                Ok(is_visible) => {
-                  let hidden = !is_visible;
-                  let _ = block_on(set_start_hidden(app.clone(), hidden));
-                }
-                Err(_) => {
-                  // If we can't determine visibility, conservatively treat as hidden
-                  let _ = block_on(set_start_hidden(app.clone(), true));
-                }
-              }
-            } else {
-              // No main window found - default to start hidden
-              let _ = block_on(set_start_hidden(app.clone(), true));
-            }
             app.exit(0);
           }
           _ => {}
@@ -238,6 +219,8 @@ fn main() {
       exit_app,
       hide_window,
       get_injection_state,
+      set_start_hidden,
+      get_start_hidden,
     ])
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_opener::init())
