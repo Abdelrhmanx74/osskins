@@ -180,12 +180,15 @@ export function InjectionStatusDot({ bordered = false }: { bordered?: boolean })
           return;
         }
 
-        const status = (typeof payload === "string" ? payload : String(payload)) as Status;
-        if (status === "completed") {
-          handleStatus("success");
-        } else {
-          handleStatus(status);
-        }
+        const rawStatus = typeof payload === "string" ? payload : String(payload);
+        const normalizedStatus: Status =
+          rawStatus === "completed"
+            ? "success"
+            : rawStatus === "injecting" || rawStatus === "success" || rawStatus === "error" || rawStatus === "idle"
+              ? (rawStatus as Status)
+              : "error";
+
+        handleStatus(normalizedStatus);
       });
 
       unlistenError = await listen<string>("skin-injection-error", (e) => {
