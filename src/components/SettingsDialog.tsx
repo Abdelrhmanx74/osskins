@@ -313,9 +313,11 @@ export function SettingsDialog() {
             <div className="grid grid-cols-1 gap-2 mt-2">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label htmlFor="auto-updates">Allow automatic updates</Label>
+                  <Label htmlFor="auto-updates">
+                    {t("settings.auto_update_title")}
+                  </Label>
                   <p className="text-xs text-muted-foreground">
-                    Check for data updates on start and download automatically.
+                    {t("settings.auto_update_description")}
                   </p>
                 </div>
                 <Switch
@@ -328,12 +330,12 @@ export function SettingsDialog() {
                         await invoke("set_auto_update_data", { value: v });
                         toast.success(
                           v
-                            ? "Automatic updates enabled"
-                            : "Automatic updates disabled",
+                            ? t("settings.auto_update_enabled")
+                            : t("settings.auto_update_disabled"),
                         );
                       } catch (e) {
                         console.error(e);
-                        toast.error("Failed to save preference");
+                        toast.error(t("settings.auto_update_save_failed"));
                       }
                     })();
                   }}
@@ -345,9 +347,9 @@ export function SettingsDialog() {
             <div className="grid grid-cols-1 gap-2 mt-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label>Force Data Update</Label>
+                  <Label>{t("settings.force_update_title")}</Label>
                   <p className="text-xs text-muted-foreground">
-                    Re-download all data and fix potential issues.
+                    {t("settings.force_update_description")}
                   </p>
                 </div>
                 <Button
@@ -356,7 +358,9 @@ export function SettingsDialog() {
                   disabled={isUpdating}
                   onClick={() => updateData(undefined, { force: true })}
                 >
-                  {isUpdating ? "Updating..." : "Update Now"}
+                  {isUpdating
+                    ? t("settings.force_update_in_progress")
+                    : t("settings.force_update_action")}
                 </Button>
               </div>
             </div>
@@ -383,7 +387,7 @@ export function SettingsDialog() {
                         await invoke("set_start_hidden", { value });
                       } catch (error) {
                         console.error(error);
-                        toast.error("Failed to save tray setting");
+                        toast.error(t("settings.start_in_tray_save_failed"));
                       }
                     })();
                   }}
