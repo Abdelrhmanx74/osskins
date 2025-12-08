@@ -77,16 +77,13 @@ fn main() {
 
       // Native injection is now used - no need to check for mod-tools.exe
       // Preload overlays during startup for better performance
-      #[cfg(not(debug_assertions))]
-      {
-        // Get the app_handle BEFORE spawning the thread
-        let app_handle = app.handle().clone();
-        std::thread::spawn(move || {
-          // We spawn a background thread to preload resources
-          // This prevents blocking the UI during startup
-          let _ = commands::preload_resources(&app_handle);
-        });
-      }
+      // (run even in debug so first injection behaves consistently)
+      let app_handle_preload = app.handle().clone();
+      std::thread::spawn(move || {
+        // We spawn a background thread to preload resources
+        // This prevents blocking the UI during startup
+        let _ = commands::preload_resources(&app_handle_preload);
+      });
 
       // Set up system tray
       let app_handle = app.handle();

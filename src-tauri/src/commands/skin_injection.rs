@@ -400,12 +400,12 @@ pub fn is_manual_injection_active() -> bool {
   MANUAL_INJECTION_ACTIVE.load(Ordering::Relaxed)
 }
 
-// Trigger manual injection (called by LCU watcher when entering champ select)
+// Trigger manual injection (called by LCU watcher when entering champ select or manually)
 pub async fn trigger_manual_injection(app: &AppHandle) -> Result<(), String> {
-  println!("[Manual Injection] Triggering manual injection in champ select");
+  println!("[Manual Injection] Triggering manual injection");
 
   // Check if manual injection is active
-  if !is_manual_injection_active() {
+  if !MANUAL_INJECTION_ACTIVE.load(Ordering::Relaxed) {
     return Ok(());
   }
 

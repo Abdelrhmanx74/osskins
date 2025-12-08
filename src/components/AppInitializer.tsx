@@ -45,43 +45,62 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        unlistenPromise = listen<ToolsProgressPayload>("cslol-tools-progress", (event) => {
-          const payload = event.payload;
+        unlistenPromise = listen<ToolsProgressPayload>(
+          "cslol-tools-progress",
+          (event) => {
+            const payload = event.payload;
 
-          const mergeProgress = useToolsStore.getState().mergeProgress;
-          const source = (payload.source === "manual" ? "manual" : "auto") as ToolsSource;
-          const phase = (payload.phase ?? "idle") as ToolsPhase;
-          const rawProgress = typeof payload.progress === "number" ? payload.progress : undefined;
-          const clampedProgress =
-            typeof rawProgress === "number"
-              ? Math.min(100, Math.max(0, rawProgress))
-              : undefined;
+            const mergeProgress = useToolsStore.getState().mergeProgress;
+            const source = (
+              payload.source === "manual" ? "manual" : "auto"
+            ) as ToolsSource;
+            const phase = (payload.phase ?? "idle") as ToolsPhase;
+            const rawProgress =
+              typeof payload.progress === "number"
+                ? payload.progress
+                : undefined;
+            const clampedProgress =
+              typeof rawProgress === "number"
+                ? Math.min(100, Math.max(0, rawProgress))
+                : undefined;
 
-          mergeProgress(source, {
-            phase,
-            progress: clampedProgress,
-            message: payload.message ?? undefined,
-            downloaded: payload.downloaded ?? undefined,
-            total: payload.total ?? undefined,
-            speed: payload.speed ?? undefined,
-            version: payload.version ?? undefined,
-            error: payload.error ?? undefined,
-          });
+            mergeProgress(source, {
+              phase,
+              progress: clampedProgress,
+              message: payload.message ?? undefined,
+              downloaded: payload.downloaded ?? undefined,
+              total: payload.total ?? undefined,
+              speed: payload.speed ?? undefined,
+              version: payload.version ?? undefined,
+              error: payload.error ?? undefined,
+            });
 
-          // Mirror into unified downloads store
-          const upsert = useDownloadsStore.getState().upsert;
-          upsert({
-            id: `tools-${source}`,
-            url: "cslol-manager",
-            category: "tools",
-            status: phase === "error" ? "failed" : phase === "completed" ? "completed" : phase === "skipped" ? "completed" : phase === "downloading" || phase === "installing" || phase === "checking" ? "downloading" : "queued",
-            downloaded: payload.downloaded ?? undefined,
-            total: payload.total ?? undefined,
-            speed: payload.speed ?? undefined,
-            fileName: payload.version ?? null,
-            error: payload.error ?? undefined,
-          });
-        });
+            // Mirror into unified downloads store
+            const upsert = useDownloadsStore.getState().upsert;
+            upsert({
+              id: `tools-${source}`,
+              url: "cslol-manager",
+              category: "tools",
+              status:
+                phase === "error"
+                  ? "failed"
+                  : phase === "completed"
+                    ? "completed"
+                    : phase === "skipped"
+                      ? "completed"
+                      : phase === "downloading" ||
+                          phase === "installing" ||
+                          phase === "checking"
+                        ? "downloading"
+                        : "queued",
+              downloaded: payload.downloaded ?? undefined,
+              total: payload.total ?? undefined,
+              speed: payload.speed ?? undefined,
+              fileName: payload.version ?? null,
+              error: payload.error ?? undefined,
+            });
+          },
+        );
         // Unified download-progress listener
         void listen<any>("download-progress", (event) => {
           const p = event.payload as {
@@ -102,11 +121,12 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
             id: p.id,
             url: p.url,
             category: (p.category as any) ?? "misc",
-            status: (p.status as any),
+            status: p.status as any,
             downloaded: p.downloaded,
             total: p.total,
             speed: p.speed,
-            championName: (p as any).champion_name ?? (p as any).championName ?? null,
+            championName:
+              (p as any).champion_name ?? (p as any).championName ?? null,
             fileName: (p as any).file_name ?? (p as any).fileName ?? null,
             destPath: (p as any).dest_path ?? (p as any).destPath ?? null,
             error: p.error ?? undefined,

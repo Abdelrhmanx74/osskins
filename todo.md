@@ -20,6 +20,7 @@
 - [ ] i feel like the first injection after opening the app is always slower than the next and might even break. can you investigate why and how can i help it
 - [ ] issue when picking the skin after locking in the champ in aram or selective modes 
 - [ ] checkout the cached mods
+- [ ] when open stay at prev tray state
 
 # Front End ---------------------
 

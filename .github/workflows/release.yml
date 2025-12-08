@@ -1,5 +1,4 @@
-name: Build & Publish Tauri Windows Release
-
+# Build & Publish Tauri Windows Release (updated to name releases after commit)
 on:
   push:
     tags:
@@ -43,6 +42,26 @@ jobs:
           toolchain: stable
           override: true
 
+      - name: Get commit info for this tag (subject, body, short SHA)
+        id: get_commit
+        shell: pwsh
+        run: |
+          # Ensure full history (checkout fetch-depth: 0 should normally do this)
+          git fetch --prune --unshallow || true
+
+          # Resolve the commit pointed to by the pushed ref (works for annotated tags too)
+          $sha = git rev-list -n 1 $env:GITHUB_REF
+          Write-Host "Commit for ref $env:GITHUB_REF is $sha"
+
+          $subject = (git log -1 --pretty=%s $sha).Trim()
+          $body = (git log -1 --pretty=%b $sha).Trim()
+          $short = (git rev-parse --short $sha).Trim()
+
+          # Export to job env
+          Add-Content -Path $env:GITHUB_ENV -Value "COMMIT_SUBJECT=$subject"
+          Add-Content -Path $env:GITHUB_ENV -Value "COMMIT_BODY=$body"
+          Add-Content -Path $env:GITHUB_ENV -Value "COMMIT_SHORT=$short"
+
       - name: Run tauri-action (build & release)
         uses: tauri-apps/tauri-action@v0
         env:
@@ -51,11 +70,33 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "Osskins ${{ github.ref_name }}"
-          releaseBody: "Release built by CI (tauri-action)."
+          # provide a sensible name while tauri-action creates the release; we'll edit it immediately after
+          releaseName: "Osskins ${{ env.COMMIT_SHORT }} - ${{ env.COMMIT_SUBJECT }}"
+          releaseBody: ${{ env.COMMIT_BODY }}
           releaseDraft: false
           prerelease: false
           args: ""
+
+      - name: Edit release title/body to match commit (fix tauri-action's default text)
+        # Use gh to update the release created by tauri-action so it shows the commit message
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+            choco install gh -y | Out-Null
+          }
+
+          # Authenticate gh
+          echo $env:GITHUB_TOKEN | gh auth login --with-token
+
+          # Update the release title and notes to the commit subject/body
+          gh release edit $env:TAG --title "${env:COMMIT_SUBJECT}" --notes "${env:COMMIT_BODY}" || {
+            Write-Host "gh release edit failed; printing release info for debugging"
+            gh release view $env:TAG --json name,tagName,body || true
+            exit 0
+          }
 
       - name: Upload installers to release (skip if release already has installers)
         shell: pwsh
@@ -67,7 +108,6 @@ jobs:
             choco install gh -y | Out-Null
           }
 
-          # Authenticate gh with the token (non-interactive)
           echo $env:GITHUB_TOKEN | gh auth login --with-token
 
           Write-Host "Checking existing assets on release $RELEASE_TAG"
@@ -88,7 +128,6 @@ jobs:
             exit 0
           }
 
-          # No existing assets — upload installers if present
           $bundle = "src-tauri\target\release\bundle"
           Write-Host "Searching for installers under $bundle"
           $paths = Get-ChildItem -Path $bundle -Recurse -File -ErrorAction SilentlyContinue |
@@ -148,15 +187,11 @@ jobs:
 
       - name: Build updates.json using uploaded assets and Tauri signatures
         run: |
-          # Use the release JSON produced above
           assets_json=/tmp/release.json
           echo "Assets present:"
           jq -r '.assets[].name' $assets_json || true
 
-          # Prefer an installer by common extensions (.exe, .msi, .AppImage, .tar.gz, .zip, .dmg)
           installer_url=$(jq -r '.assets[] | select(.name|test("\\.(exe|msi|AppImage|tar.gz|zip|dmg)$")) | .browser_download_url' $assets_json | head -n1)
-
-          # If no installer found, try to match a .sig to a base name (e.g. foo.exe.sig -> foo.exe)
           if [ -z "$installer_url" ]; then
             sig_name=$(jq -r '.assets[] | select(.name|endswith(".sig")) | .name' $assets_json | head -n1)
             if [ -n "$sig_name" ]; then
@@ -174,12 +209,10 @@ jobs:
             exit 1
           fi
 
-          # Determine installer name and matching sig
           installer_name=$(basename "$installer_url")
           sig_asset_name="${installer_name}.sig"
           sig_url=$(jq -r --arg n "$sig_asset_name" '.assets[] | select(.name==$n) | .browser_download_url' $assets_json | head -n1)
 
-          # Fallback: use first .sig if exact match not found
           if [ -z "$sig_url" ]; then
             sig_url=$(jq -r '.assets[] | select(.name|endswith(".sig")) | .browser_download_url' $assets_json | head -n1)
             if [ -n "$sig_url" ]; then
@@ -197,7 +230,6 @@ jobs:
           echo "Installer URL: $installer_url"
           echo "Signature URL: $sig_url"
 
-          # Download the .sig and trim newlines (Tauri expects raw signature content)
           curl -sL -H "Authorization: token $TOKEN" -o /tmp/installer.sig "$sig_url"
           if [ ! -s /tmp/installer.sig ]; then
             echo "Downloaded .sig is empty" >&2
@@ -205,7 +237,6 @@ jobs:
           fi
           signature=$(tr -d '\r\n' < /tmp/installer.sig)
 
-          # Use version without leading v
           ver="${VERSION#v}"
           now=$(date --utc +"%Y-%m-%dT%H:%M:%SZ")
 
@@ -228,7 +259,6 @@ jobs:
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Get upload_url from the release JSON and strip template suffix
           upload_url_template=$(jq -r .upload_url /tmp/release.json)
           upload_url="${upload_url_template%\{*}"
           echo "Uploading updates.json to $upload_url?name=updates.json"

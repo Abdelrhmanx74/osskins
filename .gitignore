@@ -44,4 +44,4 @@ yarn-error.log*
 /src-tauri/cslol-tools/build/
 
 # cslol manager
-/cslol-manager-2024-10-27-401067d-prerelease
+cslol-manager-master

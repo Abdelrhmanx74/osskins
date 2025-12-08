@@ -1,4 +1,5 @@
 use crate::injection::error::{InjectionError, MiscItem, ModState, Skin};
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::env;
 use std::fs::{self, File};
@@ -6,6 +7,9 @@ use std::io::{self, Write};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::thread;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
 #[cfg(target_os = "windows")]
@@ -27,6 +31,8 @@ pub struct SkinInjector {
   // Stored handle for the spawned overlay process so we can stop it cleanly
   pub(crate) overlay_process: Option<std::process::Child>,
 }
+
+static INJECTION_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 impl SkinInjector {
   pub fn new(app_handle: &AppHandle, root_path: &str) -> Result<Self, InjectionError> {
@@ -127,6 +133,41 @@ impl SkinInjector {
             }
           }
         }
+      }
+    }
+
+    if !mod_tools_path
+      .as_ref()
+      .map(|path| path.exists())
+      .unwrap_or(false)
+    {
+      const MOD_TOOLS_WAIT_ATTEMPTS: usize = 25;
+      for _ in 0..MOD_TOOLS_WAIT_ATTEMPTS {
+        if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
+          let candidate = app_data_dir.join("cslol-tools").join("mod-tools.exe");
+          if candidate.exists() {
+            mod_tools_path = Some(candidate);
+            break;
+          }
+        }
+        if mod_tools_path
+          .as_ref()
+          .map(|path| path.exists())
+          .unwrap_or(false)
+        {
+          break;
+        }
+        thread::sleep(Duration::from_millis(200));
+      }
+
+      if !mod_tools_path
+        .as_ref()
+        .map(|path| path.exists())
+        .unwrap_or(false)
+      {
+        return Err(InjectionError::ProcessError(
+          "mod-tools.exe not found. Please install CSLOL Manager before injecting.".into(),
+        ));
       }
     }
 
@@ -294,6 +335,12 @@ impl SkinInjector {
       }
     }
 
+    let _injection_guard = INJECTION_LOCK
+      .lock()
+      .expect("failed to lock injection mutex");
+    let _ = self.cleanup_mod_tools_processes();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
     // NOTE: Cleanup is now handled by the LCU watcher on phase changes instead of before each injection
     // This improves performance and is better design
 
@@ -460,7 +507,12 @@ impl SkinInjector {
 
   // Add a cleanup method to stop the injection
   pub fn cleanup(&mut self) -> Result<(), InjectionError> {
+    let _injection_guard = INJECTION_LOCK
+      .lock()
+      .expect("failed to lock injection mutex");
     self.log("Stopping skin injection process...");
+    let _ = self.cleanup_mod_tools_processes();
+    std::thread::sleep(std::time::Duration::from_millis(200));
     // If we have an overlay process that we started, try to terminate it cleanly
     if let Some(mut child) = self.overlay_process.take() {
       self.log("Terminating overlay process started by injector...");
