@@ -100,9 +100,6 @@
     @apply border-border outline-ring/50;
   }
 
-  body {
-    @apply bg-background text-foreground;
-  }
 }
 
 /* Hide scrollbar for Chrome, Safari and Opera */
@@ -122,4 +119,17 @@
 /* Add this after the existing base styles to enable smooth theme transitions */
 html.transitioning-theme * {
   transition: none !important;
+}
+
+/* Custom Apple-style Squircle */
+.squircle {
+  --squircle-source: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50,0 C10,0 0,10 0,50 C0,90 10,100 50,100 C90,100 100,90 100,50 C100,10 90,0 50,0 Z' fill='black'/%3E%3C/svg%3E");
+  -webkit-mask-box-image-source: var(--squircle-source);
+  -webkit-mask-box-image-slice: 49% fill;
+  -webkit-mask-box-image-width: 24px;
+  -webkit-mask-box-image-repeat: stretch;
+  mask-border-source: var(--squircle-source);
+  mask-border-slice: 49% fill;
+  mask-border-width: 24px;
+  mask-border-repeat: stretch;
 }

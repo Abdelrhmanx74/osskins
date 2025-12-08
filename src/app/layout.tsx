@@ -22,7 +22,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${poppins.variable} antialiased flex flex-col h-screen`}
+        className={`${poppins.variable} antialiased flex flex-col h-screen bg-transparent`}
       >
         <ThemeProvider attribute="class" enableSystem>
           <I18nProvider>

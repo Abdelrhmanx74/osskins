@@ -248,7 +248,7 @@ export default function Home() {
 
   return (
     <Suspense fallback={<ChampionsLoader />}>
-      <div className="flex flex-col h-full w-full">
+      <div className="flex flex-col h-full w-full squircle overflow-hidden bg-background text-foreground">
         <TopBar
           champions={champions}
           selectedChampionId={selectedChampion}
