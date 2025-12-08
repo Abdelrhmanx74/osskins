@@ -26,6 +26,7 @@ use crate::commands::party_mode::{
   clear_received_skins, clear_sent_shares, PARTY_MODE_VERBOSE, RECEIVED_SKINS,
 };
 use crate::commands::types::{SavedConfig, SkinData};
+use crate::commands::skin_injection::{record_injection_state, InjectionStatusValue};
 use crate::injection::{inject_skins_and_misc, Skin};
 
 use futures_util::{SinkExt, StreamExt};
@@ -207,6 +208,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
       let mut socket_alive = true;
       let mut last_lobby_check = Instant::now();
       let mut last_lockfile_check = Instant::now();
+      let mut last_champselect_poll = Instant::now();
       let mut lockfile_exists = true;
 
       while lockfile_exists && socket_alive {
@@ -216,7 +218,6 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
             "[LCU Watcher][{}] Superseded by newer watcher, exiting event loop",
             watcher_id
           );
-          socket_alive = false;
           break;
         }
 
@@ -250,6 +251,45 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
             eprintln!("Error checking party mode messages: {}", e);
           } else {
             processed_message_ids = ids_ref;
+          }
+        }
+
+        // Poll ChampSelect session periodically to catch late skin selections that may not emit WS events
+        if injection_mode == InjectionMode::ChampSelect
+          && last_phase == "ChampSelect"
+          && !crate::commands::skin_injection::is_manual_injection_active()
+          && last_champselect_poll.elapsed().as_millis() >= 1000
+        {
+          last_champselect_poll = Instant::now();
+          let port_clone = port.clone();
+          let token_clone = token.clone();
+          let auth_header = format!(
+            "Basic {}",
+            general_purpose::STANDARD.encode(format!("riot:{}", token_clone))
+          );
+          let client = http_client.clone();
+          let session_url = format!("https://127.0.0.1:{}/lol-champ-select/v1/session", port_clone);
+
+          if let Ok(resp) = rt.block_on(async {
+            client
+              .get(&session_url)
+              .header("Authorization", &auth_header)
+              .send()
+              .await
+          }) {
+            if resp.status().is_success() {
+              if let Ok(json) = rt.block_on(async { resp.json::<serde_json::Value>().await }) {
+                handle_champ_select_event_data(
+                  &app_handle,
+                  &league_path_clone,
+                  &json,
+                  &mut last_selected_skins,
+                  &mut last_champion_id,
+                  &mut last_party_injection_check,
+                  &mut last_party_injection_time,
+                );
+              }
+            }
           }
         }
 
@@ -527,7 +567,7 @@ fn handle_phase_change(
 
   if should_cleanup {
     PARTY_INJECTION_DONE_THIS_PHASE.store(false, Ordering::Relaxed);
-    let _ = app_handle.emit("injection-status", "idle");
+    record_injection_state(app_handle, InjectionStatusValue::Idle, None);
     match crate::injection::needs_injection_cleanup(app_handle, league_path) {
       Ok(needs_cleanup) => {
         if needs_cleanup {
@@ -763,6 +803,8 @@ fn handle_champ_select_event_data(
                This is normal if you haven't selected a skin for this champion.",
               current_champion_id
             );
+            // Reset status to idle so UI does not stay green on champion changes without a skin
+            record_injection_state(app_handle, InjectionStatusValue::Idle, None);
           }
         }
       }
@@ -877,6 +919,7 @@ fn handle_champ_select_event_data(
                   .join("champions");
                 let assets_skins_dir = PathBuf::from(league_path).join("ASSETS/Skins");
                 let original_len = skins_to_inject.len();
+                let misc_items = get_selected_misc_items(app_handle).unwrap_or_default();
                 let filtered_skins: Vec<Skin> = skins_to_inject
                   .into_iter()
                   .filter(|s| {
@@ -911,13 +954,19 @@ fn handle_champ_select_event_data(
                     }
                   })
                   .collect();
+                if filtered_skins.is_empty() && misc_items.is_empty() {
+                  // Nothing to inject; reset status to idle so UI reflects no active injection
+                  record_injection_state(app_handle, InjectionStatusValue::Idle, None);
+                  last_selected_skins.insert(champ_id, skin.clone());
+                  continue;
+                }
                 if filtered_skins.len() < original_len {
                   println!(
                     "[Party Mode] Filtered out {} skins without available skin_file files",
                     original_len - filtered_skins.len()
                   );
                 }
-                let misc_items = get_selected_misc_items(app_handle).unwrap_or_default();
+                record_injection_state(app_handle, InjectionStatusValue::Injecting, None);
                 match inject_skins_and_misc(
                   app_handle,
                   league_path,
@@ -926,7 +975,7 @@ fn handle_champ_select_event_data(
                   &champions_dir,
                 ) {
                   Ok(_) => {
-                    let _ = app_handle.emit("injection-status", "success");
+                    record_injection_state(app_handle, InjectionStatusValue::Success, None);
                     println!(
                       "[Enhanced] Successfully injected {} skins and {} misc items for champion {}",
                       filtered_skins.len(),
@@ -935,14 +984,15 @@ fn handle_champ_select_event_data(
                     );
                   }
                   Err(e) => {
-                    let _ = app_handle.emit(
-                      "skin-injection-error",
-                      format!(
-                        "Failed to inject skins and misc items for champion {}: {}",
-                        champ_id, e
-                      ),
+                    let message = format!(
+                      "Failed to inject skins and misc items for champion {}: {}",
+                      champ_id, e
                     );
-                    let _ = app_handle.emit("injection-status", "error");
+                    record_injection_state(
+                      app_handle,
+                      InjectionStatusValue::Error,
+                      Some(message.clone()),
+                    );
                   }
                 }
                 last_selected_skins.insert(champ_id, skin.clone());
@@ -957,7 +1007,7 @@ fn handle_champ_select_event_data(
 
 fn handle_instant_assign_injection(
   app_handle: &AppHandle,
-  league_path: &str,
+  _league_path: &str,
   port: &str,
   token: &str,
 ) {

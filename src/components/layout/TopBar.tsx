@@ -184,7 +184,7 @@ export function TopBar({
           {manualInjectionMode ? (
             <ButtonInjection />
           ) : (
-            <InjectionStatusDot showLabel bordered />
+            <InjectionStatusDot bordered />
           )}
           {/* Party Mode indicator */}
           {pairedFriendsCount > 0 && (

@@ -237,6 +237,7 @@ fn main() {
       // app control
       exit_app,
       hide_window,
+      get_injection_state,
     ])
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_opener::init())

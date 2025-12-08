@@ -1,37 +1,106 @@
 import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { useGameStore } from "@/lib/store";
-import { Separator } from "./ui/separator";
 import { useI18n } from "@/lib/i18n";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip";
+import { cn } from "@/lib/utils";
 
 type Status = "idle" | "injecting" | "success" | "error";
 
-export function InjectionStatusDot({
-  showLabel = false,
-  bordered = false,
-}: {
-  showLabel?: boolean;
-  bordered?: boolean;
-}) {
-  const { injectionStatus, setInjectionStatus } = useGameStore();
+type InjectionStateSnapshot = {
+  status: Status;
+  last_error: string | null;
+  updated_at_ms: number;
+};
+
+export function InjectionStatusDot({ bordered = false }: { bordered?: boolean }) {
+  const {
+    injectionStatus,
+    setInjectionStatus,
+    lastInjectionError,
+    setLastInjectionError,
+  } = useGameStore();
   const { t } = useI18n();
-  const toastShownRef = useRef<Record<string, boolean>>({});
+  const toastShownRef = useRef<{ success?: boolean; errorMessage?: string }>({});
   const errorTimeoutRef = useRef<number | null>(null);
   const lastCleanupAtRef = useRef<number>(0);
   const lastSuccessAtRef = useRef<number>(0);
+  const lastErrorRef = useRef<string | null>(null);
 
-  // Behavior desired:
-  // - Yellow pulsing while injection process is running ("injecting")
-  // - Green when files are injected / overlay running (we treat "success" as injected)
-  // - Gray (or red label) when nothing is injected ("idle")
-  // Keep green until a cleanup is detected. The backend logs contain "Cleaning up" messages
-  // and also emits "injection-status" events. We'll listen for both.
+  const persistSnapshot = (status: Status, error: string | null) => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("injection:status", status);
+    if (error) localStorage.setItem("injection:lastError", error);
+    else localStorage.removeItem("injection:lastError");
+  };
+
+  const hydrateFromCache = () => {
+    if (typeof window === "undefined") return;
+    const cachedStatus = localStorage.getItem("injection:status") as Status | null;
+    const cachedError = localStorage.getItem("injection:lastError");
+    if (cachedStatus) {
+      setInjectionStatus(cachedStatus);
+      setLastInjectionError(cachedError ?? null);
+    }
+  };
+
+  const showErrorToast = (message: string) => {
+    if (!message) return;
+    if (toastShownRef.current.errorMessage === message) return;
+    toastShownRef.current.errorMessage = message;
+    toast.error(message);
+  };
 
   useEffect(() => {
-    let unlistenStatus: () => void = () => {};
-    let unlistenError: () => void = () => {};
-    let unlistenTerminalLog: () => void = () => {};
+    lastErrorRef.current = lastInjectionError;
+  }, [lastInjectionError]);
+
+  const showSuccessToast = () => {
+    if (toastShownRef.current.success) return;
+    toastShownRef.current.success = true;
+    toastShownRef.current.errorMessage = undefined;
+    toast.success(t("injection.success"));
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrate = async () => {
+      try {
+        const snapshot = await invoke<InjectionStateSnapshot>("get_injection_state");
+        if (cancelled) return;
+        const status = snapshot?.status ?? "idle";
+        const lastError = snapshot?.last_error ?? null;
+        setInjectionStatus(status);
+        setLastInjectionError(lastError);
+        persistSnapshot(status, lastError);
+        if (status === "error" && lastError) {
+          showErrorToast(lastError);
+        }
+      } catch (err) {
+        console.warn("[InjectionStatus] hydrate failed, falling back to cache", err);
+        hydrateFromCache();
+      }
+    };
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setInjectionStatus, setLastInjectionError]);
+
+  useEffect(() => {
+    let unlistenStatus: () => void = () => { };
+    let unlistenError: () => void = () => { };
+    let unlistenTerminalLog: () => void = () => { };
 
     void (async () => {
       // Listen for terminal logs to detect cleanup messages emitted by the backend
@@ -45,6 +114,8 @@ export function InjectionStatusDot({
         ) {
           lastCleanupAtRef.current = Date.now();
           setInjectionStatus("idle");
+          setLastInjectionError(null);
+          persistSnapshot("idle", null);
           toastShownRef.current = {};
           if (errorTimeoutRef.current) {
             clearTimeout(errorTimeoutRef.current);
@@ -58,137 +129,96 @@ export function InjectionStatusDot({
         const payload = e.payload;
         const now = Date.now();
 
-        // If backend emitted a boolean (some code paths do), map true->success, false->error
-        if (typeof payload === "boolean") {
-          // clear any pending error auto-reset when new status arrives
-          if (errorTimeoutRef.current) {
-            clearTimeout(errorTimeoutRef.current);
-            errorTimeoutRef.current = null;
-          }
-          if (payload) {
+        const handleStatus = (status: Status) => {
+          if (status === "injecting") {
+            if (errorTimeoutRef.current) {
+              clearTimeout(errorTimeoutRef.current);
+              errorTimeoutRef.current = null;
+            }
+            setInjectionStatus("injecting");
+            setLastInjectionError(null);
+            persistSnapshot("injecting", null);
+            toastShownRef.current.success = false;
+          } else if (status === "success") {
+            if (errorTimeoutRef.current) {
+              clearTimeout(errorTimeoutRef.current);
+              errorTimeoutRef.current = null;
+            }
             lastSuccessAtRef.current = now;
-            // only accept success if it is not older than the last cleanup
             if (now >= lastCleanupAtRef.current) {
               setInjectionStatus("success");
+              setLastInjectionError(null);
+              persistSnapshot("success", null);
               toast.dismiss();
-              if (!toastShownRef.current.success) {
-                toast.success("Skin injection completed successfully");
-                toastShownRef.current.success = true;
-              }
-            } else {
-              // stale success event; ignore
-              return;
+              showSuccessToast();
             }
-          } else {
-            // boolean false indicates injection failure in some backend paths
+          } else if (status === "error") {
             setInjectionStatus("error");
+            persistSnapshot("error", lastErrorRef.current ?? null);
             if (errorTimeoutRef.current) {
               clearTimeout(errorTimeoutRef.current);
             }
             errorTimeoutRef.current = window.setTimeout(() => {
               setInjectionStatus("idle");
-              toastShownRef.current = {};
+              persistSnapshot("idle", null);
+              toastShownRef.current.success = false;
               errorTimeoutRef.current = null;
             }, 10000);
-            if (!toastShownRef.current.error) {
-              toast.error("Skin injection failed");
-              toastShownRef.current.error = true;
+            showErrorToast(lastErrorRef.current ?? t("injection.error"));
+          } else if (status === "idle") {
+            setInjectionStatus("idle");
+            persistSnapshot("idle", null);
+            if (errorTimeoutRef.current) {
+              clearTimeout(errorTimeoutRef.current);
+              errorTimeoutRef.current = null;
             }
           }
+        };
+
+        if (typeof payload === "boolean") {
+          handleStatus(payload ? "success" : "error");
           return;
         }
 
-        const status = typeof payload === "string" ? payload : String(payload);
-        if (status === "injecting") {
-          // clear any pending error auto-reset when injection restarts
-          if (errorTimeoutRef.current) {
-            clearTimeout(errorTimeoutRef.current);
-            errorTimeoutRef.current = null;
-          }
-          setInjectionStatus("injecting");
-          toastShownRef.current = {};
-        } else if (status === "completed" || status === "success") {
-          // Completed means injection finished and files/overlay should be active -> keep green until cleanup
-          if (errorTimeoutRef.current) {
-            clearTimeout(errorTimeoutRef.current);
-            errorTimeoutRef.current = null;
-          }
-          const now = Date.now();
-          lastSuccessAtRef.current = now;
-          if (now >= lastCleanupAtRef.current) {
-            setInjectionStatus("success");
-            // dismiss any pending error toasts and show success once
-            toast.dismiss();
-            if (!toastShownRef.current.success) {
-              toast.success("Skin injection completed successfully");
-              toastShownRef.current.success = true;
-            }
-          } else {
-            // stale success; ignore
-            return;
-          }
-        } else if (status === "error") {
-          // show error (red) and schedule revert to idle in case backend doesn't emit cleanup
-          setInjectionStatus("error");
-          if (errorTimeoutRef.current) {
-            clearTimeout(errorTimeoutRef.current);
-          }
-          errorTimeoutRef.current = window.setTimeout(() => {
-            setInjectionStatus("idle");
-            toastShownRef.current = {};
-            errorTimeoutRef.current = null;
-          }, 10000);
-        } else if (status === "idle") {
-          // Backend explicitly reported idle/cleaned
-          setInjectionStatus("idle");
-          if (errorTimeoutRef.current) {
-            clearTimeout(errorTimeoutRef.current);
-            errorTimeoutRef.current = null;
-          }
+        const status = (typeof payload === "string" ? payload : String(payload)) as Status;
+        if (status === "completed") {
+          handleStatus("success");
+        } else {
+          handleStatus(status);
         }
       });
 
       unlistenError = await listen<string>("skin-injection-error", (e) => {
-        // transient error state: show red, then go back to idle after timeout (or earlier if cleanup runs)
+        const message = e.payload;
         setInjectionStatus("error");
+        setLastInjectionError(message);
+        persistSnapshot("error", message);
         if (errorTimeoutRef.current) {
           clearTimeout(errorTimeoutRef.current);
         }
         errorTimeoutRef.current = window.setTimeout(() => {
           setInjectionStatus("idle");
-          toastShownRef.current = {};
+          persistSnapshot("idle", null);
+          toastShownRef.current.success = false;
           errorTimeoutRef.current = null;
         }, 10000);
-        if (!toastShownRef.current.error) {
-          toast.error(`Skin injection failed: ${e.payload}`);
-          toastShownRef.current.error = true;
-        }
+        showErrorToast(message || t("injection.error"));
       });
 
-      // Development helper: listen to a DOM CustomEvent so you can simulate events
-      // from the browser console without using Tauri. Dispatch like:
-      // window.dispatchEvent(new CustomEvent('dev-injection-status', { detail: 'injecting' }))
       const devHandler = (e: Event) => {
         const ce = e as CustomEvent<unknown>;
         const payload = ce.detail;
-
-        // reuse same mapping logic as the Tauri 'injection-status' listener
         if (typeof payload === "boolean") {
-          if (payload) {
-            setInjectionStatus("success");
-            toast.dismiss();
-          } else {
-            setInjectionStatus("error");
-          }
+          setInjectionStatus(payload ? "success" : "error");
+          persistSnapshot(payload ? "success" : "error", null);
+          if (!payload) showErrorToast(t("injection.error"));
           return;
         }
 
-        const status = typeof payload === "string" ? payload : String(payload);
-        if (status === "injecting") setInjectionStatus("injecting");
-        else if (status === "completed" || status === "success")
-          setInjectionStatus("success");
-        else if (status === "error") setInjectionStatus("error");
-        else if (status === "idle") setInjectionStatus("idle");
+        const status = (typeof payload === "string" ? payload : String(payload)) as Status;
+        setInjectionStatus(status);
+        persistSnapshot(status, null);
+        if (status === "error") showErrorToast(t("injection.error"));
       };
 
       window.addEventListener(
@@ -206,50 +236,56 @@ export function InjectionStatusDot({
         errorTimeoutRef.current = null;
       }
     };
-  }, [setInjectionStatus]);
+  }, [setInjectionStatus, setLastInjectionError, t]);
 
-  // Map status to color, label, animation. Keep green after success until cleanup sets idle.
-  let color = "";
-  let animate = "";
-  let label = "";
-  let inlineStyle: React.CSSProperties | undefined;
-  switch (injectionStatus) {
-    case "injecting":
-      color = "bg-yellow-400";
-      animate = "animate-pulse";
-      inlineStyle = { boxShadow: "0 0 12px rgba(250,204,21,0.6)" };
-      label = t("injection.injecting");
-      break;
-    case "success":
-      color = "bg-green-500";
-      label = t("injection.success");
-      break;
-    case "error":
-      color = "bg-red-500";
-      label = t("injection.error");
-      break;
-    default:
-      color = "bg-gray-500";
-      label = t("injection.nothing");
-  }
+  const statusMeta: Record<Status, { color: string; animate?: string; label: string; shadow?: string }> = {
+    injecting: {
+      color: "bg-yellow-400",
+      animate: "animate-pulse",
+      label: t("injection.injecting"),
+      shadow: "0 0 10px rgba(250,204,21,0.65)",
+    },
+    success: {
+      color: "bg-green-500",
+      label: t("injection.success"),
+      shadow: "0 0 10px rgba(34,197,94,0.45)",
+    },
+    error: {
+      color: "bg-red-500",
+      label: t("injection.error"),
+      shadow: "0 0 10px rgba(239,68,68,0.6)",
+    },
+    idle: {
+      color: "bg-gray-400",
+      label: t("injection.nothing"),
+    },
+  };
+
+  const { color, animate, label, shadow } = statusMeta[injectionStatus];
 
   return (
-    <div
-      className={`px-2 py-1 rounded-full flex items-center gap-2 ${color} ${animate}`}
-      aria-label={`Injection status: ${label}`}
-    >
-      {/* <Separator className="mr-3" orientation="vertical" /> */}
-      {/* <div
-        className={`size-3 aspect-square shrink-0 rounded-full border border-border ${color} ${animate}`}
-        style={inlineStyle}
-        aria-hidden
-      /> */}
-      {showLabel && (
-        <div className="text-sm font-medium leading-none whitespace-nowrap">
-          {label}
-        </div>
-      )}
-      {/* <Separator className="ml-3" orientation="vertical" /> */}
-    </div>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className={cn(
+              "inline-flex items-center justify-center rounded-full",
+              bordered ? "border px-2 py-1 bg-background/80" : ""
+            )}
+            aria-label={`Injection status: ${label}`}
+          >
+            <div
+              className={cn(
+                "h-3 w-3 rounded-full border border-border transition-all",
+                color,
+                animate,
+              )}
+              style={shadow ? { boxShadow: shadow } : undefined}
+            />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

@@ -2,9 +2,83 @@ use crate::commands::config::save_league_path;
 use crate::commands::lcu_watcher::start_lcu_watcher;
 use crate::commands::types::{SavedConfig, SkinData, SkinInjectionRequest};
 use crate::injection::{inject_skins as inject_skins_impl, inject_skins_and_misc, MiscItem, Skin};
+use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+use std::sync::RwLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InjectionStatusValue {
+  Idle,
+  Injecting,
+  Success,
+  Error,
+}
+
+impl InjectionStatusValue {
+  fn as_str(&self) -> &'static str {
+    match self {
+      InjectionStatusValue::Idle => "idle",
+      InjectionStatusValue::Injecting => "injecting",
+      InjectionStatusValue::Success => "success",
+      InjectionStatusValue::Error => "error",
+    }
+  }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct InjectionStateSnapshot {
+  pub status: InjectionStatusValue,
+  pub last_error: Option<String>,
+  pub updated_at_ms: u64,
+}
+
+static INJECTION_STATE: Lazy<RwLock<InjectionStateSnapshot>> = Lazy::new(|| RwLock::new(
+  InjectionStateSnapshot {
+    status: InjectionStatusValue::Idle,
+    last_error: None,
+    updated_at_ms: current_millis(),
+  },
+));
+
+fn current_millis() -> u64 {
+  SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .map(|d| d.as_millis() as u64)
+    .unwrap_or(0)
+}
+
+pub fn record_injection_state(
+  app: &AppHandle,
+  status: InjectionStatusValue,
+  error: Option<String>,
+) {
+  {
+    let mut guard = INJECTION_STATE
+      .write()
+      .expect("INJECTION_STATE poisoned");
+    guard.status = status;
+    guard.last_error = error.clone();
+    guard.updated_at_ms = current_millis();
+  }
+
+  let _ = app.emit("injection-status", status.as_str());
+  if let Some(err) = error {
+    let _ = app.emit("skin-injection-error", err);
+  }
+}
+
+#[tauri::command]
+pub fn get_injection_state() -> InjectionStateSnapshot {
+  INJECTION_STATE
+    .read()
+    .expect("INJECTION_STATE poisoned")
+    .clone()
+}
 
 // Skin injection related commands
 
@@ -25,7 +99,7 @@ pub fn inject_skins(app: tauri::AppHandle, request: SkinInjectionRequest) -> Res
   println!("Fantome files directory: {}", skin_file_files_dir.display());
 
   // Emit injection started event to update UI
-  let _ = app.emit("injection-status", "injecting");
+  record_injection_state(&app, InjectionStatusValue::Injecting, None);
 
   // Call the native Rust implementation of skin injection using our new SkinInjector
   let result = inject_skins_impl(
@@ -39,14 +113,14 @@ pub fn inject_skins(app: tauri::AppHandle, request: SkinInjectionRequest) -> Res
   match result {
     Ok(_) => {
       println!("Skin injection completed successfully");
-      let _ = app.emit("injection-status", "success");
+      record_injection_state(&app, InjectionStatusValue::Success, None);
       Ok(())
     }
     Err(err) => {
       println!("Skin injection failed: {}", err);
-      let _ = app.emit("injection-status", "error");
-      let _ = app.emit("skin-injection-error", format!("Injection failed: {}", err));
-      Err(format!("Injection failed: {}", err))
+      let message = format!("Injection failed: {}", err);
+      record_injection_state(&app, InjectionStatusValue::Error, Some(message.clone()));
+      Err(message)
     }
   }
 }
@@ -64,15 +138,13 @@ pub async fn inject_game_skins(
   println!("Fantome files directory: {}", skin_file_files_dir);
 
   // Emit injection started event
-  let _ = app_handle.emit("injection-status", true);
+  record_injection_state(&app_handle, InjectionStatusValue::Injecting, None);
 
   // Validate game path exists
   if !Path::new(&game_path).exists() {
-    let _ = app_handle.emit("injection-status", false);
-    return Err(format!(
-      "League of Legends directory not found: {}",
-      game_path
-    ));
+    let message = format!("League of Legends directory not found: {}", game_path);
+    record_injection_state(&app_handle, InjectionStatusValue::Error, Some(message.clone()));
+    return Err(message);
   }
 
   // Validate skin_file directory exists
@@ -84,8 +156,9 @@ pub async fn inject_game_skins(
       base_path.display()
     );
     fs::create_dir_all(base_path).map_err(|e| {
-      let _ = app_handle.emit("injection-status", false);
-      format!("Failed to create skin_file directory: {}", e)
+      let message = format!("Failed to create skin_file directory: {}", e);
+      record_injection_state(&app_handle, InjectionStatusValue::Error, Some(message.clone()));
+      message
     })?;
   }
 
@@ -107,16 +180,20 @@ pub async fn inject_game_skins(
   let result = match inject_skins_impl(&app_handle, &game_path, &internal_skins, base_path) {
     Ok(_) => {
       println!("Skin injection completed successfully");
+      record_injection_state(&app_handle, InjectionStatusValue::Success, None);
       Ok("Skin injection completed successfully".to_string())
     }
     Err(e) => {
       println!("Skin injection failed: {}", e);
-      Err(format!("Skin injection failed: {}", e))
+      let message = format!("Skin injection failed: {}", e);
+      record_injection_state(
+        &app_handle,
+        InjectionStatusValue::Error,
+        Some(message.clone()),
+      );
+      Err(message)
     }
   };
-
-  // Always emit injection ended event, regardless of success/failure
-  let _ = app_handle.emit("injection-status", false);
 
   result
 }
@@ -136,15 +213,13 @@ pub async fn inject_skins_with_misc(
   println!("Number of misc items to inject: {}", misc_items.len());
 
   // Emit injection started event
-  let _ = app_handle.emit("injection-status", true);
+  record_injection_state(&app_handle, InjectionStatusValue::Injecting, None);
 
   // Validate game path exists
   if !Path::new(&game_path).exists() {
-    let _ = app_handle.emit("injection-status", false);
-    return Err(format!(
-      "League of Legends directory not found: {}",
-      game_path
-    ));
+    let message = format!("League of Legends directory not found: {}", game_path);
+    record_injection_state(&app_handle, InjectionStatusValue::Error, Some(message.clone()));
+    return Err(message);
   }
 
   // Validate skin_file directory exists
@@ -156,8 +231,9 @@ pub async fn inject_skins_with_misc(
       base_path.display()
     );
     fs::create_dir_all(base_path).map_err(|e| {
-      let _ = app_handle.emit("injection-status", false);
-      format!("Failed to create skin_file directory: {}", e)
+      let message = format!("Failed to create skin_file directory: {}", e);
+      record_injection_state(&app_handle, InjectionStatusValue::Error, Some(message.clone()));
+      message
     })?;
   }
 
@@ -185,16 +261,20 @@ pub async fn inject_skins_with_misc(
   ) {
     Ok(_) => {
       println!("Enhanced skin injection completed successfully");
+      record_injection_state(&app_handle, InjectionStatusValue::Success, None);
       Ok("Enhanced skin injection completed successfully".to_string())
     }
     Err(e) => {
       println!("Enhanced skin injection failed: {}", e);
-      Err(format!("Enhanced skin injection failed: {}", e))
+      let message = format!("Enhanced skin injection failed: {}", e);
+      record_injection_state(
+        &app_handle,
+        InjectionStatusValue::Error,
+        Some(message.clone()),
+      );
+      Err(message)
     }
   };
-
-  // Always emit injection ended event, regardless of success/failure
-  let _ = app_handle.emit("injection-status", false);
 
   result
 }
@@ -267,7 +347,7 @@ pub async fn inject_all_selected_skins(app: AppHandle) -> Result<(), String> {
     crate::commands::misc_items::get_selected_misc_items(&app).unwrap_or_else(|_| Vec::new());
 
   // Emit injection started event
-  let _ = app.emit("injection-status", "injecting");
+  record_injection_state(&app, InjectionStatusValue::Injecting, None);
 
   // Perform injection
   let result = inject_skins_and_misc(
@@ -280,7 +360,7 @@ pub async fn inject_all_selected_skins(app: AppHandle) -> Result<(), String> {
 
   match result {
     Ok(_) => {
-      let _ = app.emit("injection-status", "success");
+      record_injection_state(&app, InjectionStatusValue::Success, None);
       println!(
         "Successfully injected {} skins and {} misc items",
         skins.len(),
@@ -289,8 +369,13 @@ pub async fn inject_all_selected_skins(app: AppHandle) -> Result<(), String> {
       Ok(())
     }
     Err(e) => {
-      let _ = app.emit("injection-status", "error");
-      Err(e.to_string())
+      let message = e.to_string();
+      record_injection_state(
+        &app,
+        InjectionStatusValue::Error,
+        Some(message.clone()),
+      );
+      Err(message)
     }
   }
 }
@@ -304,7 +389,6 @@ pub fn preload_resources(_app_handle: &tauri::AppHandle) -> Result<(), String> {
 }
 
 // Manual injection mode commands
-use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -388,7 +472,7 @@ pub async fn stop_manual_injection(app: AppHandle) -> Result<(), String> {
 
   // Emit event to update UI
   let _ = app.emit("manual-injection-status", "stopped");
-  let _ = app.emit("injection-status", "idle");
+  record_injection_state(&app, InjectionStatusValue::Idle, None);
 
   println!("[Manual Injection] Manual injection mode stopped");
 
@@ -419,6 +503,11 @@ pub async fn trigger_manual_injection(app: &AppHandle) -> Result<(), String> {
     Some(d) => d,
     None => {
       println!("[Manual Injection] No injection data found");
+      record_injection_state(
+        app,
+        InjectionStatusValue::Error,
+        Some("No injection data found".to_string()),
+      );
       return Err("No injection data found".to_string());
     }
   };
@@ -435,7 +524,7 @@ pub async fn trigger_manual_injection(app: &AppHandle) -> Result<(), String> {
   let skin_file_files_dir = app_data_dir.join("champions");
 
   // Emit injection started event
-  let _ = app.emit("injection-status", "injecting");
+  record_injection_state(app, InjectionStatusValue::Injecting, None);
   let _ = app.emit("manual-injection-status", "injecting");
 
   // Perform injection
@@ -449,7 +538,7 @@ pub async fn trigger_manual_injection(app: &AppHandle) -> Result<(), String> {
 
   match result {
     Ok(_) => {
-      let _ = app.emit("injection-status", "success");
+      record_injection_state(app, InjectionStatusValue::Success, None);
       let _ = app.emit("manual-injection-status", "success");
       println!(
         "[Manual Injection] Successfully injected {} skins and {} misc items",
@@ -459,9 +548,10 @@ pub async fn trigger_manual_injection(app: &AppHandle) -> Result<(), String> {
       Ok(())
     }
     Err(e) => {
-      let _ = app.emit("injection-status", "error");
+      let message = e.to_string();
+      record_injection_state(app, InjectionStatusValue::Error, Some(message.clone()));
       let _ = app.emit("manual-injection-status", "error");
-      Err(e.to_string())
+      Err(message)
     }
   }
 }

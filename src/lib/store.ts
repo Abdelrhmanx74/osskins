@@ -29,6 +29,7 @@ interface GameState {
   leaguePath: string | null;
   lcuStatus: string | null;
   injectionStatus: InjectionStatus; // Add this
+  lastInjectionError: string | null;
   selectedSkins: Map<number, SelectedSkin>;
   favorites: Set<number>;
   hasCompletedOnboarding: boolean;
@@ -41,6 +42,7 @@ interface GameState {
   setLeaguePath: (path: string) => void;
   setLcuStatus: (status: string) => void;
   setInjectionStatus: (status: InjectionStatus) => void; // Add this
+  setLastInjectionError: (message: string | null) => void;
   // Manual injection mode state
   manualInjectionMode: boolean;
   setManualInjectionMode: (v: boolean) => void;
@@ -80,6 +82,7 @@ export const useGameStore = create<GameState>((set) => ({
   leaguePath: null,
   lcuStatus: null,
   injectionStatus: "idle", // Default status
+  lastInjectionError: null,
   selectedSkins: new Map(),
   favorites: new Set(),
   hasCompletedOnboarding: false,
@@ -96,6 +99,9 @@ export const useGameStore = create<GameState>((set) => ({
   setInjectionStatus: (status) => {
     // Add implementation
     set({ injectionStatus: status });
+  },
+  setLastInjectionError: (message) => {
+    set({ lastInjectionError: message });
   },
   // Manual injection mode controls
   manualInjectionMode: false,

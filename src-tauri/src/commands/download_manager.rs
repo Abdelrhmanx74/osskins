@@ -349,7 +349,7 @@ pub async fn download_file_to_champion_with_progress(
 #[tauri::command]
 pub async fn cancel_download(id: String) -> Result<bool, String> {
   let tasks = TASKS.clone();
-  let mut map = tasks.lock().await;
+  let map = tasks.lock().await;
   if let Some(ctrl) = map.get(&id) {
     ctrl.cancel.cancel();
     Ok(true)
@@ -498,7 +498,7 @@ pub async fn batch_download_skins(
       )
       .await
       {
-        Ok(bytes) => {
+        Ok(_bytes) => {
           completed_count_clone.fetch_add(1, Ordering::Relaxed);
           successful_clone.lock().await.push(item_id.clone());
 
