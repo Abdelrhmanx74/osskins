@@ -207,6 +207,26 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
       let _ = rt.block_on(async { socket.send(subscribe_msg).await });
       let _ = app_handle.emit("lcu-status", "Connected");
 
+      // Immediately bootstrap the current phase/session so late app starts while already
+      // in champ select (or matchmaking) still inject correctly instead of waiting for
+      // a WebSocket phase event that never arrives.
+      bootstrap_initial_state(
+        &app_handle,
+        &league_path_clone,
+        &port,
+        &token,
+        &injection_mode,
+        &http_client,
+        &rt,
+        &mut last_phase,
+        &mut was_in_game,
+        &mut was_reconnecting,
+        &mut last_selected_skins,
+        &mut last_champion_id,
+        &mut last_party_injection_check,
+        &mut last_party_injection_time,
+      );
+
       // 3) Event loop while lockfile exists and socket is alive
       let mut socket_alive = true;
       let mut last_lobby_check = Instant::now();
@@ -590,6 +610,94 @@ fn parse_lcu_ws_event(msg: Message) -> Option<LcuEvent> {
     }
   }
   None
+}
+
+fn bootstrap_initial_state(
+  app_handle: &AppHandle,
+  league_path: &str,
+  port: &str,
+  token: &str,
+  injection_mode: &InjectionMode,
+  http_client: &reqwest::Client,
+  rt: &tokio::runtime::Runtime,
+  last_phase: &mut String,
+  was_in_game: &mut bool,
+  was_reconnecting: &mut bool,
+  last_selected_skins: &mut std::collections::HashMap<u32, SkinData>,
+  last_champion_id: &mut Option<u32>,
+  last_party_injection_check: &mut Instant,
+  last_party_injection_time: &mut Instant,
+) {
+  let auth_header = format!(
+    "Basic {}",
+    general_purpose::STANDARD.encode(format!("riot:{}", token))
+  );
+
+  // Get the current phase immediately after connecting so we align internal state.
+  let phase_url = format!("https://127.0.0.1:{}/lol-gameflow/v1/gameflow-phase", port);
+  if let Ok(resp) = rt.block_on(async {
+    http_client
+      .get(&phase_url)
+      .header("Authorization", &auth_header)
+      .send()
+      .await
+  }) {
+    if resp.status().is_success() {
+      if let Ok(phase_txt) = rt.block_on(async { resp.text().await }) {
+        let new_phase = phase_txt.trim_matches('"').to_string();
+        let old_phase = last_phase.clone();
+
+        if new_phase != old_phase {
+          if new_phase == "Matchmaking"
+            && !crate::commands::skin_injection::is_manual_injection_active()
+            && (old_phase == "Lobby" || old_phase == "None")
+          {
+            handle_instant_assign_injection(app_handle, league_path, port, token);
+          }
+
+          handle_phase_change(
+            app_handle,
+            league_path,
+            last_phase,
+            &new_phase,
+            was_in_game,
+            was_reconnecting,
+          );
+        }
+
+        if new_phase == "ChampSelect"
+          && *injection_mode == InjectionMode::ChampSelect
+          && !crate::commands::skin_injection::is_manual_injection_active()
+        {
+          let session_url = format!(
+            "https://127.0.0.1:{}/lol-champ-select/v1/session",
+            port
+          );
+          if let Ok(resp) = rt.block_on(async {
+            http_client
+              .get(&session_url)
+              .header("Authorization", &auth_header)
+              .send()
+              .await
+          }) {
+            if resp.status().is_success() {
+              if let Ok(json) = rt.block_on(async { resp.json::<serde_json::Value>().await }) {
+                handle_champ_select_event_data(
+                  app_handle,
+                  league_path,
+                  &json,
+                  last_selected_skins,
+                  last_champion_id,
+                  last_party_injection_check,
+                  last_party_injection_time,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 fn handle_phase_change(
