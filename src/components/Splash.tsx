@@ -5,11 +5,11 @@ import React from "react";
 
 export default function Splash() {
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+    <div className="fixed inset-0 z-[9999] squircle flex items-center justify-center">
       <div className="flex flex-col items-center gap-6">
         <div className="relative">
           <Image
-            src="/Square310x310Logo.png"
+            src="/logo.png"
             alt="app logo"
             width={160}
             height={40}
