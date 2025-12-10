@@ -1,5 +1,6 @@
 use chrono::Utc;
 use futures_util::StreamExt;
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use sevenz_rust::SevenZReader;
 use std::ffi::OsStr;
@@ -8,10 +9,15 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager};
 use tokio::fs as async_fs;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 const RELEASE_API_URL: &str =
   "https://api.github.com/repos/LeagueToolkit/cslol-manager/releases/latest";
@@ -81,6 +87,9 @@ struct LocalToolsPaths {
   tools_dir: PathBuf,
 }
 
+static WARMUP_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+static WARMUP_DONE: AtomicBool = AtomicBool::new(false);
+
 fn emit_progress(app: &tauri::AppHandle, payload: ToolsProgressPayload) {
   let _ = app.emit(PROGRESS_EVENT, payload);
 }
@@ -144,6 +153,128 @@ async fn mod_tools_exists(paths: &LocalToolsPaths) -> bool {
   async_fs::metadata(paths.tools_dir.join("mod-tools.exe"))
     .await
     .is_ok()
+}
+
+async fn ensure_mod_tools_internal(
+  app: &tauri::AppHandle,
+  force_download: bool,
+  source: &str,
+) -> Result<EnsureModToolsResult, String> {
+  emit_progress(
+    app,
+    ToolsProgressPayload {
+      phase: "checking".to_string(),
+      progress: 0.0,
+      downloaded: None,
+      total: None,
+      speed: None,
+      message: None,
+      version: None,
+      error: None,
+      source: source.to_string(),
+    },
+  );
+
+  let result: Result<EnsureModToolsResult, String> = async {
+    let paths = resolve_paths(app).await?;
+    let release_info = fetch_latest_release_info().await?;
+    let installed = mod_tools_exists(&paths).await;
+    let current_version = read_installed_version(&paths).await?;
+
+    let up_to_date = installed
+      && !force_download
+      && current_version
+        .as_ref()
+        .map(|v| v == &release_info.version)
+        .unwrap_or(false);
+
+    if up_to_date {
+      Ok(EnsureModToolsResult {
+        installed: true,
+        updated: false,
+        skipped: true,
+        version: current_version.clone(),
+        latest_version: Some(release_info.version.clone()),
+        path: Some(
+          paths
+            .tools_dir
+            .join("mod-tools.exe")
+            .to_string_lossy()
+            .to_string(),
+        ),
+      })
+    } else {
+      download_and_install_tools(app, &paths, &release_info, source).await?;
+      Ok(EnsureModToolsResult {
+        installed: true,
+        updated: true,
+        skipped: false,
+        version: Some(release_info.version.clone()),
+        latest_version: Some(release_info.version.clone()),
+        path: Some(
+          paths
+            .tools_dir
+            .join("mod-tools.exe")
+            .to_string_lossy()
+            .to_string(),
+        ),
+      })
+    }
+  }
+  .await;
+
+  match &result {
+    Ok(ensure) if ensure.skipped => {
+      emit_progress(
+        app,
+        ToolsProgressPayload {
+          phase: "skipped".to_string(),
+          progress: 100.0,
+          downloaded: None,
+          total: None,
+          speed: None,
+          message: None,
+          version: ensure.version.clone(),
+          error: None,
+          source: source.to_string(),
+        },
+      );
+    }
+    Ok(ensure) => {
+      emit_progress(
+        app,
+        ToolsProgressPayload {
+          phase: "completed".to_string(),
+          progress: 100.0,
+          downloaded: None,
+          total: None,
+          speed: None,
+          message: None,
+          version: ensure.version.clone(),
+          error: None,
+          source: source.to_string(),
+        },
+      );
+    }
+    Err(err) => {
+      emit_progress(
+        app,
+        ToolsProgressPayload {
+          phase: "error".to_string(),
+          progress: 0.0,
+          downloaded: None,
+          total: None,
+          speed: None,
+          message: None,
+          version: None,
+          error: Some(err.clone()),
+          source: source.to_string(),
+        },
+      );
+    }
+  }
+
+  result
 }
 
 /// Try to pick a suitable asset from the release payload.
@@ -740,121 +871,59 @@ pub async fn ensure_mod_tools(
   let force_download = force.unwrap_or(false);
   let source = if force_download { "manual" } else { "auto" };
 
-  emit_progress(
-    &app,
-    ToolsProgressPayload {
-      phase: "checking".to_string(),
-      progress: 0.0,
-      downloaded: None,
-      total: None,
-      speed: None,
-      message: None,
-      version: None,
-      error: None,
-      source: source.to_string(),
-    },
-  );
+  ensure_mod_tools_internal(&app, force_download, source).await
+}
 
-  let result: Result<EnsureModToolsResult, String> = async {
-    let paths = resolve_paths(&app).await?;
-    let release_info = fetch_latest_release_info().await?;
-    let installed = mod_tools_exists(&paths).await;
-    let current_version = read_installed_version(&paths).await?;
+async fn warm_mod_tools_binary(mod_tools_path: &Path) -> Result<(), String> {
+  let mod_tools_path = mod_tools_path.to_path_buf();
 
-    let up_to_date = installed
-      && !force_download
-      && current_version
-        .as_ref()
-        .map(|v| v == &release_info.version)
-        .unwrap_or(false);
+  tokio::task::spawn_blocking(move || -> Result<(), String> {
+    let mut cmd = Command::new(&mod_tools_path);
+    cmd.arg("--version");
+    cmd.stdin(Stdio::null());
+    cmd.stdout(Stdio::null());
+    cmd.stderr(Stdio::null());
 
-    if up_to_date {
-      Ok(EnsureModToolsResult {
-        installed: true,
-        updated: false,
-        skipped: true,
-        version: current_version.clone(),
-        latest_version: Some(release_info.version.clone()),
-        path: Some(
-          paths
-            .tools_dir
-            .join("mod-tools.exe")
-            .to_string_lossy()
-            .to_string(),
-        ),
-      })
-    } else {
-      download_and_install_tools(&app, &paths, &release_info, source).await?;
-      Ok(EnsureModToolsResult {
-        installed: true,
-        updated: true,
-        skipped: false,
-        version: Some(release_info.version.clone()),
-        latest_version: Some(release_info.version.clone()),
-        path: Some(
-          paths
-            .tools_dir
-            .join("mod-tools.exe")
-            .to_string_lossy()
-            .to_string(),
-        ),
-      })
+    #[cfg(target_os = "windows")]
+    {
+      use std::os::windows::process::CommandExt;
+      cmd.creation_flags(CREATE_NO_WINDOW);
     }
+
+    cmd
+      .status()
+      .map(|_| ())
+      .map_err(|e| format!("Failed to warm up mod-tools.exe: {}", e))
+  })
+  .await
+  .map_err(|e| format!("Warmup task failed: {}", e))?
+}
+
+#[tauri::command]
+pub async fn warmup_mod_tools(
+  app: tauri::AppHandle,
+) -> Result<EnsureModToolsResult, String> {
+  if WARMUP_DONE.load(Ordering::Relaxed) {
+    return ensure_mod_tools_internal(&app, false, "warmup").await;
   }
-  .await;
 
-  match &result {
-    Ok(ensure) if ensure.skipped => {
-      emit_progress(
-        &app,
-        ToolsProgressPayload {
-          phase: "skipped".to_string(),
-          progress: 100.0,
-          downloaded: None,
-          total: None,
-          speed: None,
-          message: None,
-          version: ensure.version.clone(),
-          error: None,
-          source: source.to_string(),
-        },
-      );
-    }
-    Ok(ensure) => {
-      emit_progress(
-        &app,
-        ToolsProgressPayload {
-          phase: "completed".to_string(),
-          progress: 100.0,
-          downloaded: None,
-          total: None,
-          speed: None,
-          message: None,
-          version: ensure.version.clone(),
-          error: None,
-          source: source.to_string(),
-        },
-      );
-    }
-    Err(err) => {
-      emit_progress(
-        &app,
-        ToolsProgressPayload {
-          phase: "error".to_string(),
-          progress: 0.0,
-          downloaded: None,
-          total: None,
-          speed: None,
-          message: None,
-          version: None,
-          error: Some(err.clone()),
-          source: source.to_string(),
-        },
-      );
+  let _guard = WARMUP_LOCK.lock().await;
+
+  if WARMUP_DONE.load(Ordering::Relaxed) {
+    return ensure_mod_tools_internal(&app, false, "warmup").await;
+  }
+
+  let ensured = ensure_mod_tools_internal(&app, false, "warmup").await?;
+
+  if let Some(path) = ensured.path.clone() {
+    let path_buf = PathBuf::from(path);
+    if let Err(err) = warm_mod_tools_binary(&path_buf).await {
+      println!("Warmup mod-tools.exe failed: {}", err);
     }
   }
 
-  result
+  WARMUP_DONE.store(true, Ordering::Relaxed);
+  Ok(ensured)
 }
 
 /// Manual SFX extraction command that can be called from JavaScript.

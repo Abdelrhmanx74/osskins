@@ -7,6 +7,8 @@ import { useConfigLoader } from "@/lib/hooks/use-config-loader";
 import { useGameStore } from "@/lib/store";
 import { ToolsPhase, ToolsSource, useToolsStore } from "@/lib/store/tools";
 import { useDownloadsStore } from "@/lib/store/downloads";
+import type { EnsureModToolsResult } from "@/lib/types";
+import { invoke } from "@tauri-apps/api/core";
 
 export function AppInitializer({ children }: { children: React.ReactNode }) {
   // Hydrate manualInjectionMode from localStorage on client mount
@@ -17,6 +19,42 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         useGameStore.getState().setManualInjectionMode(stored === "true");
       }
     }
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const warmupTools = async () => {
+      try {
+        const res = await invoke<EnsureModToolsResult>("warmup_mod_tools");
+        if (cancelled) return;
+
+        const hasUpdate = Boolean(
+          res.latestVersion &&
+          res.version &&
+          res.version !== res.latestVersion,
+        );
+
+        useToolsStore.getState().updateStatus({
+          installed: res.installed,
+          version: res.version ?? null,
+          latestVersion: res.latestVersion ?? null,
+          hasUpdate,
+          path: res.path ?? null,
+          lastChecked: Date.now(),
+        });
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("[Init] CSLOL tools warmup failed", error);
+        }
+      }
+    };
+
+    warmupTools();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   React.useEffect(() => {

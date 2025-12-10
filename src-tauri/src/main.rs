@@ -160,6 +160,7 @@ fn main() {
       inject_skins_with_misc,
       inject_all_selected_skins,
       ensure_mod_tools,
+      warmup_mod_tools,
       get_cslol_manager_status,
       extract_sfx,
       inject_game_skins,
