@@ -13,7 +13,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
 #[cfg(target_os = "windows")]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
+pub const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 // Main skin injector class - simplified without profiles
 pub struct SkinInjector {

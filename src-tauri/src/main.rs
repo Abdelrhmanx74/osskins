@@ -161,6 +161,7 @@ fn main() {
       inject_all_selected_skins,
       ensure_mod_tools,
       warmup_mod_tools,
+      warmup_injection,
       get_cslol_manager_status,
       extract_sfx,
       inject_game_skins,

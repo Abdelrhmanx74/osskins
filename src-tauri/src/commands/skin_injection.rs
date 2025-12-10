@@ -1,14 +1,17 @@
 use crate::commands::config::save_league_path;
 use crate::commands::lcu_watcher::start_lcu_watcher;
 use crate::commands::types::{SavedConfig, SkinData, SkinInjectionRequest};
+use crate::commands::{ensure_mod_tools, load_league_path};
 use crate::injection::{inject_skins as inject_skins_impl, inject_skins_and_misc, MiscItem, Skin};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -385,6 +388,107 @@ pub async fn inject_all_selected_skins(app: AppHandle) -> Result<(), String> {
 pub fn preload_resources(_app_handle: &tauri::AppHandle) -> Result<(), String> {
   // Preloading is disabled - no caching or fallback logic
   println!("Preloading disabled - using direct file access only");
+  Ok(())
+}
+
+fn run_mod_tools_warmup(
+  mod_tools_path: &Path,
+  game_dir: &Path,
+  mods_dir: &Path,
+  overlay_dir: &Path,
+) -> Result<(), String> {
+  // Best-effort warmup: build a minimal overlay to warm caches and AV
+  if overlay_dir.exists() {
+    if let Err(e) = fs::remove_dir_all(overlay_dir) {
+      println!("[Warmup] Failed to clear warmup overlay dir: {}", e);
+    }
+  }
+  fs::create_dir_all(overlay_dir)
+    .map_err(|e| format!("[Warmup] Failed to create overlay dir: {}", e))?;
+
+  if !mods_dir.exists() {
+    fs::create_dir_all(mods_dir)
+      .map_err(|e| format!("[Warmup] Failed to create mods dir: {}", e))?;
+  }
+
+  let mut cmd = std::process::Command::new(mod_tools_path);
+  let game_dir_str = game_dir
+    .to_str()
+    .ok_or_else(|| "Invalid game path".to_string())?;
+  let mods_dir_str = mods_dir
+    .to_str()
+    .ok_or_else(|| "Invalid mods path".to_string())?;
+  let overlay_dir_str = overlay_dir
+    .to_str()
+    .ok_or_else(|| "Invalid overlay path".to_string())?;
+
+  cmd.args([
+    "mkoverlay",
+    mods_dir_str,
+    overlay_dir_str,
+    &format!("--game:{}", game_dir_str),
+    "--mods:", // empty mods list just to warm binary and filesystem
+    "--noTFT",
+    "--ignoreConflict",
+  ]);
+
+  #[cfg(target_os = "windows")]
+  cmd.creation_flags(crate::injection::core::CREATE_NO_WINDOW);
+
+  match cmd.status() {
+    Ok(status) if status.success() => {
+      println!("[Warmup] mod-tools mkoverlay warmup succeeded");
+      Ok(())
+    }
+    Ok(status) => {
+      println!("[Warmup] mod-tools mkoverlay warmup failed with status {}", status);
+      Ok(()) // non-fatal; continue silently
+    }
+    Err(e) => {
+      println!("[Warmup] Failed to spawn mod-tools for warmup: {}", e);
+      Ok(())
+    }
+  }
+}
+
+#[tauri::command]
+pub async fn warmup_injection(app: AppHandle, game_path: Option<String>) -> Result<(), String> {
+  // Ensure tools exist and load once to warm Windows Defender caches
+  let ensured = ensure_mod_tools(app.clone(), Some(false)).await?;
+
+  let league_root = if let Some(path) = game_path {
+    path
+  } else {
+    load_league_path(app.clone()).await.unwrap_or_default()
+  };
+
+  if league_root.is_empty() {
+    return Ok(());
+  }
+
+  let mod_tools_path = match ensured.path {
+    Some(p) => PathBuf::from(p),
+    None => return Ok(()),
+  };
+
+  let game_dir = PathBuf::from(&league_root).join("Game");
+  if !game_dir.exists() {
+    return Ok(());
+  }
+
+  let mods_dir = game_dir.join("mods");
+  let overlay_dir = app
+    .path()
+    .app_data_dir()
+    .map_err(|e| format!("Failed to resolve app data dir: {}", e))?
+    .join("overlay-warmup");
+
+  tokio::task::spawn_blocking(move || {
+    run_mod_tools_warmup(&mod_tools_path, &game_dir, &mods_dir, &overlay_dir)
+  })
+  .await
+  .map_err(|e| format!("Warmup task failed: {}", e))??;
+
   Ok(())
 }
 

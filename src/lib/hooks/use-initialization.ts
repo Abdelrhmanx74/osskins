@@ -58,6 +58,13 @@ export function useInitialization() {
         if (league_path) {
           setLeaguePath(league_path);
 
+          // Warm mod-tools overlay path once league path is known to speed up first injection
+          try {
+            void invoke("warmup_injection", { game_path: league_path });
+          } catch (e) {
+            console.warn("[Init] Warmup injection failed", e);
+          }
+
           // preload skin selections
           const loadedSelections: Array<{
             champion_id: number;
