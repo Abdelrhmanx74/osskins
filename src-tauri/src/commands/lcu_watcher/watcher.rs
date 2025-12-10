@@ -3,7 +3,8 @@
 use base64::{engine::general_purpose, Engine};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
@@ -109,8 +110,8 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
     let mut last_champion_id: Option<u32> = None;
     let mut last_party_mode_check = Instant::now();
     let mut last_party_injection_check = Instant::now();
-    let mut processed_message_ids: std::collections::HashSet<String> =
-      std::collections::HashSet::new();
+    let processed_message_ids = Arc::new(Mutex::new(std::collections::HashSet::new()));
+    let party_mode_poll_inflight = Arc::new(AtomicBool::new(false));
     let mut last_party_injection_time: Instant = Instant::now() - Duration::from_secs(60);
 
     // Reuse a Tokio runtime for async WebSocket operations
@@ -259,23 +260,34 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
         }
 
         // Periodically check party-mode inbox via REST (WebSocket doesn't cover all chat events)
-        if last_party_mode_check.elapsed().as_millis() >= 1500 {
+        if last_party_mode_check.elapsed().as_millis() >= 1500
+          && !party_mode_poll_inflight.swap(true, Ordering::SeqCst)
+        {
           last_party_mode_check = Instant::now();
           let app_clone = app_handle.clone();
           let port_clone = port.clone();
           let token_clone = token.clone();
-          let mut ids_ref = processed_message_ids.clone();
-          // Run check synchronously to keep ordering
-          if let Err(e) = check_for_party_mode_messages_with_connection(
-            &app_clone,
-            &port_clone,
-            &token_clone,
-            &mut ids_ref,
-          ) {
-            eprintln!("Error checking party mode messages: {}", e);
-          } else {
-            processed_message_ids = ids_ref;
-          }
+          let ids_arc = processed_message_ids.clone();
+          let inflight_flag = party_mode_poll_inflight.clone();
+
+          // Run blocking chat polling off the main loop so WebSocket processing stays snappy
+          let _ = rt.spawn_blocking(move || {
+            let mut guard = match ids_arc.lock() {
+              Ok(g) => g,
+              Err(poisoned) => poisoned.into_inner(),
+            };
+
+            if let Err(e) = check_for_party_mode_messages_with_connection(
+              &app_clone,
+              &port_clone,
+              &token_clone,
+              &mut guard,
+            ) {
+              eprintln!("Error checking party mode messages: {}", e);
+            }
+
+            inflight_flag.store(false, Ordering::SeqCst);
+          });
         }
 
         // Poll ChampSelect session periodically to catch late skin selections that may not emit WS events
@@ -543,7 +555,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
           &mut last_selected_skins,
           &mut last_champion_id,
           &mut last_party_mode_check,
-          &mut processed_message_ids,
+          &processed_message_ids,
           &mut last_party_injection_check,
           &mut last_party_injection_time,
         );
@@ -1470,7 +1482,7 @@ fn run_polling_loop(
   last_selected_skins: &mut std::collections::HashMap<u32, SkinData>,
   last_champion_id: &mut Option<u32>,
   last_party_mode_check: &mut Instant,
-  processed_message_ids: &mut std::collections::HashSet<String>,
+  processed_message_ids: &Arc<Mutex<std::collections::HashSet<String>>>,
   last_party_injection_check: &mut Instant,
   last_party_injection_time: &mut Instant,
 ) {
@@ -1494,11 +1506,15 @@ fn run_polling_loop(
     // Party-mode inbox polling
     if last_party_mode_check.elapsed().as_millis() >= 1500 {
       *last_party_mode_check = Instant::now();
+      let mut guard = match processed_message_ids.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+      };
       if let Err(e) = check_for_party_mode_messages_with_connection(
         app_handle,
         port,
         token,
-        processed_message_ids,
+        &mut guard,
       ) {
         eprintln!("[LCU Watcher][poll] party-mode check error: {}", e);
       }
