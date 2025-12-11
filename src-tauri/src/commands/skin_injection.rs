@@ -500,6 +500,7 @@ use std::sync::{Arc, Mutex};
 static MANUAL_INJECTION_ACTIVE: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 static MANUAL_INJECTION_DATA: Lazy<Arc<Mutex<Option<ManualInjectionData>>>> =
   Lazy::new(|| Arc::new(Mutex::new(None)));
+static MANUAL_INJECTION_TRIGGERED: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
 #[derive(Clone, Debug)]
 struct ManualInjectionData {
@@ -543,6 +544,9 @@ pub async fn start_manual_injection(
     *guard = Some(data);
   }
 
+  // Allow a fresh trigger for this session
+  MANUAL_INJECTION_TRIGGERED.store(false, Ordering::Relaxed);
+
   // Set manual injection as active
   MANUAL_INJECTION_ACTIVE.store(true, Ordering::Relaxed);
 
@@ -561,6 +565,7 @@ pub async fn stop_manual_injection(app: AppHandle) -> Result<(), String> {
 
   // Deactivate manual injection
   MANUAL_INJECTION_ACTIVE.store(false, Ordering::Relaxed);
+  MANUAL_INJECTION_TRIGGERED.store(false, Ordering::Relaxed);
 
   // Clear stored data
   {
@@ -594,6 +599,12 @@ pub async fn trigger_manual_injection(app: &AppHandle) -> Result<(), String> {
 
   // Check if manual injection is active
   if !MANUAL_INJECTION_ACTIVE.load(Ordering::Relaxed) {
+    return Ok(());
+  }
+
+  // Prevent duplicate triggers within the same manual session
+  if MANUAL_INJECTION_TRIGGERED.swap(true, Ordering::Relaxed) {
+    println!("[Manual Injection] Trigger already handled for this session, skipping");
     return Ok(());
   }
 
