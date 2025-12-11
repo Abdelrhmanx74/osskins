@@ -17,15 +17,13 @@ interface CustomSkinCardProps {
 export function CustomSkinItem({ skin, onDelete }: CustomSkinCardProps) {
   const [isHovering, setIsHovering] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const {
-    manualInjectionMode,
-    selectedSkins,
-    manualSelectedSkins,
-    selectSkin,
-    selectManualSkin,
-    clearSelection,
-    clearManualSelection,
-  } = useGameStore();
+  const manualInjectionMode = useGameStore((state) => state.manualInjectionMode);
+  const selectedSkins = useGameStore((state) => state.selectedSkins);
+  const manualSelectedSkins = useGameStore((state) => state.manualSelectedSkins);
+  const selectSkin = useGameStore((state) => state.selectSkin);
+  const selectManualSkin = useGameStore((state) => state.selectManualSkin);
+  const clearSelection = useGameStore((state) => state.clearSelection);
+  const clearManualSelection = useGameStore((state) => state.clearManualSelection);
 
   // Check if this skin is selected
   const selectedMap = manualInjectionMode ? manualSelectedSkins : selectedSkins;

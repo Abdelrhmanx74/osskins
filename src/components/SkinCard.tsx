@@ -1,22 +1,25 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { CachedChroma } from "@/utils/api";
 import { ChromaSelector } from "./ChromaSelector";
 import Image from "next/image";
 import { Card, CardContent, CardFooter } from "./ui/card";
-import { useGameStore } from "@/lib/store";
+import { useGameStore, selectSelectedSkin } from "@/lib/store";
 import { Check, Play } from "lucide-react";
 import { Skin } from "@/lib/types";
 import { Skeleton } from "./ui/skeleton";
+import { useCachedImage } from "@/lib/hooks/use-cached-image";
 
 interface SkinCardProps {
   championId: number;
   skin: Skin;
 }
 
-export function SkinCard({ championId, skin }: SkinCardProps) {
-  const { selectedSkins, selectSkin, clearSelection } = useGameStore();
-  const selected = selectedSkins.get(championId);
+export const SkinCard = memo(function SkinCard({ championId, skin }: SkinCardProps) {
+  // Use optimized selector to only subscribe to this specific champion's selection
+  const selected = useGameStore(selectSelectedSkin(championId));
+  const selectSkin = useGameStore((state) => state.selectSkin);
+  const clearSelection = useGameStore((state) => state.clearSelection);
 
   // Initialize selectedChroma from stored selection if it exists
   const [selectedChroma, setSelectedChroma] = useState<CachedChroma | null>(
@@ -29,18 +32,26 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
   );
 
   const [isHovering, setIsHovering] = useState(false);
-  const [imgLoaded, setImgLoaded] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // Determine if this card is selected and if a chroma is selected
-  const isSelected =
-    selected?.skinId === skin.id &&
-    (selectedChroma
-      ? selected.chromaId === selectedChroma.id
-      : !selected.chromaId);
-
   // Show chroma image if selected, otherwise skin image
-  const currentImageSrc = selectedChroma?.skinChromaPath ?? skin.skinSrc;
+  const currentImageSrc = useMemo(
+    () => selectedChroma?.skinChromaPath ?? skin.skinSrc,
+    [selectedChroma, skin.skinSrc]
+  );
+
+  // Use cached image hook
+  const { loaded: imgLoaded } = useCachedImage(currentImageSrc);
+
+  // Determine if this card is selected
+  const isSelected = useMemo(
+    () =>
+      selected?.skinId === skin.id &&
+      (selectedChroma
+        ? selected.chromaId === selectedChroma.id
+        : !selected.chromaId),
+    [selected, skin.id, selectedChroma]
+  );
 
   const handleMouseEnter = () => {
     setIsHovering(true);
@@ -104,12 +115,7 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
               "object-cover transition-opacity duration-200",
               imgLoaded ? "opacity-100" : "opacity-0"
             )}
-            onLoad={() => {
-              setImgLoaded(true);
-            }}
-            onLoadingComplete={() => {
-              setImgLoaded(true);
-            }}
+            priority={isSelected}
           />
         )}
         {isSelected && (
@@ -127,7 +133,7 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
             </div>
           </div>
         )}
-        <CardFooter className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-4 flex flex-col justify-end z-20">
+        <CardFooter className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/90 via-black/60 to-transparent p-4 flex flex-col justify-end z-20">
           <div className="w-full h-fit flex items-end justify-between gap-1">
             <h3 className="text-lg font-semibold text-white drop-shadow-md">
               {selectedChroma?.name ?? skin.name}
@@ -146,4 +152,4 @@ export function SkinCard({ championId, skin }: SkinCardProps) {
       </CardContent>
     </Card>
   );
-}
+});

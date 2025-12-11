@@ -2,8 +2,9 @@ import Image from "next/image";
 import { Card } from "./ui/card";
 import { cn } from "@/lib/utils";
 import { Heart } from "lucide-react";
-import { useRef, useState } from "react";
+import { memo, useRef } from "react";
 import { Skeleton } from "./ui/skeleton";
+import { useCachedImage } from "@/lib/hooks/use-cached-image";
 
 interface ChampionCardProps {
   champion: {
@@ -18,7 +19,7 @@ interface ChampionCardProps {
   className?: string;
 }
 
-export function ChampionCard({
+export const ChampionCard = memo(function ChampionCard({
   champion,
   onClick,
   isSelected,
@@ -27,7 +28,7 @@ export function ChampionCard({
   className,
 }: ChampionCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
-  const [imgLoaded, setImgLoaded] = useState(false);
+  const { loaded: imgLoaded } = useCachedImage(champion.iconSrc);
 
   // Handle favorite click without triggering the main card click
   const handleFavoriteClick = (e: React.MouseEvent) => {
@@ -59,12 +60,7 @@ export function ChampionCard({
             "object-contain transition-opacity duration-200",
             imgLoaded ? "opacity-100" : "opacity-0"
           )}
-          onLoad={() => {
-            setImgLoaded(true);
-          }}
-          onLoadingComplete={() => {
-            setImgLoaded(true);
-          }}
+          priority={isSelected}
         />
       </div>
       {/* <p className="text-sm text-center truncate max-w-full">{champion.name}</p> */}
@@ -85,4 +81,4 @@ export function ChampionCard({
       )}
     </Card>
   );
-}
+});

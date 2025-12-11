@@ -68,12 +68,10 @@ export function TopBar({
   const [showDownloadingModal, setShowDownloadingModal] = useState(false);
   const [showCslolModal, setShowCslolModal] = useState(false);
   // Get tab state from the store
-  const {
-    activeTab,
-    setActiveTab,
-    manualInjectionMode,
-    setManualInjectionMode,
-  } = useGameStore();
+  const activeTab = useGameStore((state) => state.activeTab);
+  const setActiveTab = useGameStore((state) => state.setActiveTab);
+  const manualInjectionMode = useGameStore((state) => state.manualInjectionMode);
+  const setManualInjectionMode = useGameStore((state) => state.setManualInjectionMode);
   const pairedFriendsCount = usePartyModeStore((s) => s.pairedFriends.length);
   // Updater removed: no updater store or hook
 

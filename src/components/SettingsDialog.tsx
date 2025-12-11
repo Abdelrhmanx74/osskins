@@ -39,15 +39,17 @@ export function SettingsDialog() {
   const [isOpen, setIsOpen] = useState(false);
   // CSLOL manager moved to TopBar menu; keep managerOpen only in TopBar
   const [isLoading, setIsLoading] = useState(false);
-  const { leaguePath, setLeaguePath } = useGameStore();
-  const { setShowUpdateModal } = useGameStore();
+  const leaguePath = useGameStore((state) => state.leaguePath);
+  const setLeaguePath = useGameStore((state) => state.setLeaguePath);
+  const setShowUpdateModal = useGameStore((state) => state.setShowUpdateModal);
   const { locale, setLocale, t } = useI18n();
   const toolsStatus = useToolsStore((s) => s.status);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [autoUpdate, setAutoUpdate] = useState<boolean>(true);
   const [startOnTray, setStartOnTray] = useState(false);
-  const { clearAllSelections, selectSkin } = useGameStore();
+  const clearAllSelections = useGameStore((state) => state.clearAllSelections);
+  const selectSkin = useGameStore((state) => state.selectSkin);
   const { updateData, isUpdating } = useDataUpdate();
 
   // Load current auto update preference when dialog opens

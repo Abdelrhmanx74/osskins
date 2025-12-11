@@ -7,8 +7,9 @@ import { useI18n } from "@/lib/i18n";
 
 export function GameDirectorySelector() {
   const [isLoading, setIsLoading] = useState(false);
-  const { leaguePath, setLeaguePath } = useGameStore();
-  const { setShowUpdateModal } = useGameStore();
+  const leaguePath = useGameStore((state) => state.leaguePath);
+  const setLeaguePath = useGameStore((state) => state.setLeaguePath);
+  const setShowUpdateModal = useGameStore((state) => state.setShowUpdateModal);
   const { t } = useI18n();
 
   const handleSelectDirectory = async () => {

@@ -21,12 +21,11 @@ type InjectionStateSnapshot = {
 };
 
 export function InjectionStatusDot({ bordered = false }: { bordered?: boolean }) {
-  const {
-    injectionStatus,
-    setInjectionStatus,
-    lastInjectionError,
-    setLastInjectionError,
-  } = useGameStore();
+  // Use individual selectors to prevent infinite loops
+  const injectionStatus = useGameStore((state) => state.injectionStatus);
+  const setInjectionStatus = useGameStore((state) => state.setInjectionStatus);
+  const lastInjectionError = useGameStore((state) => state.lastInjectionError);
+  const setLastInjectionError = useGameStore((state) => state.setLastInjectionError);
   const { t } = useI18n();
   const toastShownRef = useRef<{ success?: boolean; errorMessage?: string }>({});
   const errorTimeoutRef = useRef<number | null>(null);

@@ -15,8 +15,9 @@ import { useI18n } from "@/lib/i18n";
 import { type MiscItemType, useGameStore } from "@/lib/store";
 import { filterAndSortChampions } from "@/lib/utils/champion-utils";
 import { invoke } from "@tauri-apps/api/core";
+import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, RefreshCw } from "lucide-react";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState, useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
@@ -36,14 +37,14 @@ const ChampionsLoader = () => {
 export default function Home() {
   const { champions, error, hasData, refreshChampions } = useChampions();
   const { updateData, isUpdating, progress } = useDataUpdate();
-  const {
-    leaguePath,
-    activeTab,
-    favorites,
-    toggleFavorite,
-    manualInjectionMode,
-  } = useGameStore();
-  const { showUpdateModal, setShowUpdateModal } = useGameStore();
+  // Use individual selectors to avoid creating new objects on every render
+  const leaguePath = useGameStore((state) => state.leaguePath);
+  const activeTab = useGameStore((state) => state.activeTab);
+  const favorites = useGameStore((state) => state.favorites);
+  const toggleFavorite = useGameStore((state) => state.toggleFavorite);
+  const manualInjectionMode = useGameStore((state) => state.manualInjectionMode);
+  const showUpdateModal = useGameStore((state) => state.showUpdateModal);
+  const setShowUpdateModal = useGameStore((state) => state.setShowUpdateModal);
 
   // Initialize app (load league path, etc)
   // Initialization and config loading are handled globally by AppInitializer
@@ -73,16 +74,16 @@ export default function Home() {
     setSelectedMiscItem(null); // Clear misc item selection when selecting champion
   }, []);
 
-  // Filter champions based on search
-  const filteredChampions = filterAndSortChampions(
-    champions,
-    searchQuery,
-    favorites,
+  // Filter champions based on search - memoized
+  const filteredChampions = useMemo(
+    () => filterAndSortChampions(champions, searchQuery, favorites),
+    [champions, searchQuery, favorites]
   );
 
-  // Currently selected champion data
-  const selectedChampionData = champions.find(
-    (champ) => champ.id === selectedChampion,
+  // Currently selected champion data - memoized
+  const selectedChampionData = useMemo(
+    () => champions.find((champ) => champ.id === selectedChampion),
+    [champions, selectedChampion]
   );
 
   const handleUpdateData = useCallback(async () => {
@@ -275,28 +276,58 @@ export default function Home() {
               onToggleFavorite={toggleFavorite}
               isCustomMode={activeTab === "custom"}
               onMiscItemClick={handleMiscItemClick}
+              disableLayout={searchQuery.trim().length > 0}
             />
           </div>
 
           {/* Right side - Content: if a misc item type is selected show its view, otherwise show tab-specific content */}
           <div className="w-3/4 xl:w-4/5 flex justify-center overflow-y-auto p-2 size-full">
-            {selectedMiscItem ? (
-              <MiscItemView type={selectedMiscItem} />
-            ) : activeTab === "official" ? (
-              manualInjectionMode ? (
-                <ManualSkinGrid
-                  champion={selectedChampionData ?? null}
-                  searchQuery={searchQuery}
-                />
+            <AnimatePresence mode="wait">
+              {selectedMiscItem ? (
+                <motion.div
+                  key={`misc-${selectedMiscItem}`}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  style={{ width: "100%" }}
+                >
+                  <MiscItemView type={selectedMiscItem} />
+                </motion.div>
+              ) : activeTab === "official" ? (
+                <motion.div
+                  key={`official-${selectedChampion ?? "none"}-${manualInjectionMode}`}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  style={{ width: "100%" }}
+                >
+                  {manualInjectionMode ? (
+                    <ManualSkinGrid
+                      champion={selectedChampionData ?? null}
+                      searchQuery={searchQuery}
+                    />
+                  ) : (
+                    <SkinGrid
+                      champion={selectedChampionData ?? null}
+                      searchQuery={searchQuery}
+                    />
+                  )}
+                </motion.div>
               ) : (
-                <SkinGrid
-                  champion={selectedChampionData ?? null}
-                  searchQuery={searchQuery}
-                />
-              )
-            ) : (
-              <CustomSkinList championId={selectedChampion} />
-            )}
+                <motion.div
+                  key={`custom-${selectedChampion ?? "none"}`}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  style={{ width: "100%" }}
+                >
+                  <CustomSkinList championId={selectedChampion} />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>

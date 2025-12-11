@@ -5,6 +5,9 @@ import { ChampionCard } from "./ChampionCard";
 import { MiscCard } from "./MiscCard";
 import { Map, Languages, Shapes, Package } from "lucide-react";
 import { MiscItemType } from "@/lib/store";
+import { memo, useCallback, useMemo } from "react";
+import { useImagePreloader } from "@/lib/hooks/use-cached-image";
+import { motion } from "framer-motion";
 
 interface ChampionGridProps {
   champions: Champion[];
@@ -14,9 +17,10 @@ interface ChampionGridProps {
   onToggleFavorite: (id: number) => void;
   isCustomMode?: boolean;
   onMiscItemClick?: (type: MiscItemType) => void;
+  disableLayout?: boolean;
 }
 
-export function ChampionGrid({
+export const ChampionGrid = memo(function ChampionGrid({
   champions,
   selectedChampion,
   favorites,
@@ -24,27 +28,35 @@ export function ChampionGrid({
   onToggleFavorite,
   isCustomMode = false,
   onMiscItemClick,
+  disableLayout = false,
 }: ChampionGridProps) {
+  // Preload all champion icons
+  const iconSources = useMemo(
+    () => champions.map((champ) => champ.iconSrc),
+    [champions]
+  );
+  useImagePreloader(iconSources);
+
   // Misc card handlers
-  const handleMapClick = () => {
+  const handleMapClick = useCallback(() => {
     console.log("Map misc card clicked");
     onMiscItemClick?.("map");
-  };
+  }, [onMiscItemClick]);
 
-  const handleFontClick = () => {
+  const handleFontClick = useCallback(() => {
     console.log("Font misc card clicked");
     onMiscItemClick?.("font");
-  };
+  }, [onMiscItemClick]);
 
-  const handleHudClick = () => {
+  const handleHudClick = useCallback(() => {
     console.log("HUD misc card clicked");
     onMiscItemClick?.("hud");
-  };
+  }, [onMiscItemClick]);
 
-  const handleMiscClick = () => {
+  const handleMiscClick = useCallback(() => {
     console.log("Misc misc card clicked");
     onMiscItemClick?.("misc");
-  };
+  }, [onMiscItemClick]);
 
   if (champions.length === 0) {
     return (
@@ -54,8 +66,17 @@ export function ChampionGrid({
     );
   }
 
+  const GridWrapper = disableLayout ? "div" : motion.div;
+  const ItemWrapper = disableLayout ? "div" : motion.div;
+
   return (
-    <div className="w-fit mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-2">
+    <GridWrapper
+      {...(!disableLayout && {
+        layout: true,
+        transition: { duration: 0.16, ease: "easeOut" },
+      })}
+      className="w-fit mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-2"
+    >
       {/* Misc cards - available in both official and custom tabs */}
       <>
         <MiscCard icon={Map} type="map" onClick={handleMapClick} title="Map" />
@@ -80,23 +101,23 @@ export function ChampionGrid({
       </>
 
       {champions.map((champion) => (
-        <ChampionCard
+        <ItemWrapper
           key={champion.id}
-          champion={champion}
-          isSelected={selectedChampion === champion.id}
-          isFavorite={favorites.has(champion.id)}
-          onToggleFavorite={() => {
-            onToggleFavorite(champion.id);
-          }}
-          onClick={() => {
-            console.log(
-              `Selected champion: ${champion.name} (ID: ${champion.id})`
-            );
-            onSelectChampion(champion.id);
-          }}
-          className="champion-card"
-        />
+          {...(!disableLayout && {
+            layout: true,
+            transition: { duration: 0.16, ease: "easeOut" },
+          })}
+        >
+          <ChampionCard
+            champion={champion}
+            isSelected={selectedChampion === champion.id}
+            isFavorite={favorites.has(champion.id)}
+            onToggleFavorite={() => onToggleFavorite(champion.id)}
+            onClick={() => onSelectChampion(champion.id)}
+            className="champion-card"
+          />
+        </ItemWrapper>
       ))}
-    </div>
+    </GridWrapper>
   );
-}
+});
