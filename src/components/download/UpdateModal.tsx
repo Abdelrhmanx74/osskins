@@ -10,7 +10,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import React, { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Folder, Loader2 } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { appDataDir, join } from "@tauri-apps/api/path";
@@ -25,6 +25,8 @@ interface UpdateModalProps {
     processedChampions?: number;
     totalChampions?: number;
     currentChampion?: string;
+    /** Dynamic unit label (e.g., "champions", "files", "items") */
+    unit?: string;
   } | null;
   items?: string[] | null;
   updatedSkins?: string[];
@@ -150,12 +152,24 @@ export default function UpdateModal({
     >
       <DialogContent className="sm:max-w-xl">
         <div className="size-full flex flex-col space-y-4">
-          <DialogHeader>
-            <DialogTitle>{title}</DialogTitle>
-            {statusMessage && (
-              <p className="text-sm text-muted-foreground">{statusMessage}</p>
+          <div className="w-full flex flex-1 flex-row items-center justify-between">
+            <DialogHeader>
+              <DialogTitle>{title}</DialogTitle>
+              {statusMessage && (
+                <p className="text-sm text-muted-foreground">{statusMessage}</p>
+              )}
+            </DialogHeader>
+            {openFolderPath && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleOpenFolder}
+                disabled={isBusy}
+              >
+                <Folder />
+              </Button>
             )}
-          </DialogHeader>
+          </div>
 
           {showProgress && (
             <div className="space-y-2">
@@ -164,7 +178,7 @@ export default function UpdateModal({
                 <span>{Math.round(progress.value)}%</span>
                 <span>
                   {progress.processedChampions ?? 0} of{" "}
-                  {progress.totalChampions ?? 0} champions
+                  {progress.totalChampions ?? 0} {progress.unit ?? "items"}
                 </span>
               </div>
               {progress.currentChampion && (
@@ -267,16 +281,7 @@ export default function UpdateModal({
                 {primaryAction.label}
               </Button>
             )}
-            {openFolderPath && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleOpenFolder}
-                disabled={isBusy}
-              >
-                Open Folder
-              </Button>
-            )}
+
             <Button
               className="ml-auto"
               variant="outline"

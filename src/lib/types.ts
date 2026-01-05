@@ -43,6 +43,8 @@ export interface DataUpdateProgress {
   processedChampions: number;
   status: "checking" | "downloading" | "processing";
   progress: number;
+  /** Dynamic unit label (e.g., "champions", "files", "items") */
+  unit?: string;
 }
 
 export interface DataUpdateResult {

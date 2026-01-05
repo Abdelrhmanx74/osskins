@@ -6,8 +6,13 @@ import {
   buildSkinDownloadUrl,
   sanitizeForFileName,
   transformChampionData,
+  getChampionIdFromSkinId,
 } from "../data-utils";
-import type { DataUpdateProgress, EnsureModToolsResult } from "../types";
+import type {
+  DataUpdateProgress,
+  EnsureModToolsResult,
+  ChangedSkinFile,
+} from "../types";
 import { useToolsStore } from "../store/tools";
 
 // Helper function to delay execution
@@ -24,7 +29,7 @@ interface UpdateTuning {
 async function runWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
-  handler: (item: T, index: number) => Promise<R>,
+  handler: (item: T, index: number) => Promise<R>
 ): Promise<R[]> {
   const results: R[] = [];
   const queue = [...items.entries()];
@@ -56,18 +61,19 @@ export function useDataUpdate() {
       options?: {
         force?: boolean;
         onProgress?: (progress: DataUpdateProgress) => void;
-      },
+      }
     ) => {
       if (isUpdating) return;
 
       const force = options?.force ?? false;
       setIsUpdating(true);
       setProgress({
-        currentChampion: "",
+        currentChampion: "Initializing...",
         totalChampions: 0,
         processedChampions: 0,
         status: "checking",
         progress: 0,
+        unit: "steps",
       });
 
       // Performance tuning
@@ -89,16 +95,19 @@ export function useDataUpdate() {
             });
             const toolsResult = await invoke<EnsureModToolsResult>(
               "ensure_mod_tools",
-              { source: "auto" },
+              { source: "auto" }
             );
             toolsStore.mergeProgress("auto", {
-              phase: toolsResult.installed || toolsResult.updated ? "completed" : "idle",
+              phase:
+                toolsResult.installed || toolsResult.updated
+                  ? "completed"
+                  : "idle",
               version: toolsResult.version,
             });
             const hasUpdate = Boolean(
               toolsResult.latestVersion &&
-              toolsResult.version &&
-              toolsResult.version !== toolsResult.latestVersion,
+                toolsResult.version &&
+                toolsResult.version !== toolsResult.latestVersion
             );
             toolsStore.updateStatus({
               installed: toolsResult.installed,
@@ -128,37 +137,238 @@ export function useDataUpdate() {
 
         // Check if we are already up to date (skip if not forced)
         // But always update if data doesn't exist locally
+        let dataExists = false;
+        let storedCommit: string | null = null;
+
         if (!force && latestCommit) {
           try {
-            const dataExists = await invoke<boolean>("check_champions_data");
+            dataExists = await invoke<boolean>("check_champions_data");
             if (!dataExists) {
-              console.log("[Update] No local data exists, proceeding with download");
+              console.log(
+                "[Update] No local data exists, proceeding with full download"
+              );
             } else {
-              const config = await invoke<{ last_data_commit?: string }>("load_config");
-              const storedCommit = config.last_data_commit;
-              console.log(`[Update] Stored commit: ${storedCommit ?? "none"}, Latest: ${latestCommit}`);
+              const config = await invoke<{ last_data_commit?: string }>(
+                "load_config"
+              );
+              storedCommit = config.last_data_commit ?? null;
+              console.log(
+                `[Update] Stored commit: ${
+                  storedCommit ?? "none"
+                }, Latest: ${latestCommit}`
+              );
               if (storedCommit && storedCommit === latestCommit) {
-                console.log("[Update] Local data is up to date. Skipping update.");
+                console.log(
+                  "[Update] Local data is up to date. Skipping update."
+                );
                 setIsUpdating(false);
                 setProgress(null);
                 return;
               }
-              console.log("[Update] Update needed - commits differ or no stored commit");
+              console.log(
+                "[Update] Update needed - commits differ or no stored commit"
+              );
             }
           } catch (err) {
-            console.warn("[Update] Failed to check config (will proceed with update):", err);
+            console.warn(
+              "[Update] Failed to check config (will proceed with update):",
+              err
+            );
           }
         }
 
+        // =====================================================
+        // SMART INCREMENTAL UPDATE: If we have a stored commit,
+        // only download the changed files instead of everything
+        // =====================================================
+        const isFullUpdate = force || !dataExists || !storedCommit;
+
+        if (!isFullUpdate) {
+          console.log("[Update] Attempting incremental update...");
+          try {
+            const changedFiles = await invoke<ChangedSkinFile[]>(
+              "get_changed_skin_files"
+            );
+
+            if (changedFiles.length > 0 && changedFiles.length < 500) {
+              // Do incremental update - only download changed files
+              console.log(
+                `[Update] Incremental update: ${changedFiles.length} files to download`
+              );
+
+              setProgress({
+                currentChampion: "Preparing files...",
+                totalChampions: changedFiles.length,
+                processedChampions: 0,
+                status: "downloading",
+                progress: 0,
+                unit: "files",
+              });
+
+              // Group files by champion for progress display
+              const filesByChampion = new Map<number, ChangedSkinFile[]>();
+              for (const file of changedFiles) {
+                const existing = filesByChampion.get(file.championId) ?? [];
+                existing.push(file);
+                filesByChampion.set(file.championId, existing);
+              }
+
+              // Fetch champion summaries for name mapping
+              const allSummaries = await fetchChampionSummaries();
+              const champIdToName = new Map<number, string>();
+              for (const s of allSummaries) {
+                champIdToName.set(s.id, s.name);
+              }
+
+              let processedCount = 0;
+              const totalFiles = changedFiles.length;
+
+              // Process files with concurrency
+              await runWithConcurrency(
+                changedFiles,
+                tuning.skinConcurrency * 2,
+                async (file) => {
+                  const championName =
+                    champIdToName.get(file.championId) ??
+                    `Champion_${file.championId}`;
+                  const sanitizedChampName = sanitizeForFileName(championName);
+
+                  // Extract filename from the path (last segment)
+                  const pathParts = file.filename.split("/");
+                  const rawFileName = pathParts[pathParts.length - 1];
+
+                  setProgress((prev) => {
+                    if (!prev) return null;
+                    return {
+                      ...prev,
+                      currentChampion: championName,
+                      currentSkin: rawFileName,
+                      status: "downloading",
+                    };
+                  });
+
+                  try {
+                    await invoke("download_file_to_champion_with_progress", {
+                      url: file.downloadUrl,
+                      championName: sanitizedChampName,
+                      fileName: rawFileName,
+                    });
+                  } catch (err) {
+                    console.warn(
+                      `[Update] Failed to download ${file.filename}:`,
+                      err
+                    );
+                  }
+
+                  processedCount++;
+                  setProgress((prev) => {
+                    if (!prev) return null;
+                    const progressValue =
+                      totalFiles === 0
+                        ? 0
+                        : (processedCount / totalFiles) * 100;
+                    return {
+                      ...prev,
+                      processedChampions: processedCount,
+                      progress: progressValue,
+                      status: "processing",
+                    };
+                  });
+                }
+              );
+
+              // Update metadata for changed champions
+              const changedChampionIds = new Set<number>();
+              for (const file of changedFiles) {
+                changedChampionIds.add(file.championId);
+              }
+
+              // Update champion JSON files for those that had changes
+              for (const champId of changedChampionIds) {
+                try {
+                  const summary = allSummaries.find((s) => s.id === champId);
+                  if (summary) {
+                    const details = await fetchChampionDetails(champId);
+                    const championData = transformChampionData(
+                      summary,
+                      details,
+                      new Map()
+                    );
+                    await invoke("update_champion_data", {
+                      championName: sanitizeForFileName(championData.name),
+                      data: JSON.stringify(championData),
+                    });
+                  }
+                } catch (err) {
+                  console.warn(
+                    `[Update] Failed to update metadata for champion ${champId}:`,
+                    err
+                  );
+                }
+              }
+
+              // Save the new commit SHA
+              if (latestCommit) {
+                try {
+                  await invoke("set_last_data_commit", {
+                    sha: latestCommit,
+                    manifestJson: null,
+                  });
+                } catch (err) {
+                  console.warn("[Update] Failed to save commit SHA:", err);
+                }
+              }
+
+              console.log(
+                `[Update] Incremental update completed: ${processedCount} files`
+              );
+              setIsUpdating(false);
+              setProgress(null);
+              return;
+            } else if (changedFiles.length === 0) {
+              // No changes detected
+              console.log(
+                "[Update] No changed files detected, already up to date"
+              );
+              if (latestCommit) {
+                await invoke("set_last_data_commit", {
+                  sha: latestCommit,
+                  manifestJson: null,
+                });
+              }
+              setIsUpdating(false);
+              setProgress(null);
+              return;
+            } else {
+              // Too many changes, fall back to full update
+              console.log(
+                `[Update] Too many changes (${changedFiles.length}), falling back to full update`
+              );
+            }
+          } catch (err) {
+            console.warn(
+              "[Update] Incremental update failed, falling back to full update:",
+              err
+            );
+          }
+        }
+
+        // =====================================================
+        // FULL UPDATE: Download everything
+        // =====================================================
+        console.log("[Update] Performing full update...");
+
         // Fetch champion summaries from Community Dragon
-        console.log("[Update] Fetching champion summaries from Community Dragon...");
+        console.log(
+          "[Update] Fetching champion summaries from Community Dragon..."
+        );
         const allSummaries = await fetchChampionSummaries();
         // Filter out non-playable champions:
         // - ID <= 0 are placeholders/none
         // - ID >= 1000 are doom bots (66xxx), test champions, etc.
         // Real playable champions have IDs from 1-999
         const validSummaries = allSummaries.filter(
-          (s) => s.id > 0 && s.id < 1000,
+          (s) => s.id > 0 && s.id < 1000
         );
 
         // Determine which champions to update
@@ -171,13 +381,13 @@ export function useDataUpdate() {
           if (!hasAllMarker && !hasRepoMarker) {
             // Filter to specific champions (by ID or name)
             const champSet = new Set(
-              championsToUpdate.map((c) => c.toLowerCase()),
+              championsToUpdate.map((c) => c.toLowerCase())
             );
             targetSummaries = validSummaries.filter(
               (s) =>
                 champSet.has(s.id.toString()) ||
                 champSet.has(s.name.toLowerCase()) ||
-                champSet.has(s.alias.toLowerCase()),
+                champSet.has(s.alias.toLowerCase())
             );
           }
         }
@@ -186,17 +396,18 @@ export function useDataUpdate() {
         console.log(`[Update] Processing ${totalChampions} champions...`);
 
         setProgress({
-          currentChampion: "",
+          currentChampion: "Starting download...",
           totalChampions,
           processedChampions: 0,
           status: "downloading",
           progress: 0,
+          unit: "champions",
         });
 
         let processedCount = 0;
 
         const processChampion = async (
-          summary: (typeof targetSummaries)[0],
+          summary: (typeof targetSummaries)[0]
         ) => {
           try {
             setProgress((prev) => {
@@ -223,7 +434,13 @@ export function useDataUpdate() {
                 let downloaded = false;
                 for (const ext of ["zip", "fantome"] as const) {
                   if (downloaded) break;
-                  const url = buildSkinDownloadUrl(summary.id, skin.id, undefined, undefined, ext);
+                  const url = buildSkinDownloadUrl(
+                    summary.id,
+                    skin.id,
+                    undefined,
+                    undefined,
+                    ext
+                  );
                   const fileName = `${baseName}.${ext}`;
 
                   try {
@@ -264,16 +481,19 @@ export function useDataUpdate() {
                         skin.id,
                         chroma.id,
                         undefined,
-                        ext,
+                        ext
                       );
                       const chromaFileName = `${baseName}_chroma_${chroma.id}.${ext}`;
 
                       try {
-                        await invoke("download_file_to_champion_with_progress", {
-                          url: chromaUrl,
-                          championName,
-                          fileName: chromaFileName,
-                        });
+                        await invoke(
+                          "download_file_to_champion_with_progress",
+                          {
+                            url: chromaUrl,
+                            championName,
+                            fileName: chromaFileName,
+                          }
+                        );
                         chromaDownloaded = true;
                       } catch {
                         // Try next extension or skip if chroma doesn't exist
@@ -296,13 +516,17 @@ export function useDataUpdate() {
               }
             };
 
-            await runWithConcurrency(skins, tuning.skinConcurrency, downloadSkin);
+            await runWithConcurrency(
+              skins,
+              tuning.skinConcurrency,
+              downloadSkin
+            );
 
             // Save champion metadata
             const championData = transformChampionData(
               summary,
               details,
-              new Map(),
+              new Map()
             );
 
             if (championData.id <= 0) {
@@ -321,7 +545,7 @@ export function useDataUpdate() {
               if (!prev) return null;
               const processedChampions = Math.min(
                 prev.totalChampions,
-                prev.processedChampions + 1,
+                prev.processedChampions + 1
               );
               const progressValue =
                 prev.totalChampions === 0
@@ -348,12 +572,12 @@ export function useDataUpdate() {
         await runWithConcurrency(
           targetSummaries,
           tuning.championConcurrency,
-          processChampion,
+          processChampion
         );
 
         if (processedCount !== totalChampions) {
           console.warn(
-            `Processed ${processedCount} out of ${totalChampions} champions`,
+            `Processed ${processedCount} out of ${totalChampions} champions`
           );
         }
 
@@ -386,7 +610,7 @@ export function useDataUpdate() {
         setProgress(null);
       }
     },
-    [isUpdating],
+    [isUpdating]
   );
 
   return {

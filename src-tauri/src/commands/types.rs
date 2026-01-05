@@ -10,6 +10,9 @@ pub struct DataUpdateProgress {
   pub processed_champions: usize,
   pub status: String,
   pub progress: f64,
+  /// Dynamic unit label (e.g., "champions", "files", "items")
+  #[serde(default)]
+  pub unit: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

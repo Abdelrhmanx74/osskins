@@ -61,6 +61,12 @@ struct GitHubCompareResult {
   behind_by: u32,
   total_commits: u32,
   files: Option<Vec<GitHubChangedFile>>,
+  commits: Option<Vec<GitHubCommitInfo>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct GitHubCommitInfo {
+  sha: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +75,56 @@ struct GitHubChangedFile {
   status: String, // "added", "modified", "removed"
   additions: u32,
   deletions: u32,
+}
+
+/// Single commit details with file list
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct GitHubCommitWithFiles {
+  sha: String,
+  files: Option<Vec<GitHubChangedFile>>,
+}
+
+/// Changed skin file info returned to frontend
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangedSkinFile {
+  pub champion_id: u32,
+  pub skin_id: u32,
+  pub chroma_id: Option<u32>,
+  pub filename: String,
+  pub status: String, // "added", "modified", "removed"
+  pub download_url: String,
+}
+
+/// Parse a skin file path to extract IDs
+/// e.g., "skins/1/1000/1000.zip" -> (champion_id: 1, skin_id: 1000, chroma_id: None)
+/// e.g., "skins/1/1000/1001/1001.zip" -> (champion_id: 1, skin_id: 1000, chroma_id: Some(1001))
+fn parse_skin_path(path: &str) -> Option<(u32, u32, Option<u32>)> {
+  let segments: Vec<&str> = path.split('/').collect();
+  
+  // Must start with "skins/" and be a skin file
+  if segments.len() < 4 || segments[0] != "skins" {
+    return None;
+  }
+  
+  // Must be a skin file (.zip or .fantome)
+  let filename = segments.last()?;
+  if !filename.ends_with(".zip") && !filename.ends_with(".fantome") {
+    return None;
+  }
+  
+  let champion_id: u32 = segments[1].parse().ok()?;
+  let skin_id: u32 = segments[2].parse().ok()?;
+  
+  // Check if this is a chroma (has 4th segment that's a number)
+  // Structure: skins/{champion_id}/{skin_id}/{chroma_id}/{chroma_id}.zip
+  let chroma_id = if segments.len() >= 5 {
+    segments[3].parse::<u32>().ok()
+  } else {
+    None
+  };
+  
+  Some((champion_id, skin_id, chroma_id))
 }
 
 /// Build HTTP client for API requests
@@ -148,6 +204,8 @@ fn extract_champion_id_from_path(path: &str) -> Option<u32> {
 }
 
 /// Compare commits and get changed files
+/// GitHub's compare API only returns up to 300 files, so for large diffs
+/// we need to fetch individual commits and aggregate their changed files
 async fn get_changed_files_between_commits(
   base_sha: &str,
   head_sha: &str,
@@ -181,7 +239,97 @@ async fn get_changed_files_between_commits(
     .await
     .map_err(|e| format!("Failed to parse compare response: {}", e))?;
 
-  Ok(compare.files.unwrap_or_default())
+  let files = compare.files.unwrap_or_default();
+  let total_commits = compare.total_commits;
+  
+  println!("[DataUpdate] Compare API returned {} files from {} commits", files.len(), total_commits);
+
+  // GitHub compare API has a limit of ~300 files
+  // If we got fewer files than expected for the number of commits, we need to fetch each commit individually
+  // A typical skin update commit has 1-10 files, so if we have many commits but few files, something's truncated
+  if total_commits > 1 && files.len() < 300 {
+    // Files list is likely complete, return it
+    return Ok(files);
+  }
+  
+  // If we have exactly 300 files or the compare shows many commits, fetch commits individually
+  if files.len() >= 300 || total_commits > 10 {
+    println!("[DataUpdate] Files may be truncated (got {} files for {} commits), fetching individual commits...", files.len(), total_commits);
+    
+    // Get the list of commits between base and head
+    let commits = compare.commits.unwrap_or_default();
+    if commits.is_empty() {
+      println!("[DataUpdate] No commits in compare response, using file list as-is");
+      return Ok(files);
+    }
+    
+    // Fetch files from each commit individually and aggregate
+    let mut all_files: std::collections::HashMap<String, GitHubChangedFile> = std::collections::HashMap::new();
+    
+    // Add files from compare response first (these are definitive)
+    for file in files {
+      all_files.insert(file.filename.clone(), file);
+    }
+    
+    // Fetch each commit's files (limit to avoid rate limiting)
+    let max_commits_to_fetch = 50.min(commits.len());
+    println!("[DataUpdate] Fetching files from {} individual commits...", max_commits_to_fetch);
+    
+    for commit_info in commits.iter().take(max_commits_to_fetch) {
+      match fetch_commit_files(&client, &commit_info.sha).await {
+        Ok(commit_files) => {
+          for file in commit_files {
+            // Only track skin files
+            if file.filename.starts_with("skins/") && 
+               (file.filename.ends_with(".zip") || file.filename.ends_with(".fantome")) {
+              all_files.insert(file.filename.clone(), file);
+            }
+          }
+        }
+        Err(e) => {
+          println!("[DataUpdate] Warning: Failed to fetch commit {}: {}", &commit_info.sha[..8], e);
+          // Continue with other commits
+        }
+      }
+      
+      // Small delay to avoid rate limiting
+      tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    
+    println!("[DataUpdate] Aggregated {} unique files from all commits", all_files.len());
+    return Ok(all_files.into_values().collect());
+  }
+
+  Ok(files)
+}
+
+/// Fetch the list of changed files for a specific commit
+async fn fetch_commit_files(client: &reqwest::Client, sha: &str) -> Result<Vec<GitHubChangedFile>, String> {
+  let url = format!(
+    "{}/repos/{}/commits/{}",
+    GITHUB_API_BASE, LEAGUE_SKINS_REPO, sha
+  );
+
+  let mut req = client.get(&url).header("Accept", "application/vnd.github.v3+json");
+
+  if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+    if !token.trim().is_empty() {
+      req = req.header("Authorization", format!("token {}", token));
+    }
+  }
+
+  let resp = req.send().await.map_err(|e| format!("Failed to fetch commit: {}", e))?;
+
+  if !resp.status().is_success() {
+    return Err(format!("GitHub API returned status {}", resp.status()));
+  }
+
+  let commit: GitHubCommitWithFiles = resp
+    .json()
+    .await
+    .map_err(|e| format!("Failed to parse commit response: {}", e))?;
+
+  Ok(commit.files.unwrap_or_default())
 }
 
 /// Get list of champion IDs that have changed between commits
@@ -481,6 +629,74 @@ pub async fn get_changed_champions_from_config(
 
   let changed_ids = get_changed_champion_ids(&last_commit, &latest_commit).await?;
   Ok(changed_ids.iter().map(|id| id.to_string()).collect())
+}
+
+/// Get detailed list of changed skin files between commits
+/// Returns full file info including download URLs for incremental updates
+#[tauri::command]
+pub async fn get_changed_skin_files(
+  app: tauri::AppHandle,
+) -> Result<Vec<ChangedSkinFile>, String> {
+  let Some(last_commit) = read_last_data_commit(&app).unwrap_or(None) else {
+    // No previous commit - this is a fresh install, return empty
+    // (caller should do full download instead)
+    return Ok(Vec::new());
+  };
+
+  let latest_commit = match fetch_latest_commit_sha().await {
+    Ok(sha) => sha,
+    Err(err) => {
+      println!("[DataUpdate] Failed to fetch latest commit: {}", err);
+      return Err(format!("Failed to fetch latest commit: {}", err));
+    }
+  };
+
+  if last_commit == latest_commit {
+    // Already up to date
+    return Ok(Vec::new());
+  }
+
+  let files = get_changed_files_between_commits(&last_commit, &latest_commit).await?;
+  let mut changed_skins: Vec<ChangedSkinFile> = Vec::new();
+
+  for file in files {
+    // Skip non-skin files
+    if !file.filename.starts_with("skins/") {
+      continue;
+    }
+    if !file.filename.ends_with(".zip") && !file.filename.ends_with(".fantome") {
+      continue;
+    }
+    
+    // Skip deleted files (nothing to download)
+    if file.status == "removed" {
+      continue;
+    }
+
+    // Parse the path to extract skin info
+    if let Some((champion_id, skin_id, chroma_id)) = parse_skin_path(&file.filename) {
+      let download_url = format!(
+        "https://raw.githubusercontent.com/{}/main/{}",
+        LEAGUE_SKINS_REPO, file.filename
+      );
+
+      changed_skins.push(ChangedSkinFile {
+        champion_id,
+        skin_id,
+        chroma_id,
+        filename: file.filename,
+        status: file.status,
+        download_url,
+      });
+    }
+  }
+
+  println!(
+    "[DataUpdate] Found {} changed skin files to download",
+    changed_skins.len()
+  );
+
+  Ok(changed_skins)
 }
 
 #[tauri::command]

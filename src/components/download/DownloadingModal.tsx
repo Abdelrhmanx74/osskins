@@ -42,6 +42,7 @@ export function DownloadingModal({
               processedChampions: progress.processedChampions,
               totalChampions: progress.totalChampions,
               currentChampion: progress.currentChampion,
+              unit: progress.unit,
             }
           : null
       }
