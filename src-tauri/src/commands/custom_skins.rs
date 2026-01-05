@@ -4,8 +4,29 @@ use serde_json;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use tauri::Manager;
+use tauri::AppHandle;
 
 // Custom skin upload and management
+
+fn slugify(input: &str) -> String {
+  let lowered = input.to_lowercase();
+  let mut slug = String::with_capacity(lowered.len());
+
+  let mut prev_dash = false;
+  for ch in lowered.chars() {
+    if ch.is_alphanumeric() {
+      slug.push(ch);
+      prev_dash = false;
+    } else {
+      if !prev_dash {
+        slug.push('-');
+        prev_dash = true;
+      }
+    }
+  }
+
+  slug.trim_matches('-').to_string()
+}
 
 #[tauri::command]
 pub async fn upload_custom_skin(
@@ -25,14 +46,14 @@ pub async fn upload_custom_skin(
     let mut command = Command::new("powershell");
     command.creation_flags(CREATE_NO_WINDOW);
     command.args([
-            "-NoProfile",
-            "-Command",
-            r#"Add-Type -AssemblyName System.Windows.Forms; 
-            $dialog = New-Object System.Windows.Forms.OpenFileDialog;
-            $dialog.Filter = 'Skin files (*.skin_file;*.wad;*.client;*.zip)|*.skin_file;*.wad;*.client;*.zip';
-            $dialog.Title = 'Select Custom Skin File';
-            if($dialog.ShowDialog() -eq 'OK') { $dialog.FileName }"#,
-        ]);
+      "-NoProfile",
+      "-Command",
+      r#"Add-Type -AssemblyName System.Windows.Forms;
+        $dialog = New-Object System.Windows.Forms.OpenFileDialog;
+        $dialog.Filter = 'Skin packages (*.fantome;*.zip;*.skin;*.wad;*.client;*.skin_file)|*.fantome;*.zip;*.skin;*.wad;*.client;*.skin_file|All files (*.*)|*.*';
+        $dialog.Title = 'Select Custom Skin Package';
+        if($dialog.ShowDialog() -eq 'OK') { $dialog.FileName }"#,
+    ]);
 
     let output = command
       .output()
@@ -219,9 +240,18 @@ pub async fn upload_multiple_custom_skins(
     champion_id
   );
 
+  // Resolve champion name once for consistent naming (fall back to ID if lookup fails)
+  let champion_name = match get_champion_name(&app, champion_id).await {
+    Ok(name) => name,
+    Err(_) => format!("champion_{}", champion_id),
+  };
+
   // Show file dialog for multiple file selection
   let files = rfd::FileDialog::new()
-    .add_filter("Skin files", &["skin_file", "wad", "client", "zip"])
+    .add_filter(
+      "Skin packages",
+      &["fantome", "zip", "skin", "wad", "client", "skin_file"],
+    )
     .set_title("Select Custom Skin Files")
     .pick_files()
     .ok_or("No files selected")?;
@@ -236,10 +266,13 @@ pub async fn upload_multiple_custom_skins(
     .app_data_dir()
     .map_err(|e| format!("Failed to get app data directory: {}", e))?;
 
-  // Create custom_skins directory if it doesn't exist
+  // Create custom_skins directory (and champion subdir) if it doesn't exist
   let custom_skins_dir = app_data_dir.join("custom_skins");
   std::fs::create_dir_all(&custom_skins_dir)
     .map_err(|e| format!("Failed to create custom skins directory: {}", e))?;
+  let champion_dir = custom_skins_dir.join(&champion_name);
+  std::fs::create_dir_all(&champion_dir)
+    .map_err(|e| format!("Failed to create champion directory: {}", e))?;
 
   let mut uploaded_skins = Vec::new();
 
@@ -268,26 +301,24 @@ pub async fn upload_multiple_custom_skins(
       .unwrap_or("skin_file");
 
     // Create safe filename
-    let safe_name = file_name
-      .chars()
-      .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == ' ')
-      .collect::<String>();
-    let dest_filename = format!("{}_{}.{}", champion_id, safe_name, file_extension);
-    let dest_path = custom_skins_dir.join(&dest_filename);
+    let safe_name = if file_name.trim().is_empty() {
+      format!("skin-{}", skin_id)
+    } else {
+      slugify(file_name)
+    };
+    let dest_filename = format!("{}_{}.{}", champion_name, safe_name, file_extension);
+    let dest_path = champion_dir.join(&dest_filename);
 
     // Copy the selected file to the custom skins directory
     std::fs::copy(&file_path, &dest_path)
       .map_err(|e| format!("Failed to copy custom skin file {}: {}", file_name, e))?;
-
-    // Get champion name - use a simple fallback since this is in a synchronous context
-    let champion_name = format!("Champion {}", champion_id);
 
     // Create custom skin entry
     let custom_skin = CustomSkinData {
       id: skin_id,
       name: safe_name,
       champion_id,
-      champion_name,
+      champion_name: champion_name.clone(),
       file_path: dest_path.to_string_lossy().to_string(),
       created_at: std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -307,4 +338,72 @@ pub async fn upload_multiple_custom_skins(
     champion_id
   );
   Ok(uploaded_skins)
+}
+
+fn persist_custom_skins(app: &AppHandle, skins: &[CustomSkinData]) -> Result<(), String> {
+  let config_dir = app
+    .path()
+    .app_data_dir()
+    .map_err(|e| format!("Failed to get app data dir: {}", e))?
+    .join("config");
+
+  std::fs::create_dir_all(&config_dir)
+    .map_err(|e| format!("Failed to create config dir: {}", e))?;
+
+  let file = config_dir.join("custom_skins.json");
+  let data = serde_json::to_string_pretty(skins)
+    .map_err(|e| format!("Failed to serialize custom skins: {}", e))?;
+
+  std::fs::write(&file, data).map_err(|e| format!("Failed to write custom_skins.json: {}", e))?;
+
+  Ok(())
+}
+
+#[tauri::command]
+pub async fn rename_custom_skin(
+  app: tauri::AppHandle,
+  skin_id: String,
+  new_name: String,
+) -> Result<CustomSkinData, String> {
+  let mut skins = get_custom_skins(app.clone()).await?;
+
+  let target = skins
+    .iter_mut()
+    .find(|s| s.id == skin_id)
+    .ok_or_else(|| format!("Custom skin with ID {} not found", skin_id))?;
+
+  let slug = if new_name.trim().is_empty() {
+    slugify(&target.name)
+  } else {
+    slugify(&new_name)
+  };
+
+  // Derive new filename in the same directory
+  let current_path = std::path::Path::new(&target.file_path);
+  let parent_dir = current_path
+    .parent()
+    .ok_or("Failed to resolve custom skin directory")?;
+  let ext = current_path
+    .extension()
+    .and_then(|s| s.to_str())
+    .unwrap_or("skin_file");
+
+  let new_filename = format!("{}_{}.{}", target.champion_name, slug, ext);
+  let new_path = parent_dir.join(new_filename);
+
+  // Rename file on disk if the destination differs
+  if new_path != current_path {
+    std::fs::rename(current_path, &new_path)
+      .map_err(|e| format!("Failed to rename custom skin file: {}", e))?;
+  }
+
+  target.name = new_name.clone();
+  target.file_path = new_path.to_string_lossy().to_string();
+
+  // Persist with a separate snapshot to avoid borrow conflicts
+  let result = target.clone();
+  let skins_snapshot = skins.clone();
+  persist_custom_skins(&app, &skins_snapshot)?;
+
+  Ok(result)
 }

@@ -51,6 +51,16 @@ export interface DataUpdateResult {
   updatedChampions?: string[];
 }
 
+/** Changed skin file from incremental update comparison */
+export interface ChangedSkinFile {
+  championId: number;
+  skinId: number;
+  chromaId?: number;
+  filename: string;
+  status: "added" | "modified";
+  downloadUrl: string;
+}
+
 export interface EnsureModToolsResult {
   installed: boolean;
   updated: boolean;

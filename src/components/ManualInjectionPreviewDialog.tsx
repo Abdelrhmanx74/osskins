@@ -29,8 +29,10 @@ export function ManualInjectionPreviewDialog({
     const { champions } = useChampions();
     const { miscItems } = useMiscItems();
     const manualSelectedSkins = useGameStore((state) => state.manualSelectedSkins);
+    const manualCustomSelectedSkins = useGameStore((state) => state.manualCustomSelectedSkins);
     const selectedMiscItems = useGameStore((state) => state.selectedMiscItems);
     const clearManualSelection = useGameStore((state) => state.clearManualSelection);
+    const removeManualCustomSkinSelection = useGameStore((state) => state.removeManualCustomSkinSelection);
     const toggleMiscItemSelection = useGameStore((state) => state.toggleMiscItemSelection);
     const selectMiscItem = useGameStore((state) => state.selectMiscItem);
     const customSkins = useGameStore((state) => state.customSkins);
@@ -75,8 +77,10 @@ export function ManualInjectionPreviewDialog({
             chromaId?: number;
             chromaName?: string;
             isCustom?: boolean;
+            skinFile?: string;
         }> = [];
 
+        // Official selections (one per champ)
         manualSelectedSkins.forEach((selection, championId) => {
             const champion = champions.find((c) => c.id === championId);
             const fallbackImage = champion?.iconSrc ?? "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
@@ -99,31 +103,36 @@ export function ManualInjectionPreviewDialog({
                     chromaId: selection.chromaId,
                     chromaName,
                     isCustom: false,
-                });
-                return;
-            }
-
-            // Fallback to custom skins for this champion when the skin is not part of official data
-            const customList = customSkins.get(championId) ?? [];
-            const customSkin = customList.find(
-                (c) => c.file_path === selection.skin_file,
-            );
-
-            if (customSkin) {
-                details.push({
-                    championId: champion?.id ?? championId,
-                    championName: champion?.name ?? customSkin.champion_name,
-                    championIcon: champion?.iconSrc ?? fallbackImage,
-                    skinId: selection.skinId,
-                    skinName: customSkin.name,
-                    skinImage: customSkin.preview_image ?? fallbackImage,
-                    isCustom: true,
+                    skinFile: selection.skin_file,
                 });
             }
         });
 
+        // Custom multi-selects
+        manualCustomSelectedSkins.forEach((selections, championId) => {
+            const champion = champions.find((c) => c.id === championId);
+            const fallbackImage = champion?.iconSrc ?? "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
+            const customList = customSkins.get(championId) ?? [];
+
+            selections.forEach((selection) => {
+                const customSkin = customList.find((c) => c.file_path === selection.skin_file);
+                if (customSkin) {
+                    details.push({
+                        championId: champion?.id ?? championId,
+                        championName: champion?.name ?? customSkin.champion_name,
+                        championIcon: champion?.iconSrc ?? fallbackImage,
+                        skinId: selection.skinId,
+                        skinName: customSkin.name,
+                        skinImage: customSkin.preview_image ?? fallbackImage,
+                        isCustom: true,
+                        skinFile: selection.skin_file,
+                    });
+                }
+            });
+        });
+
         return details;
-    }, [manualSelectedSkins, champions, customSkins]);
+    }, [manualSelectedSkins, manualCustomSelectedSkins, champions, customSkins]);
 
     // Get selected misc items with details
     const selectedMiscDetails = useMemo(() => {
@@ -236,7 +245,7 @@ export function ManualInjectionPreviewDialog({
                         {/* Render Skins After Misc Items */}
                         {selectedSkinsDetails.map((detail) => (
                             <Card
-                                key={detail.championId}
+                                key={`${detail.championId}-${detail.skinId}-${detail.skinName}`}
                                 className="relative rounded-2xl overflow-hidden group ring-2 ring-primary transition-all p-0 min-h-[420px]"
                             >
                                 <CardContent className="p-0 h-full w-full relative">
@@ -257,7 +266,11 @@ export function ManualInjectionPreviewDialog({
                                         className="absolute top-2 right-2 h-8 w-8 opacity-0 group-hover:opacity-100 transition-all duration-200 z-30 rounded-full shadow-lg hover:scale-110"
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            clearManualSelection(detail.championId);
+                                            if (detail.isCustom && detail.skinFile) {
+                                                removeManualCustomSkinSelection(detail.championId, detail.skinFile);
+                                            } else {
+                                                clearManualSelection(detail.championId);
+                                            }
                                         }}
                                     >
                                         <X className="h-4 w-4" />

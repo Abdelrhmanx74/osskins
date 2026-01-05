@@ -7,6 +7,8 @@
 - [x] Handle errors gracefully and provide user feedback on a prod level.
 - [x] Custom skins tab. as in a whole different app tab with a dialog that opens uploading the skin file and adding its champion. and the skin name, etc...
 - [-] Inject skins on reconnect
+- [ ] Roulette mode
+- [ ] Misc items uploading shit
 
 - [x] Optimize performance for large champion/skin datasets.
 - [x] Ensure `mod-tools.exe` is compiled on build and not placed manually

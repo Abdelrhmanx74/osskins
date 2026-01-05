@@ -14,6 +14,9 @@ export function ButtonInjection() {
   const { t } = useI18n();
   const manualInjectionMode = useGameStore((s) => s.manualInjectionMode);
   const manualSelectedSkins = useGameStore((s) => s.manualSelectedSkins);
+  const manualCustomSelectedSkins = useGameStore(
+    (s) => s.manualCustomSelectedSkins
+  );
   const selectedMiscItems = useGameStore((s) => s.selectedMiscItems);
 
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
@@ -50,23 +53,35 @@ export function ButtonInjection() {
 
   const totalSelectedItems = useMemo(() => {
     let total = manualSelectedSkins.size;
+    for (const arr of manualCustomSelectedSkins.values()) {
+      total += arr.length;
+    }
     for (const ids of selectedMiscItems.values()) {
       total += ids.length;
     }
     return total;
-  }, [manualSelectedSkins, selectedMiscItems]);
+  }, [manualSelectedSkins, manualCustomSelectedSkins, selectedMiscItems]);
 
   const handleManualInject = async () => {
     try {
-      // Prepare skins data for backend
-      const skinsArray = Array.from(manualSelectedSkins.values()).map(
-        (skin) => ({
+      // Prepare skins data for backend (official + custom)
+      const skinsArray = [
+        ...Array.from(manualSelectedSkins.values()).map((skin) => ({
           champion_id: skin.championId,
           skin_id: skin.skinId,
           chroma_id: skin.chromaId,
           skin_file: skin.skin_file,
-        }),
-      );
+        })),
+        ...Array.from(manualCustomSelectedSkins.entries()).flatMap(
+          ([championId, skins]) =>
+            skins.map((skin) => ({
+              champion_id: championId,
+              skin_id: skin.skinId,
+              chroma_id: skin.chromaId,
+              skin_file: skin.skin_file,
+            }))
+        ),
+      ];
 
       // Prepare misc items data for backend
       const miscItemsArray: Array<{
@@ -84,6 +99,19 @@ export function ButtonInjection() {
           const item = typeItems.find((i) => i.id === itemId);
           if (item) {
             miscItemsArray.push(item);
+          } else if (itemId.startsWith("builtin-")) {
+            // Handle built-in items (like builtin-font-korean) that aren't in the store
+            // The backend will resolve these to the actual font files
+            const name = itemId.replace("builtin-", "").replace(/-/g, " ");
+            miscItemsArray.push({
+              id: itemId,
+              name: name,
+              item_type: type,
+              skin_file_path: `font_${itemId.replace(
+                "builtin-font-",
+                "builtin_"
+              )}.fantome`,
+            });
           }
         });
       });

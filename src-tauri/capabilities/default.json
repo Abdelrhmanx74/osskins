@@ -78,6 +78,13 @@
     "core:window:allow-is-maximized",
     "core:window:allow-unmaximize",
     "core:window:allow-start-dragging",
-    "shell:allow-open"
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        {
+          "path": "$APPDATA/*"
+        }
+      ]
+    }
   ]
 }

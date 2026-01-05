@@ -13,12 +13,15 @@ use tauri::{AppHandle, Emitter, Manager};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum InjectionStatusValue {
   Idle,
-  Injecting,
-  Success,
+  Injecting,  // Legacy/Compatibility
+  Busy,       // Processing/preparing mods (like cslol StateBusy)
+  Running,    // Overlay is running, waiting for game (like cslol StateRunning)
+  Patching,   // Actively patching the game
+  Success,    // Injection completed for this game
   Error,
 }
 
@@ -27,6 +30,9 @@ impl InjectionStatusValue {
     match self {
       InjectionStatusValue::Idle => "idle",
       InjectionStatusValue::Injecting => "injecting",
+      InjectionStatusValue::Busy => "busy",
+      InjectionStatusValue::Running => "running",
+      InjectionStatusValue::Patching => "patching",
       InjectionStatusValue::Success => "success",
       InjectionStatusValue::Error => "error",
     }
@@ -36,6 +42,7 @@ impl InjectionStatusValue {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InjectionStateSnapshot {
   pub status: InjectionStatusValue,
+  pub status_message: Option<String>,  // Detailed status like "Waiting for league match to start"
   pub last_error: Option<String>,
   pub updated_at_ms: u64,
 }
@@ -43,6 +50,7 @@ pub struct InjectionStateSnapshot {
 static INJECTION_STATE: Lazy<RwLock<InjectionStateSnapshot>> = Lazy::new(|| RwLock::new(
   InjectionStateSnapshot {
     status: InjectionStatusValue::Idle,
+    status_message: None,
     last_error: None,
     updated_at_ms: current_millis(),
   },
@@ -60,16 +68,39 @@ pub fn record_injection_state(
   status: InjectionStatusValue,
   error: Option<String>,
 ) {
+  record_injection_state_with_message(app, status, None, error);
+}
+
+pub fn record_injection_state_with_message(
+  app: &AppHandle,
+  status: InjectionStatusValue,
+  message: Option<String>,
+  error: Option<String>,
+) {
   {
     let mut guard = INJECTION_STATE
       .write()
       .expect("INJECTION_STATE poisoned");
     guard.status = status;
+    guard.status_message = message.clone();
     guard.last_error = error.clone();
     guard.updated_at_ms = current_millis();
   }
 
-  let _ = app.emit("injection-status", status.as_str());
+  // Emit detailed status with message
+  #[derive(Serialize, Clone)]
+  struct StatusPayload {
+    status: &'static str,
+    message: Option<String>,
+  }
+  let _ = app.emit("injection-status", StatusPayload {
+    status: status.as_str(),
+    message: message.clone(),
+  });
+
+  // Also emit legacy status string for backwards compatibility
+  let _ = app.emit("injection-status-simple", status.as_str());
+
   if let Some(err) = error {
     let _ = app.emit("skin-injection-error", err);
   }
@@ -81,6 +112,13 @@ pub fn get_injection_state() -> InjectionStateSnapshot {
     .read()
     .expect("INJECTION_STATE poisoned")
     .clone()
+}
+
+pub fn get_injection_status() -> InjectionStatusValue {
+  INJECTION_STATE
+    .read()
+    .expect("INJECTION_STATE poisoned")
+    .status
 }
 
 // Skin injection related commands
@@ -398,6 +436,9 @@ fn run_mod_tools_warmup(
   overlay_dir: &Path,
 ) -> Result<(), String> {
   // Best-effort warmup: build a minimal overlay to warm caches and AV
+  // This pre-warms Windows Defender by exercising both mkoverlay and runoverlay
+  println!("[Warmup] Starting mod-tools warmup...");
+
   if overlay_dir.exists() {
     if let Err(e) = fs::remove_dir_all(overlay_dir) {
       println!("[Warmup] Failed to clear warmup overlay dir: {}", e);
@@ -411,7 +452,6 @@ fn run_mod_tools_warmup(
       .map_err(|e| format!("[Warmup] Failed to create mods dir: {}", e))?;
   }
 
-  let mut cmd = std::process::Command::new(mod_tools_path);
   let game_dir_str = game_dir
     .to_str()
     .ok_or_else(|| "Invalid game path".to_string())?;
@@ -422,6 +462,8 @@ fn run_mod_tools_warmup(
     .to_str()
     .ok_or_else(|| "Invalid overlay path".to_string())?;
 
+  // Step 1: Run mkoverlay to warm that code path
+  let mut cmd = std::process::Command::new(mod_tools_path);
   cmd.args([
     "mkoverlay",
     mods_dir_str,
@@ -438,17 +480,52 @@ fn run_mod_tools_warmup(
   match cmd.status() {
     Ok(status) if status.success() => {
       println!("[Warmup] mod-tools mkoverlay warmup succeeded");
-      Ok(())
     }
     Ok(status) => {
-      println!("[Warmup] mod-tools mkoverlay warmup failed with status {}", status);
-      Ok(()) // non-fatal; continue silently
+      println!("[Warmup] mod-tools mkoverlay warmup completed with status {}", status);
     }
     Err(e) => {
-      println!("[Warmup] Failed to spawn mod-tools for warmup: {}", e);
-      Ok(())
+      println!("[Warmup] Failed to spawn mod-tools mkoverlay for warmup: {}", e);
     }
   }
+
+  // Step 2: Also warm up runoverlay code path (it will exit quickly since game isn't running)
+  // This pre-loads the DLL injection code and warms Windows Defender for that path too
+  let config_path = overlay_dir.join("warmup-config.json");
+  let _ = fs::write(&config_path, r#"{"enableMods":true}"#);
+
+  let mut run_cmd = std::process::Command::new(mod_tools_path);
+  run_cmd.args([
+    "runoverlay",
+    overlay_dir_str,
+    config_path.to_str().unwrap_or(""),
+    &format!("--game:{}", game_dir_str),
+    "--opts:none",
+  ]);
+
+  #[cfg(target_os = "windows")]
+  run_cmd.creation_flags(crate::injection::core::CREATE_NO_WINDOW);
+
+  // Spawn and immediately try to wait with timeout - runoverlay should exit fast
+  // if game isn't running
+  match run_cmd.spawn() {
+    Ok(mut child) => {
+      // Give it a short time to warm up, then kill if still running
+      std::thread::sleep(std::time::Duration::from_millis(500));
+      let _ = child.kill();
+      let _ = child.wait();
+      println!("[Warmup] mod-tools runoverlay warmup completed");
+    }
+    Err(e) => {
+      println!("[Warmup] Failed to spawn mod-tools runoverlay for warmup: {}", e);
+    }
+  }
+
+  // Clean up warmup files
+  let _ = fs::remove_dir_all(overlay_dir);
+
+  println!("[Warmup] mod-tools warmup completed");
+  Ok(())
 }
 
 #[tauri::command]
@@ -555,6 +632,15 @@ pub async fn start_manual_injection(
 
   println!("[Manual Injection] Manual injection mode activated - waiting for champion select");
 
+  // If we are already in champ select, trigger immediately
+  if crate::commands::lcu_watcher::is_in_champ_select() {
+    println!("[Manual Injection] Already in ChampSelect, triggering immediately");
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+      let _ = trigger_manual_injection(&app_clone).await;
+    });
+  }
+
   Ok(())
 }
 
@@ -593,20 +679,33 @@ pub fn is_manual_injection_active() -> bool {
   MANUAL_INJECTION_ACTIVE.load(Ordering::Relaxed)
 }
 
+// Check if manual injection has been triggered
+pub fn is_manual_injection_triggered() -> bool {
+  MANUAL_INJECTION_TRIGGERED.load(Ordering::Relaxed)
+}
+
 // Trigger manual injection (called by LCU watcher when entering champ select or manually)
 pub async fn trigger_manual_injection(app: &AppHandle) -> Result<(), String> {
   println!("[Manual Injection] Triggering manual injection");
 
   // Check if manual injection is active
   if !MANUAL_INJECTION_ACTIVE.load(Ordering::Relaxed) {
+    println!("[Manual Injection] Trigger called but manual injection is NOT active");
     return Ok(());
   }
 
   // Prevent duplicate triggers within the same manual session
-  if MANUAL_INJECTION_TRIGGERED.swap(true, Ordering::Relaxed) {
-    println!("[Manual Injection] Trigger already handled for this session, skipping");
+  // UNLESS the process is currently Idle (meaning it died or hasn't started)
+  let current_status = get_injection_status();
+  if MANUAL_INJECTION_TRIGGERED.load(Ordering::Relaxed) && current_status != InjectionStatusValue::Idle {
+    println!("[Manual Injection] Trigger already handled and process is running, skipping");
     return Ok(());
   }
+
+  MANUAL_INJECTION_TRIGGERED.store(true, Ordering::Relaxed);
+
+  println!("[Manual Injection] Processing trigger...");
+
 
   // Get the stored injection data
   let data = {
@@ -642,7 +741,7 @@ pub async fn trigger_manual_injection(app: &AppHandle) -> Result<(), String> {
   record_injection_state(app, InjectionStatusValue::Injecting, None);
   let _ = app.emit("manual-injection-status", "injecting");
 
-  // Perform injection
+  // Perform injection - this starts the overlay process which waits for the game
   let result = inject_skins_and_misc(
     app,
     &league_path,
@@ -653,10 +752,18 @@ pub async fn trigger_manual_injection(app: &AppHandle) -> Result<(), String> {
 
   match result {
     Ok(_) => {
-      record_injection_state(app, InjectionStatusValue::Success, None);
-      let _ = app.emit("manual-injection-status", "success");
+      // Overlay is now running and waiting for the game to start
+      // Status will be updated by the stdout reader thread as runoverlay reports progress
+      // Set status to Running (waiting for game) - this may get updated by patcher output
+      record_injection_state_with_message(
+        app, 
+        InjectionStatusValue::Running, 
+        Some("Waiting for league match to start".to_string()),
+        None
+      );
+      let _ = app.emit("manual-injection-status", "running");
       println!(
-        "[Manual Injection] Successfully injected {} skins and {} misc items",
+        "[Manual Injection] Overlay started for {} skins and {} misc items - waiting for game",
         data.skins.len(),
         data.misc_items.len()
       );

@@ -11,6 +11,7 @@ export function useCustomSkins() {
   const [error, setError] = useState<string | null>(null);
   const { customSkins, setCustomSkins, addCustomSkin, removeCustomSkin } =
     useGameStore();
+  const updateCustomSkin = useGameStore((s) => s.updateCustomSkin);
 
   // Load custom skins on initial mount
   useEffect(() => {
@@ -80,6 +81,24 @@ export function useCustomSkins() {
     }
   };
 
+  const renameCustomSkin = async (skinId: string, newName: string) => {
+    try {
+      const updated = await invoke<CustomSkin>("rename_custom_skin", {
+        skinId,
+        newName,
+      });
+      updateCustomSkin(updated);
+      toast.success("Custom skin renamed");
+      return updated;
+    } catch (err) {
+      console.error("Failed to rename custom skin:", err);
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to rename custom skin";
+      toast.error(errorMessage);
+      return null;
+    }
+  };
+
   // Function to delete a custom skin
   const deleteCustomSkin = async (skinId: string) => {
     try {
@@ -99,6 +118,7 @@ export function useCustomSkins() {
     error,
     uploadCustomSkin,
     uploadMultipleCustomSkins,
+    renameCustomSkin,
     deleteCustomSkin,
   };
 }

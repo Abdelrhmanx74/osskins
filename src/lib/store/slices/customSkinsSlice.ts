@@ -4,6 +4,7 @@ import { CustomSkin } from "../../types";
 export interface CustomSkinsSlice {
     customSkins: Map<number, CustomSkin[]>;
     addCustomSkin: (skin: CustomSkin) => void;
+    updateCustomSkin: (skin: CustomSkin) => void;
     removeCustomSkin: (skinId: string) => void;
     setCustomSkins: (skins: CustomSkin[]) => void;
 }
@@ -18,6 +19,16 @@ export const createCustomSkinsSlice: StateCreator<CustomSkinsSlice> = (
             const championId = skin.champion_id;
             const existingSkins = newCustomSkins.get(championId) ?? [];
             newCustomSkins.set(championId, [...existingSkins, skin]);
+            return { customSkins: newCustomSkins };
+        });
+    },
+    updateCustomSkin: (skin) => {
+        set((state) => {
+            const newCustomSkins = new Map(state.customSkins);
+            const championId = skin.champion_id;
+            const existingSkins = newCustomSkins.get(championId) ?? [];
+            const updated = existingSkins.map((s) => (s.id === skin.id ? skin : s));
+            newCustomSkins.set(championId, updated);
             return { customSkins: newCustomSkins };
         });
     },

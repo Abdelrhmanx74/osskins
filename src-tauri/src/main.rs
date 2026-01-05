@@ -181,6 +181,7 @@ fn main() {
       get_all_custom_skins,
       // legacy custom skin commands (may be deprecated)
       upload_custom_skin,
+      rename_custom_skin,
       upload_multiple_custom_skins,
       get_custom_skins,
       delete_custom_skin,
@@ -211,6 +212,7 @@ fn main() {
       stop_manual_injection,
       get_changed_champions_since,
       get_changed_champions_from_config,
+      get_changed_skin_files,
       // new ID-based skin download commands
       download_skin_by_id,
       batch_download_skins,

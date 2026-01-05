@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use tauri::{AppHandle, Manager};
 
 use super::types::{
-  InjectionMode, LAST_INSTANT_ASSIGN_CHAMPIONS, LAST_SHARED_CHAMPION_ID, PHASE_STATE,
+  InjectionMode, LAST_SHARED_CHAMPION_ID, PHASE_STATE,
 };
 use crate::commands::party_mode::RECEIVED_SKINS;
 use crate::commands::types::SavedConfig;

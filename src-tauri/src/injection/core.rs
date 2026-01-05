@@ -511,16 +511,56 @@ impl SkinInjector {
       .lock()
       .expect("failed to lock injection mutex");
     self.log("Stopping skin injection process...");
+    
+    // If we have an overlay process that we started, try to terminate it gracefully
+    // cslol-manager sends a newline to stdin to signal graceful exit
+    if let Some(mut child) = self.overlay_process.take() {
+      // First check if it already exited (game might have ended)
+      match child.try_wait() {
+        Ok(Some(status)) => {
+          self.log(&format!("Overlay process already exited with status: {:?}", status));
+        }
+        Ok(None) => {
+          // Still running - send graceful stop signal
+          self.log("Sending stop signal to overlay process...");
+          
+          // Try graceful stop first - send newline to stdin like cslol does
+          if let Some(ref mut stdin) = child.stdin {
+            use std::io::Write;
+            let _ = stdin.write_all(b"\n");
+            let _ = stdin.flush();
+          }
+          
+          // Wait a bit for graceful exit
+          std::thread::sleep(std::time::Duration::from_millis(500));
+          
+          // Check if it exited
+          match child.try_wait() {
+            Ok(Some(_)) => {
+              self.log("Overlay process exited gracefully");
+            }
+            Ok(None) => {
+              // Still running, force kill
+              self.log("Overlay process didn't exit gracefully, forcing termination...");
+              let _ = child.kill();
+              let _ = child.wait();
+            }
+            Err(e) => {
+              self.log(&format!("Error checking overlay process: {}", e));
+              let _ = child.kill();
+            }
+          }
+        }
+        Err(e) => {
+          self.log(&format!("Error checking overlay process: {}", e));
+          let _ = child.kill();
+        }
+      }
+    }
+    
+    // Clean up any other mod-tools processes that might be lingering
     let _ = self.cleanup_mod_tools_processes();
     std::thread::sleep(std::time::Duration::from_millis(200));
-    // If we have an overlay process that we started, try to terminate it cleanly
-    if let Some(mut child) = self.overlay_process.take() {
-      self.log("Terminating overlay process started by injector...");
-      // Try graceful kill
-      let _ = child.kill();
-      // Wait briefly for it to exit
-      let _ = child.wait();
-    }
 
     // Find and kill the mod-tools processes - more aggressive approach
     #[cfg(target_os = "windows")]

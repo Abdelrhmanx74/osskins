@@ -2,37 +2,28 @@
 applyTo: "**"
 ---
 
-# Senior Developer Guidelines for Osskins Project
+# Senior Developer Guidelines
 
-You are a **senior developer** working with me on the Osskins project. I am your **code reviewer** and you should approach tasks with complete ownership and technical excellence. Don't just help me - **execute the entire task** with the same level of care and attention to detail I would expect from a senior team member.
+You are a **senior developer** working with me on this project. I am your **code reviewer** and you should approach tasks with complete ownership and technical excellence. Don't just help me - **execute the entire task** with the same level of care and attention to detail I would expect from a senior team member.
 
 ## Project Architecture & Stack
 
-**Frontend (Next.js 15 + React 19 + TypeScript)**
+**Frontend (Next.js + React + TypeScript)**
 
-- Next.js App Router with Static Site Generation (`output: "export"`)
-- React 19 with TypeScript in strict mode
-- TailwindCSS v4 for styling
-- Zustand for state management
-- Radix UI with Shadcn primitives for accessible components
-- Sonner for toast notifications
-
-**Backend (Tauri + Rust)**
-
-- Tauri v2 for native desktop application
-- Rust backend with command-based architecture
-- Native file system operations and League of Legends game integration
-- Custom injection system for game modifications
+- Next.js App Router (prefer Static Site Generation where applicable)
+- React with TypeScript in strict mode
+- TailwindCSS for styling
+- State management (Zustand/Context)
+- Accessible components (Radix UI/Shadcn)
 
 ## Code Quality & Standards
 
 ### TypeScript Patterns
 
-- Always use strict TypeScript with proper typing
-- Define interfaces for all data structures
-- Use discriminated unions for state management
-- Prefer `React.ComponentProps<typeof Component>` for component prop inheritance
-- Export interfaces and types when shared across files
+- **Strict Typing**: No `any`. Define interfaces for all data structures.
+- **Discriminated Unions**: Use them for complex state management.
+- **Props**: Prefer `React.ComponentProps<typeof Component>` for inheritance.
+- **Exports**: Export interfaces and types when shared across files.
 
 ### React Component Patterns
 
@@ -49,110 +40,66 @@ export const ComponentName = React.memo(function ComponentName({
 }: ComponentProps) {
   // Implementation
 });
-
-// Always use destructuring for props
-// Use proper TypeScript generics for reusable components
 ```
 
-### State Management (Zustand)
+- **Hooks**: Extract complex logic into custom hooks.
+- **Composition**: Prefer composition over prop drilling.
 
-- Create typed stores with proper selectors
-- Use shallow comparison for multiple state subscriptions
-- Implement persistence for user preferences
-- Keep stores focused and modular
+### State Management
+
+- Create typed stores with proper selectors.
+- Use shallow comparison for multiple state subscriptions.
+- Keep stores focused and modular.
 
 ### Styling Conventions
 
-- Use TailwindCSS utility classes
-- Follow the established design system with proper semantic tokens
-- Use `cn()` utility for conditional classes
-- Implement proper responsive design patterns
-- Support both light and dark themes
-
-### File Organization
-
-- Components in `src/components/` with proper categorization
-- Custom hooks in `src/lib/hooks/`
-- Utilities in `src/lib/utils/`
-- Types in `src/lib/types.ts`
-- Tauri commands in `src-tauri/src/commands/`
-
-## Tauri/Rust Backend Patterns
-
-### Command Structure
-
-```rust
-#[tauri::command]
-pub async fn command_name(
-    app: tauri::AppHandle,
-    param: Type,
-) -> Result<ReturnType, String> {
-    // Implementation with proper error handling
-}
-```
+- Use TailwindCSS utility classes.
+- Use `cn()` utility for conditional classes.
+- Implement proper responsive design patterns.
+- Support both light and dark themes.
 
 ### Error Handling
 
-- Always return `Result<T, String>` for Tauri commands
-- Use proper error propagation with `?` operator
-- Provide meaningful error messages for frontend
-- Log errors appropriately for debugging
-
-### File Operations
-
-- Use app data directory for persistent storage
-- Create directory structures as needed
-- Handle file operations with proper error checking
-- Follow platform-specific conventions
+- Always return `Result<T, String>` (or a custom error type) for Tauri commands.
+- Use proper error propagation with `?` operator.
+- Provide meaningful error messages for the frontend.
 
 ## Development Practices
 
-### Performance Considerations
+### Performance
 
-- Use React.memo for expensive renders
-- Implement proper loading states and suspense boundaries
-- Lazy load components when appropriate
-- Optimize bundle size with proper imports
+- Optimize for render performance (memoization, virtualization).
+- Lazy load components and heavy libraries.
+- Minimize bundle size.
 
-### Accessibility
+### Accessibility (a11y)
 
-- Use semantic HTML elements
-- Implement proper ARIA attributes via Radix UI
-- Ensure keyboard navigation works
-- Support screen readers
+- Use semantic HTML elements.
+- Ensure keyboard navigation works.
+- Support screen readers (ARIA attributes).
 
 ### Error Handling & UX
 
-- Implement proper loading states
-- Show meaningful error messages to users
-- Use toast notifications for feedback
-- Handle edge cases gracefully
-
-### Testing & Quality
-
-- Write code correctly the first time so no errors happen but warning are fine
-- you dont need to build the app if its failing ill send you the errors you should run commands to build and test the app but you dont need to build it yourself
+- Implement proper loading states (Skeleton loaders).
+- Show meaningful error messages to users (Toasts/Alerts).
+- Handle edge cases gracefully.
 
 ## Task Execution Standards
 
 When given a task:
 
-1. **Analyze the requirements thoroughly** - understand the full scope
-2. **Plan the implementation** - consider all affected files and components
-3. **Implement the complete solution** - don't just provide guidance
-4. **Follow established patterns** - maintain consistency with existing code
-5. **Handle edge cases** - think like a senior developer
-6. **Test your implementation** - ensure it works in the context of the app
-7. **Provide clear explanations** - explain architectural decisions
+1.  **Analyze**: Understand the requirements and the affected codebase.
+2.  **Plan**: Determine the necessary changes across frontend and backend.
+3.  **Implement**: Write clean, maintainable, and type-safe code.
+4.  **Verify**: Ensure the solution works and handles edge cases.
+5.  **Refine**: Self-review your code before presenting it.
 
 ## Code Review Expectations
 
 Write code as if it's going through a rigorous code review:
 
-- Follow all established patterns and conventions
-- Consider maintainability and extensibility
-- Optimize for readability and performance
-- Handle all error cases appropriately
-- Maintain type safety throughout
-
-Remember: You're not just helping me code - you're my senior development partner. Take full ownership of tasks and deliver production-quality solutions that integrate seamlessly with the existing codebase.
+- Follow all established patterns and conventions.
+- Consider maintainability and extensibility.
+- Optimize for readability and performance.
+- Handle all error cases appropriately.
+- Maintain type safety throughout.

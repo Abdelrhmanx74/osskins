@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import React, { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Badge } from "../ui/badge";
+import { openPath } from "@tauri-apps/plugin-opener";
+import { appDataDir, join } from "@tauri-apps/api/path";
 
 interface UpdateModalProps {
   isOpen: boolean;
@@ -44,6 +46,7 @@ interface UpdateModalProps {
   tertiaryAction?: { label: string; onClick: () => void; disabled?: boolean };
   onClose?: () => void;
   children?: React.ReactNode;
+  openFolderPath?: string; // relative to app data dir
 }
 
 export default function UpdateModal({
@@ -63,11 +66,23 @@ export default function UpdateModal({
   tertiaryAction,
   onClose,
   children,
+  openFolderPath,
 }: UpdateModalProps) {
   const showProgress = progress !== null && typeof progress.value === "number";
   const shortCommit = commit ? commit.slice(0, 8) : null;
   const [commitTitle, setCommitTitle] = useState<string | null>(null);
   const [loadingCommitTitle, setLoadingCommitTitle] = useState(false);
+
+  const handleOpenFolder = async () => {
+    if (!openFolderPath) return;
+    try {
+      const dir = await appDataDir();
+      const fullPath = await join(dir, openFolderPath);
+      await openPath(fullPath);
+    } catch (error) {
+      console.error("Failed to open folder:", error);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -250,6 +265,16 @@ export default function UpdateModal({
                 disabled={(primaryAction.disabled ?? false) || isBusy}
               >
                 {primaryAction.label}
+              </Button>
+            )}
+            {openFolderPath && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpenFolder}
+                disabled={isBusy}
+              >
+                Open Folder
               </Button>
             )}
             <Button

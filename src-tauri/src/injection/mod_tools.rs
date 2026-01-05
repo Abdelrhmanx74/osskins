@@ -1,7 +1,9 @@
 use crate::injection::error::{InjectionError, ModState};
 use crate::injection::skin_file::copy_default_overlay;
 use std::fs;
-use std::io;
+use std::io::{self, BufRead, BufReader};
+use std::process::Stdio;
+use tauri::Emitter;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use std::path::Path;
@@ -325,21 +327,91 @@ impl crate::injection::core::SkinInjector {
       }
 
       // Run the overlay process - EXACT format from CSLOL
+      // Capture stdout to read status messages like "Waiting for league match to start"
+      // Capture stdin so we can send newline to stop it gracefully (like cslol does)
       let mut command = std::process::Command::new(&mod_tools_path);
       command.args([
         "runoverlay",
         overlay_dir.to_str().unwrap(),
         config_path.to_str().unwrap(),
-        &format!("--game:{}", self.game_path.to_str().unwrap()), // Use game_path which points to Game directory
+        &format!("--game:{}", self.game_path.to_str().unwrap()),
         "--opts:none",
       ]);
+      
+      // Capture stdin for graceful stop, stdout/stderr for status updates
+      command.stdin(Stdio::piped());
+      command.stdout(Stdio::piped());
+      command.stderr(Stdio::piped());
 
       #[cfg(target_os = "windows")]
       command.creation_flags(CREATE_NO_WINDOW);
 
       match command.spawn() {
-        Ok(child) => {
+        Ok(mut child) => {
           self.log("Overlay process started successfully");
+          
+          // Spawn a thread to read stdout and emit status updates
+          if let Some(stdout) = child.stdout.take() {
+            if let Some(app_handle) = self.app_handle.clone() {
+              std::thread::spawn(move || {
+                let reader = BufReader::new(stdout);
+                for line in reader.lines() {
+                  if let Ok(line) = line {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                      // Log the status from runoverlay
+                      crate::commands::lcu_watcher::append_global_log(&format!("[Patcher] {}", trimmed));
+                      let _ = app_handle.emit("terminal-log", format!("[Patcher] {}", trimmed));
+                      
+                      // Parse status messages from mod-tools runoverlay
+                      // Format: "Status: <message>" or "[INF] <message>" or "[DLL] <message>"
+                      if let Some(status_msg) = trimmed.strip_prefix("Status: ") {
+                        // Emit detailed patcher status
+                        let _ = app_handle.emit("patcher-status", status_msg);
+                        
+                        // Update injection state based on patcher status
+                        use crate::commands::skin_injection::{record_injection_state_with_message, InjectionStatusValue};
+                        if status_msg.contains("Waiting for league") {
+                          record_injection_state_with_message(&app_handle, InjectionStatusValue::Running, Some(status_msg.to_string()), None);
+                        } else if status_msg.contains("Patching") {
+                          record_injection_state_with_message(&app_handle, InjectionStatusValue::Patching, Some(status_msg.to_string()), None);
+                        } else if status_msg.contains("Found League") {
+                          record_injection_state_with_message(&app_handle, InjectionStatusValue::Running, Some("Found League - preparing to patch".to_string()), None);
+                        } else if status_msg.contains("exited") {
+                          record_injection_state_with_message(&app_handle, InjectionStatusValue::Success, Some("Game exited - mods were applied".to_string()), None);
+                        }
+                      }
+                    }
+                  }
+                }
+                // Process ended - this means game exited or overlay stopped
+                println!("[Patcher] Overlay process stdout closed");
+                
+                // Update state to Idle when process exits
+                use crate::commands::skin_injection::{record_injection_state, InjectionStatusValue};
+                record_injection_state(&app_handle, InjectionStatusValue::Idle, None);
+              });
+            }
+          }
+          
+          // Also spawn thread for stderr
+          if let Some(stderr) = child.stderr.take() {
+            if let Some(app_handle) = self.app_handle.clone() {
+              std::thread::spawn(move || {
+                let reader = BufReader::new(stderr);
+                for line in reader.lines() {
+                  if let Ok(line) = line {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                      crate::commands::lcu_watcher::append_global_log(&format!("[Patcher ERR] {}", trimmed));
+                      let _ = app_handle.emit("terminal-log", format!("[Patcher ERR] {}", trimmed));
+                    }
+                  }
+                }
+              });
+            }
+          }
+          
           // Store the child so we can terminate it later during cleanup
           self.overlay_process = Some(child);
           return Ok(());

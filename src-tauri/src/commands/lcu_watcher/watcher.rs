@@ -329,6 +329,21 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
           }
         }
 
+        // Check for manual injection trigger while in ChampSelect (if activated late)
+        if last_phase == "ChampSelect"
+          && crate::commands::skin_injection::is_manual_injection_active()
+          && !crate::commands::skin_injection::is_manual_injection_triggered()
+        {
+          println!("[LCU Watcher] Manual injection active in ChampSelect but not triggered - triggering now");
+          let app_clone = app_handle.clone();
+          std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+            rt.block_on(async move {
+              let _ = crate::commands::skin_injection::trigger_manual_injection(&app_clone).await;
+            });
+          });
+        }
+
         // Periodically poll lobby state for Swift Play (Lobby injection mode)
         // WebSocket doesn't reliably emit lobby selection events
         if injection_mode == InjectionMode::Lobby
@@ -677,32 +692,46 @@ fn bootstrap_initial_state(
           );
         }
 
-        if new_phase == "ChampSelect"
-          && *injection_mode == InjectionMode::ChampSelect
-          && !crate::commands::skin_injection::is_manual_injection_active()
-        {
-          let session_url = format!(
-            "https://127.0.0.1:{}/lol-champ-select/v1/session",
-            port
-          );
-          if let Ok(resp) = rt.block_on(async {
-            http_client
-              .get(&session_url)
-              .header("Authorization", &auth_header)
-              .send()
-              .await
-          }) {
-            if resp.status().is_success() {
-              if let Ok(json) = rt.block_on(async { resp.json::<serde_json::Value>().await }) {
-                handle_champ_select_event_data(
-                  app_handle,
-                  league_path,
-                  &json,
-                  last_selected_skins,
-                  last_champion_id,
-                  last_party_injection_check,
-                  last_party_injection_time,
-                );
+        if new_phase == "ChampSelect" {
+          // Check for manual injection mode first - trigger immediately if active and not yet triggered
+          if crate::commands::skin_injection::is_manual_injection_active()
+            && !crate::commands::skin_injection::is_manual_injection_triggered()
+          {
+            println!("[LCU Watcher][Bootstrap] Already in ChampSelect with manual injection active - triggering immediately");
+            let app_clone = app_handle.clone();
+            std::thread::spawn(move || {
+              let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+              rt.block_on(async move {
+                let _ = crate::commands::skin_injection::trigger_manual_injection(&app_clone).await;
+              });
+            });
+          } else if *injection_mode == InjectionMode::ChampSelect
+            && !crate::commands::skin_injection::is_manual_injection_active()
+          {
+            // Normal auto-injection mode
+            let session_url = format!(
+              "https://127.0.0.1:{}/lol-champ-select/v1/session",
+              port
+            );
+            if let Ok(resp) = rt.block_on(async {
+              http_client
+                .get(&session_url)
+                .header("Authorization", &auth_header)
+                .send()
+                .await
+            }) {
+              if resp.status().is_success() {
+                if let Ok(json) = rt.block_on(async { resp.json::<serde_json::Value>().await }) {
+                  handle_champ_select_event_data(
+                    app_handle,
+                    league_path,
+                    &json,
+                    last_selected_skins,
+                    last_champion_id,
+                    last_party_injection_check,
+                    last_party_injection_time,
+                  );
+                }
               }
             }
           }
@@ -759,6 +788,19 @@ fn handle_phase_change(
 
   if should_cleanup {
     PARTY_INJECTION_DONE_THIS_PHASE.store(false, Ordering::Relaxed);
+
+    // If manual injection is active, we don't want to cleanup between games.
+    // The runoverlay process is designed to stay running and wait for the next game.
+    if crate::commands::skin_injection::is_manual_injection_active() {
+      let log_msg = format!(
+        "[LCU Watcher] Phase transition {} -> {} detected, but manual injection is active. Keeping overlay running for next game.",
+        last_phase, new_phase
+      );
+      println!("{}", log_msg);
+      emit_terminal_log(app_handle, &log_msg);
+      return;
+    }
+
     record_injection_state(app_handle, InjectionStatusValue::Idle, None);
     match crate::injection::needs_injection_cleanup(app_handle, league_path) {
       Ok(needs_cleanup) => {
@@ -796,6 +838,8 @@ fn handle_phase_change(
     );
     println!("{}", log_msg);
     emit_terminal_log(app_handle, &log_msg);
+    let manual_active = crate::commands::skin_injection::is_manual_injection_active();
+    println!("[LCU Watcher] Manual injection active: {}", manual_active);
   }
 
   if new_phase == "ChampSelect" {
@@ -839,8 +883,11 @@ fn handle_phase_change(
           let _ = crate::commands::skin_injection::trigger_manual_injection(&app_clone).await;
         });
       });
+    } else {
+      println!("[LCU Watcher] Manual injection mode NOT active");
     }
   }
+
 
   // Manual mode: Lobby -> Matchmaking transition injection
   if *last_phase == "Lobby"

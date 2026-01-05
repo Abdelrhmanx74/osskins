@@ -8,16 +8,8 @@ import { useChampions } from "@/lib/hooks/use-champions";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
-import { Label } from "./ui/label";
-import { Input } from "./ui/input";
+import { CustomSkinRenameDialog } from "./CustomSkinRenameDialog";
+import { CustomSkin } from "@/lib/types";
 
 interface CustomSkinListProps {
   championId: number | null;
@@ -31,11 +23,15 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
     error,
     deleteCustomSkin,
     uploadMultipleCustomSkins,
+    renameCustomSkin,
   } = useCustomSkins();
   const { champions } = useChampions();
 
   // State for uploading
   const [isUploading, setIsUploading] = useState(false);
+  const [renameQueue, setRenameQueue] = useState<CustomSkin[]>([]);
+  const [renameTarget, setRenameTarget] = useState<CustomSkin | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
 
   // Get the champion data if ID is provided
   const champion = championId
@@ -57,7 +53,8 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
     try {
       const result = await uploadMultipleCustomSkins(championId);
       if (result && result.length > 0) {
-        // Success is already handled in the hook with toast
+        setRenameQueue(result);
+        setRenameTarget(result[0]);
       }
     } catch (err) {
       console.error("Error uploading skins:", err);
@@ -78,7 +75,8 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
     try {
       const result = await uploadMultipleCustomSkins(championId);
       if (result && result.length > 0) {
-        // Success is already handled in the hook with toast
+        setRenameQueue(result);
+        setRenameTarget(result[0]);
       }
     } catch (err) {
       console.error("Error uploading multiple skins:", err);
@@ -134,6 +132,10 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
             key={skin.id}
             skin={skin}
             onDelete={deleteCustomSkin}
+            onRename={() => {
+              setRenameTarget(skin);
+              setRenameQueue([]);
+            }}
           />
         ))}
 
@@ -164,6 +166,38 @@ export function CustomSkinList({ championId }: CustomSkinListProps) {
           </span>
         </Button>
       </div>
+
+      <CustomSkinRenameDialog
+        open={!!renameTarget}
+        skin={renameTarget}
+        saving={isRenaming}
+        onClose={() => {
+          setRenameTarget(null);
+          setRenameQueue([]);
+        }}
+        onSave={async (name) => {
+          if (!renameTarget) return;
+          setIsRenaming(true);
+          const updated = await renameCustomSkin(renameTarget.id, name);
+          setIsRenaming(false);
+
+          if (!updated) return;
+
+          // Advance queue if present
+          if (renameQueue.length > 0) {
+            const [, ...rest] = renameQueue;
+            if (rest.length > 0) {
+              setRenameQueue(rest);
+              setRenameTarget(rest[0]);
+            } else {
+              setRenameQueue([]);
+              setRenameTarget(null);
+            }
+          } else {
+            setRenameTarget(null);
+          }
+        }}
+      />
     </>
   );
 }
