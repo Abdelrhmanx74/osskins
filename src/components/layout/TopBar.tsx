@@ -39,7 +39,6 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import CslolManagerModal from "@/components/CslolManagerModal";
 import { Badge } from "../ui/badge";
 
 interface TopBarProps {
@@ -93,14 +92,19 @@ export function TopBar({
   useEffect(() => {
     const loadManualMode = async () => {
       try {
-        const { manualInjectionApi } = await import("@/lib/api/manual-injection");
+        const { manualInjectionApi } = await import(
+          "@/lib/api/manual-injection"
+        );
         const backendMode = await manualInjectionApi.getManualInjectionMode();
         // Only update if different to avoid unnecessary re-renders
         if (backendMode !== manualInjectionMode) {
           setManualInjectionMode(backendMode);
         }
       } catch (error) {
-        console.error("Failed to load manual injection mode from backend:", error);
+        console.error(
+          "Failed to load manual injection mode from backend:",
+          error
+        );
       }
     };
 
@@ -178,10 +182,15 @@ export function TopBar({
                     onSelect={async () => {
                       setManualInjectionMode(false);
                       try {
-                        const { manualInjectionApi } = await import("@/lib/api/manual-injection");
+                        const { manualInjectionApi } = await import(
+                          "@/lib/api/manual-injection"
+                        );
                         await manualInjectionApi.setManualInjectionMode(false);
                       } catch (error) {
-                        console.error("Failed to sync manual injection mode to backend:", error);
+                        console.error(
+                          "Failed to sync manual injection mode to backend:",
+                          error
+                        );
                       }
                     }}
                   >
@@ -195,10 +204,15 @@ export function TopBar({
                     onSelect={async () => {
                       setManualInjectionMode(true);
                       try {
-                        const { manualInjectionApi } = await import("@/lib/api/manual-injection");
+                        const { manualInjectionApi } = await import(
+                          "@/lib/api/manual-injection"
+                        );
                         await manualInjectionApi.setManualInjectionMode(true);
                       } catch (error) {
-                        console.error("Failed to sync manual injection mode to backend:", error);
+                        console.error(
+                          "Failed to sync manual injection mode to backend:",
+                          error
+                        );
                       }
                     }}
                   >

@@ -33,6 +33,9 @@ export function DataUpdateModal({ isOpen, progress }: DataUpdateModalProps) {
                     ? t("loading.champions_data")
                     : t("update.checking");
             case "downloading":
+                if (progress.currentChampion) {
+                    return progress.currentChampion;
+                }
                 return t("update.downloading");
             case "processing":
                 if (progress.currentSkin) {

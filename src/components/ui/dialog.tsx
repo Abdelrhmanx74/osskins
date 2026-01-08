@@ -40,15 +40,11 @@ function DialogOverlay({
       <AnimatePresence>
         <motion.div
           data-slot="dialog-overlay"
-          className={cn(
-            "fixed inset-0 z-50 bg-black/55",
-            className
-          )}
+          className={cn("fixed inset-0 z-50 bg-black/55", className)}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18, ease: "easeOut" }}
-          {...props}
         />
       </AnimatePresence>
     </DialogPrimitive.Overlay>
@@ -74,8 +70,12 @@ function DialogContent({
             initial={{ opacity: 0, scale: 0.94, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
-            transition={{ type: "spring", damping: 22, stiffness: 260, mass: 0.9 }}
-            {...props}
+            transition={{
+              type: "spring",
+              damping: 22,
+              stiffness: 260,
+              mass: 0.9,
+            }}
           >
             {children}
           </motion.div>

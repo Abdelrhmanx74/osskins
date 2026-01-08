@@ -12,7 +12,10 @@ interface SkinGridProps {
   searchQuery?: string;
 }
 
-export const SkinGrid = memo(function SkinGrid({ champion, searchQuery = "" }: SkinGridProps) {
+export const SkinGrid = memo(function SkinGrid({
+  champion,
+  searchQuery = "",
+}: SkinGridProps) {
   const filteredSkins = useMemo(
     () => (champion ? filterSkinsForChampion(champion, searchQuery) : []),
     [champion, searchQuery]
@@ -43,12 +46,15 @@ export const SkinGrid = memo(function SkinGrid({ champion, searchQuery = "" }: S
 
   return (
     <motion.div
-      layout
       className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-5 size-fit pb-2"
       transition={{ duration: 0.14, ease: "easeOut" }}
     >
       {filteredSkins.map((skin) => (
-        <motion.div key={skin.id} layout transition={{ duration: 0.14, ease: "easeOut" }}>
+        <motion.div
+          key={skin.id}
+          layout
+          transition={{ duration: 0.14, ease: "easeOut" }}
+        >
           <SkinCard championId={champion.id} skin={skin} />
         </motion.div>
       ))}

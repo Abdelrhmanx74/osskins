@@ -80,7 +80,7 @@
   "notifications.label": "Notifications",
   "notifications.show_on_share": "Show notif when skins are shared",
   "select.champion_to_view_skins": "Pick a champ to see skins",
-  "welcome.title": "Welcome to League Skin Manager",
+  "welcome.title": "Welcome to Osskins",
   "welcome.select_league_dir": "Pick your League install folder to get rolling",
   "loading.champions_data": "Loading champs data...",
   "injection.nothing": "Nothing injected",

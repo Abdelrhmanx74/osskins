@@ -4,9 +4,9 @@
   "version": "1.5.7",
   "identifier": "com.osskins.app",
   "build": {
-    "beforeDevCommand": "pnpm prepare:cslol-tools && pnpm dev",
+    "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "pnpm prepare:cslol-tools && pnpm build",
+    "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },
   "app": {

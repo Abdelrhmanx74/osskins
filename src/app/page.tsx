@@ -42,7 +42,9 @@ export default function Home() {
   const activeTab = useGameStore((state) => state.activeTab);
   const favorites = useGameStore((state) => state.favorites);
   const toggleFavorite = useGameStore((state) => state.toggleFavorite);
-  const manualInjectionMode = useGameStore((state) => state.manualInjectionMode);
+  const manualInjectionMode = useGameStore(
+    (state) => state.manualInjectionMode
+  );
   const showUpdateModal = useGameStore((state) => state.showUpdateModal);
   const setShowUpdateModal = useGameStore((state) => state.setShowUpdateModal);
 
@@ -55,7 +57,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedChampion, setSelectedChampion] = useState<number | null>(null);
   const [selectedMiscItem, setSelectedMiscItem] = useState<MiscItemType | null>(
-    null,
+    null
   );
   const [initialUpdateTriggered, setInitialUpdateTriggered] = useState(false);
   // If an initial update fails we allow the UI to proceed. This flag is set
@@ -173,7 +175,7 @@ export default function Home() {
 
   if (!leaguePath) {
     return (
-      <main className="flex min-h-full flex-col items-center justify-center p-24">
+      <main className="flex min-h-full flex-col items-center justify-center p-24 bg-background">
         <div className="flex flex-col items-center gap-8">
           <h1 className="text-2xl font-bold">{t("welcome.title")}</h1>
           <p className="text-muted-foreground">
@@ -296,7 +298,9 @@ export default function Home() {
                 </motion.div>
               ) : activeTab === "official" ? (
                 <motion.div
-                  key={`official-${selectedChampion ?? "none"}-${manualInjectionMode}`}
+                  key={`official-${
+                    selectedChampion ?? "none"
+                  }-${manualInjectionMode}`}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}

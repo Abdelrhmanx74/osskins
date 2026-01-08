@@ -102,7 +102,6 @@ export function useDataUpdate() {
                 toolsResult.installed || toolsResult.updated
                   ? "completed"
                   : "idle",
-              version: toolsResult.version,
             });
             const hasUpdate = Boolean(
               toolsResult.latestVersion &&

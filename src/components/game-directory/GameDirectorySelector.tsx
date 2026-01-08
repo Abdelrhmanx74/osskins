@@ -46,7 +46,7 @@ export function GameDirectorySelector() {
   };
 
   return (
-    <div className="flex flex-col gap-4 items-center bg-red-500">
+    <div className="flex flex-col gap-4 items-center">
       <div className="flex items-center gap-4">
         <Button
           onClick={() => {
