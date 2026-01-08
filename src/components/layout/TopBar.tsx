@@ -70,8 +70,12 @@ export function TopBar({
   // Get tab state from the store
   const activeTab = useGameStore((state) => state.activeTab);
   const setActiveTab = useGameStore((state) => state.setActiveTab);
-  const manualInjectionMode = useGameStore((state) => state.manualInjectionMode);
-  const setManualInjectionMode = useGameStore((state) => state.setManualInjectionMode);
+  const manualInjectionMode = useGameStore(
+    (state) => state.manualInjectionMode
+  );
+  const setManualInjectionMode = useGameStore(
+    (state) => state.setManualInjectionMode
+  );
   const pairedFriendsCount = usePartyModeStore((s) => s.pairedFriends.length);
   // Updater removed: no updater store or hook
 
@@ -100,7 +104,7 @@ export function TopBar({
         if (
           (e.target as HTMLElement).closest("[data-tauri-drag-region]") &&
           !(e.target as HTMLElement).closest(
-            "button, input, [role='button'], [role='combobox']",
+            "button, input, [role='button'], [role='combobox']"
           )
         ) {
           // Use the WebviewWindow API for window dragging
@@ -235,15 +239,7 @@ export function TopBar({
                 <RefreshCw className="h-4 w-4" />
                 {t("menu.checkDataUpdates")}
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={(event: Event) => {
-                  event.preventDefault();
-                  setShowCslolModal(true);
-                }}
-              >
-                <RefreshCw className="h-4 w-4" />
-                CSLOL Manager
-              </DropdownMenuItem>
+              {/* CSLOL Manager button removed */}
               {/* Updater menu items removed */}
               <SettingsDialog />
             </DropdownMenuContent>
@@ -261,12 +257,7 @@ export function TopBar({
         onReinstallData={onReinstallData}
         isUpdating={isUpdating}
       />
-      <CslolManagerModal
-        isOpen={showCslolModal}
-        onClose={() => {
-          setShowCslolModal(false);
-        }}
-      />
+      {/* CslolManagerModal removed */}
     </div>
   );
 }

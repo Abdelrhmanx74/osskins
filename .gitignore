@@ -43,5 +43,8 @@ yarn-error.log*
 /src-tauri/gen/
 /src-tauri/cslol-tools/build/
 
+# generated from src-tauri/resources/cslol-tools.zip
+/src-tauri/resources/cslol-tools/
+
 # cslol manager
 cslol-manager-master

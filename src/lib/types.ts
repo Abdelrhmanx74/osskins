@@ -72,14 +72,7 @@ export interface EnsureModToolsResult {
   path?: string;
 }
 
-export interface CslolManagerStatus {
-  installed: boolean;
-  version?: string;
-  latestVersion?: string;
-  hasUpdate: boolean;
-  path?: string;
-  downloadSize?: number;
-}
+// CslolManagerStatus removed: no longer needed
 
 // Custom skin type for user uploaded skins
 export interface CustomSkin {

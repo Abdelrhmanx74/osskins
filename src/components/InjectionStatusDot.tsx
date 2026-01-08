@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { useGameStore } from "@/lib/store";
+import type { InjectionStatus } from "@/lib/store";
 import { useI18n } from "@/lib/i18n";
 import {
   Tooltip,
@@ -12,7 +13,7 @@ import {
 } from "./ui/tooltip";
 import { cn } from "@/lib/utils";
 
-type Status = "idle" | "injecting" | "success" | "error";
+type Status = InjectionStatus;
 
 type InjectionStateSnapshot = {
   status: Status;
@@ -20,14 +21,39 @@ type InjectionStateSnapshot = {
   updated_at_ms: number;
 };
 
-export function InjectionStatusDot({ bordered = false }: { bordered?: boolean }) {
+type BackendStatusPayload = {
+  status: string;
+  message?: string;
+};
+
+const parseBackendStatusPayload = (
+  payload: unknown
+): BackendStatusPayload | null => {
+  if (typeof payload !== "object" || payload === null) return null;
+  const record = payload as Record<string, unknown>;
+  const status = record.status;
+  if (typeof status !== "string") return null;
+  const message =
+    typeof record.message === "string" ? record.message : undefined;
+  return { status, message };
+};
+
+export function InjectionStatusDot({
+  bordered = false,
+}: {
+  bordered?: boolean;
+}) {
   // Use individual selectors to prevent infinite loops
   const injectionStatus = useGameStore((state) => state.injectionStatus);
   const setInjectionStatus = useGameStore((state) => state.setInjectionStatus);
   const lastInjectionError = useGameStore((state) => state.lastInjectionError);
-  const setLastInjectionError = useGameStore((state) => state.setLastInjectionError);
+  const setLastInjectionError = useGameStore(
+    (state) => state.setLastInjectionError
+  );
   const { t } = useI18n();
-  const toastShownRef = useRef<{ success?: boolean; errorMessage?: string }>({});
+  const toastShownRef = useRef<{ success?: boolean; errorMessage?: string }>(
+    {}
+  );
   const errorTimeoutRef = useRef<number | null>(null);
   const lastCleanupAtRef = useRef<number>(0);
   const lastSuccessAtRef = useRef<number>(0);
@@ -42,7 +68,9 @@ export function InjectionStatusDot({ bordered = false }: { bordered?: boolean })
 
   const hydrateFromCache = () => {
     if (typeof window === "undefined") return;
-    const cachedStatus = localStorage.getItem("injection:status") as Status | null;
+    const cachedStatus = localStorage.getItem(
+      "injection:status"
+    ) as Status | null;
     const cachedError = localStorage.getItem("injection:lastError");
     if (cachedStatus) {
       setInjectionStatus(cachedStatus);
@@ -73,7 +101,9 @@ export function InjectionStatusDot({ bordered = false }: { bordered?: boolean })
 
     const hydrate = async () => {
       try {
-        const snapshot = await invoke<InjectionStateSnapshot>("get_injection_state");
+        const snapshot = await invoke<InjectionStateSnapshot>(
+          "get_injection_state"
+        );
         if (cancelled) return;
         const status = snapshot?.status ?? "idle";
         const lastError = snapshot?.last_error ?? null;
@@ -84,7 +114,10 @@ export function InjectionStatusDot({ bordered = false }: { bordered?: boolean })
           showErrorToast(lastError);
         }
       } catch (err) {
-        console.warn("[InjectionStatus] hydrate failed, falling back to cache", err);
+        console.warn(
+          "[InjectionStatus] hydrate failed, falling back to cache",
+          err
+        );
         hydrateFromCache();
       }
     };
@@ -97,9 +130,9 @@ export function InjectionStatusDot({ bordered = false }: { bordered?: boolean })
   }, [setInjectionStatus, setLastInjectionError]);
 
   useEffect(() => {
-    let unlistenStatus: () => void = () => { };
-    let unlistenError: () => void = () => { };
-    let unlistenTerminalLog: () => void = () => { };
+    let unlistenStatus: () => void = () => {};
+    let unlistenError: () => void = () => {};
+    let unlistenTerminalLog: () => void = () => {};
 
     void (async () => {
       // Listen for terminal logs to detect cleanup messages emitted by the backend
@@ -151,6 +184,27 @@ export function InjectionStatusDot({ bordered = false }: { bordered?: boolean })
               toast.dismiss();
               showSuccessToast();
             }
+          } else if (
+            status === "busy" ||
+            status === "running" ||
+            status === "patching"
+          ) {
+            // These are backend states meaning the overlay is active / preparing / patching.
+            // Keep the UI in an active state (yellow dot) without showing a success toast.
+            if (errorTimeoutRef.current) {
+              clearTimeout(errorTimeoutRef.current);
+              errorTimeoutRef.current = null;
+            }
+            setInjectionStatus(status);
+            setLastInjectionError(null);
+            persistSnapshot(status, null);
+            toastShownRef.current.success = false;
+
+            // Treat "running" (overlay alive, waiting for game) as a successful start.
+            if (status === "running" && now >= lastCleanupAtRef.current) {
+              toast.dismiss();
+              showSuccessToast();
+            }
           } else if (status === "error") {
             setInjectionStatus("error");
             persistSnapshot("error", lastErrorRef.current ?? null);
@@ -179,14 +233,22 @@ export function InjectionStatusDot({ bordered = false }: { bordered?: boolean })
           return;
         }
 
-        const rawStatus = typeof payload === "string" ? payload : String(payload);
+        const structured = parseBackendStatusPayload(payload);
+        const rawStatus =
+          structured?.status ??
+          (typeof payload === "string" ? payload : String(payload));
         const normalizedStatus: Status =
           rawStatus === "completed"
             ? "success"
-            : rawStatus === "injecting" || rawStatus === "success" || rawStatus === "error" || rawStatus === "idle"
-              ? (rawStatus as Status)
-              : "error";
-
+            : rawStatus === "idle" ||
+              rawStatus === "injecting" ||
+              rawStatus === "busy" ||
+              rawStatus === "running" ||
+              rawStatus === "patching" ||
+              rawStatus === "success" ||
+              rawStatus === "error"
+            ? (rawStatus as Status)
+            : "error";
         handleStatus(normalizedStatus);
       });
 
@@ -217,7 +279,9 @@ export function InjectionStatusDot({ bordered = false }: { bordered?: boolean })
           return;
         }
 
-        const status = (typeof payload === "string" ? payload : String(payload)) as Status;
+        const status = (
+          typeof payload === "string" ? payload : String(payload)
+        ) as Status;
         setInjectionStatus(status);
         persistSnapshot(status, null);
         if (status === "error") showErrorToast(t("injection.error"));
@@ -240,8 +304,28 @@ export function InjectionStatusDot({ bordered = false }: { bordered?: boolean })
     };
   }, [setInjectionStatus, setLastInjectionError, t]);
 
-  const statusMeta: Record<Status, { color: string; animate?: string; label: string; shadow?: string }> = {
+  const statusMeta: Record<
+    Status,
+    { color: string; animate?: string; label: string; shadow?: string }
+  > = {
     injecting: {
+      color: "bg-yellow-400",
+      animate: "animate-pulse",
+      label: t("injection.injecting"),
+      shadow: "0 0 10px rgba(250,204,21,0.65)",
+    },
+    busy: {
+      color: "bg-yellow-400",
+      animate: "animate-pulse",
+      label: t("injection.injecting"),
+      shadow: "0 0 10px rgba(250,204,21,0.65)",
+    },
+    running: {
+      color: "bg-green-500",
+      label: t("injection.success"),
+      shadow: "0 0 10px rgba(34,197,94,0.45)",
+    },
+    patching: {
       color: "bg-yellow-400",
       animate: "animate-pulse",
       label: t("injection.injecting"),
@@ -280,7 +364,7 @@ export function InjectionStatusDot({ bordered = false }: { bordered?: boolean })
               className={cn(
                 "h-3 w-3 rounded-full border border-border transition-all",
                 color,
-                animate,
+                animate
               )}
               style={shadow ? { boxShadow: shadow } : undefined}
             />

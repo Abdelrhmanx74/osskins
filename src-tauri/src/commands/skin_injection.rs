@@ -154,7 +154,12 @@ pub fn inject_skins(app: tauri::AppHandle, request: SkinInjectionRequest) -> Res
   match result {
     Ok(_) => {
       println!("Skin injection completed successfully");
-      record_injection_state(&app, InjectionStatusValue::Success, None);
+      record_injection_state_with_message(
+        &app,
+        InjectionStatusValue::Running,
+        Some("Waiting for league match to start".to_string()),
+        None,
+      );
       Ok(())
     }
     Err(err) => {
@@ -221,7 +226,12 @@ pub async fn inject_game_skins(
   let result = match inject_skins_impl(&app_handle, &game_path, &internal_skins, base_path) {
     Ok(_) => {
       println!("Skin injection completed successfully");
-      record_injection_state(&app_handle, InjectionStatusValue::Success, None);
+      record_injection_state_with_message(
+        &app_handle,
+        InjectionStatusValue::Running,
+        Some("Waiting for league match to start".to_string()),
+        None,
+      );
       Ok("Skin injection completed successfully".to_string())
     }
     Err(e) => {
@@ -302,7 +312,12 @@ pub async fn inject_skins_with_misc(
   ) {
     Ok(_) => {
       println!("Enhanced skin injection completed successfully");
-      record_injection_state(&app_handle, InjectionStatusValue::Success, None);
+      record_injection_state_with_message(
+        &app_handle,
+        InjectionStatusValue::Running,
+        Some("Waiting for league match to start".to_string()),
+        None,
+      );
       Ok("Enhanced skin injection completed successfully".to_string())
     }
     Err(e) => {
@@ -401,7 +416,12 @@ pub async fn inject_all_selected_skins(app: AppHandle) -> Result<(), String> {
 
   match result {
     Ok(_) => {
-      record_injection_state(&app, InjectionStatusValue::Success, None);
+      record_injection_state_with_message(
+        &app,
+        InjectionStatusValue::Running,
+        Some("Waiting for league match to start".to_string()),
+        None,
+      );
       println!(
         "Successfully injected {} skins and {} misc items",
         skins.len(),

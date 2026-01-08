@@ -386,10 +386,30 @@ impl crate::injection::core::SkinInjector {
                 }
                 // Process ended - this means game exited or overlay stopped
                 println!("[Patcher] Overlay process stdout closed");
-                
-                // Update state to Idle when process exits
-                use crate::commands::skin_injection::{record_injection_state, InjectionStatusValue};
-                record_injection_state(&app_handle, InjectionStatusValue::Idle, None);
+
+                // Update UI state when process exits.
+                // If we already reported Success, returning to Idle is expected.
+                // Otherwise, surface an error because the overlay stopped early.
+                use crate::commands::skin_injection::{
+                  get_injection_status, record_injection_state, record_injection_state_with_message,
+                  InjectionStatusValue,
+                };
+
+                match get_injection_status() {
+                  InjectionStatusValue::Success | InjectionStatusValue::Idle => {
+                    record_injection_state(&app_handle, InjectionStatusValue::Idle, None);
+                  }
+                  _ => {
+                    record_injection_state_with_message(
+                      &app_handle,
+                      InjectionStatusValue::Error,
+                      Some("Overlay process stopped unexpectedly".to_string()),
+                      Some(
+                        "Overlay exited before patching the game (mod-tools stopped/crashed).".to_string(),
+                      ),
+                    );
+                  }
+                }
               });
             }
           }
@@ -412,8 +432,8 @@ impl crate::injection::core::SkinInjector {
             }
           }
           
-          // Store the child so we can terminate it later during cleanup
-          self.overlay_process = Some(child);
+          // Store the child globally so it stays alive even after this injector instance is dropped.
+          crate::injection::core::set_global_overlay_process(child);
           return Ok(());
         }
         Err(e) => {

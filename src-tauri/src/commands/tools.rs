@@ -19,9 +19,6 @@ use tokio::sync::Mutex;
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-const RELEASE_API_URL: &str =
-  "https://api.github.com/repos/LeagueToolkit/cslol-manager/releases/latest";
-const PROGRESS_EVENT: &str = "cslol-tools-progress";
 const TOOLS_DIR_NAME: &str = "cslol-tools";
 
 #[derive(Debug, Serialize)]
@@ -33,17 +30,6 @@ pub struct EnsureModToolsResult {
   pub version: Option<String>,
   pub latest_version: Option<String>,
   pub path: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CslolManagerStatus {
-  pub installed: bool,
-  pub version: Option<String>,
-  pub latest_version: Option<String>,
-  pub has_update: bool,
-  pub path: Option<String>,
-  pub download_size: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -60,26 +46,7 @@ struct ToolsProgressPayload {
   source: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct ReleaseResponse {
-  tag_name: String,
-  assets: Vec<ReleaseAsset>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReleaseAsset {
-  name: String,
-  browser_download_url: String,
-  size: u64,
-}
-
-#[derive(Debug, Clone)]
-struct ReleaseInfo {
-  version: String,
-  download_url: String,
-  size: u64,
-  asset_name: String,
-}
+// No longer needed: ReleaseResponse, ReleaseAsset, ReleaseInfo
 
 #[derive(Debug, Clone)]
 struct LocalToolsPaths {
@@ -90,8 +57,8 @@ struct LocalToolsPaths {
 static WARMUP_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 static WARMUP_DONE: AtomicBool = AtomicBool::new(false);
 
-fn emit_progress(app: &tauri::AppHandle, payload: ToolsProgressPayload) {
-  let _ = app.emit(PROGRESS_EVENT, payload);
+fn emit_progress(_app: &tauri::AppHandle, _payload: ToolsProgressPayload) {
+  // No-op: CSLOL tools progress events removed. Kept for compatibility.
 }
 
 fn build_http_client() -> Result<reqwest::Client, String> {
@@ -106,13 +73,51 @@ fn build_http_client() -> Result<reqwest::Client, String> {
     .map_err(|e| format!("Failed to build HTTP client: {}", e))
 }
 
-async fn resolve_paths(app: &tauri::AppHandle) -> Result<LocalToolsPaths, String> {
-  let app_data_dir = app
+async fn resolve_paths(_app: &tauri::AppHandle) -> Result<LocalToolsPaths, String> {
+  // Prefer app data locations, then bundled resource directory, then exe sibling locations
+  // Resolve app_data_dir where we can store config; fall back to resource dir when unavailable
+  let app_data_dir = _app
     .path()
     .app_data_dir()
-    .map_err(|e| format!("Failed to resolve app data directory: {}", e))?;
+    .unwrap_or_else(|_| {
+      // fallback to resource dir or current exe parent
+      _app
+        .path()
+        .resource_dir()
+        .unwrap_or_else(|_| std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("."))).to_path_buf()
+    });
 
-  let tools_dir = app_data_dir.join(TOOLS_DIR_NAME);
+  // Candidate tools dirs
+  let mut candidates = Vec::new();
+  candidates.push(app_data_dir.join(TOOLS_DIR_NAME));
+  if let Ok(app_local) = _app.path().app_local_data_dir() {
+    candidates.push(app_local.join(TOOLS_DIR_NAME));
+    candidates.push(app_local.join("mod-tools.exe"));
+  }
+  if let Ok(resource_dir) = _app.path().resource_dir() {
+    candidates.push(resource_dir.join(TOOLS_DIR_NAME));
+    candidates.push(resource_dir.join("mod-tools.exe"));
+  }
+  if let Ok(exe_path) = std::env::current_exe() {
+    if let Some(exe_dir) = exe_path.parent() {
+      candidates.push(exe_dir.join(TOOLS_DIR_NAME));
+      candidates.push(exe_dir.join("resources").join(TOOLS_DIR_NAME));
+      candidates.push(exe_dir.join("mod-tools.exe"));
+    }
+  }
+
+  // Pick the first existing candidate, or default to resource/tools folder
+  let tools_dir = candidates
+    .into_iter()
+    .find(|p| p.exists())
+    .unwrap_or_else(|| {
+      // fallback: resource dir cslol-tools or app_data_dir/cslol-tools
+      if let Ok(resource_dir) = _app.path().resource_dir() {
+        resource_dir.join(TOOLS_DIR_NAME)
+      } else {
+        app_data_dir.join(TOOLS_DIR_NAME)
+      }
+    });
 
   Ok(LocalToolsPaths {
     app_data_dir,
@@ -157,124 +162,24 @@ async fn mod_tools_exists(paths: &LocalToolsPaths) -> bool {
 
 async fn ensure_mod_tools_internal(
   app: &tauri::AppHandle,
-  force_download: bool,
-  source: &str,
+  _force_download: bool,
+  _source: &str,
 ) -> Result<EnsureModToolsResult, String> {
-  emit_progress(
-    app,
-    ToolsProgressPayload {
-      phase: "checking".to_string(),
-      progress: 0.0,
-      downloaded: None,
-      total: None,
-      speed: None,
-      message: None,
-      version: None,
-      error: None,
-      source: source.to_string(),
-    },
-  );
-
-  let result: Result<EnsureModToolsResult, String> = async {
-    let paths = resolve_paths(app).await?;
-    let release_info = fetch_latest_release_info().await?;
-    let installed = mod_tools_exists(&paths).await;
-    let current_version = read_installed_version(&paths).await?;
-
-    let up_to_date = installed
-      && !force_download
-      && current_version
-        .as_ref()
-        .map(|v| v == &release_info.version)
-        .unwrap_or(false);
-
-    if up_to_date {
-      Ok(EnsureModToolsResult {
-        installed: true,
-        updated: false,
-        skipped: true,
-        version: current_version.clone(),
-        latest_version: Some(release_info.version.clone()),
-        path: Some(
-          paths
-            .tools_dir
-            .join("mod-tools.exe")
-            .to_string_lossy()
-            .to_string(),
-        ),
-      })
+  let paths = resolve_paths(app).await?;
+  let installed = mod_tools_exists(&paths).await;
+  let version = read_installed_version(&paths).await?;
+  Ok(EnsureModToolsResult {
+    installed,
+    updated: false,
+    skipped: false,
+    version,
+    latest_version: None,
+    path: if installed {
+      Some(paths.tools_dir.join("mod-tools.exe").to_string_lossy().to_string())
     } else {
-      download_and_install_tools(app, &paths, &release_info, source).await?;
-      Ok(EnsureModToolsResult {
-        installed: true,
-        updated: true,
-        skipped: false,
-        version: Some(release_info.version.clone()),
-        latest_version: Some(release_info.version.clone()),
-        path: Some(
-          paths
-            .tools_dir
-            .join("mod-tools.exe")
-            .to_string_lossy()
-            .to_string(),
-        ),
-      })
-    }
-  }
-  .await;
-
-  match &result {
-    Ok(ensure) if ensure.skipped => {
-      emit_progress(
-        app,
-        ToolsProgressPayload {
-          phase: "skipped".to_string(),
-          progress: 100.0,
-          downloaded: None,
-          total: None,
-          speed: None,
-          message: None,
-          version: ensure.version.clone(),
-          error: None,
-          source: source.to_string(),
-        },
-      );
-    }
-    Ok(ensure) => {
-      emit_progress(
-        app,
-        ToolsProgressPayload {
-          phase: "completed".to_string(),
-          progress: 100.0,
-          downloaded: None,
-          total: None,
-          speed: None,
-          message: None,
-          version: ensure.version.clone(),
-          error: None,
-          source: source.to_string(),
-        },
-      );
-    }
-    Err(err) => {
-      emit_progress(
-        app,
-        ToolsProgressPayload {
-          phase: "error".to_string(),
-          progress: 0.0,
-          downloaded: None,
-          total: None,
-          speed: None,
-          message: None,
-          version: None,
-          error: Some(err.clone()),
-          source: source.to_string(),
-        },
-      );
-    }
-  }
-
-  result
+      None
+    },
+  })
 }
 
 /// Try to pick a suitable asset from the release payload.
@@ -283,96 +188,7 @@ async fn ensure_mod_tools_internal(
 /// 2) any archive-like asset (zip, 7z, tar.gz, tar, msi)
 /// 3) executable (.exe)
 /// If none found, returns an error listing available assets.
-async fn fetch_latest_release_info() -> Result<ReleaseInfo, String> {
-  let client = build_http_client()?;
-  let response = client
-    .get(RELEASE_API_URL)
-    .send()
-    .await
-    .map_err(|e| format!("Failed to fetch CSLOL Manager release info: {}", e))?;
-
-  if response.status() == reqwest::StatusCode::FORBIDDEN {
-    return Err("GitHub API rate limit reached. Please try again later.".into());
-  }
-
-  if !response.status().is_success() {
-    return Err(format!(
-      "GitHub API returned {} while fetching release info",
-      response.status()
-    ));
-  }
-
-  let payload: ReleaseResponse = response
-    .json()
-    .await
-    .map_err(|e| format!("Failed to parse release info: {}", e))?;
-
-  // Helper closures
-  let is_archive = |n: &str| {
-    let l = n.to_lowercase();
-    l.ends_with(".zip")
-      || l.ends_with(".7z")
-      || l.ends_with(".tar.gz")
-      || l.ends_with(".tgz")
-      || l.ends_with(".tar")
-  };
-  let is_sfx = |n: &str| n.to_lowercase().ends_with(".exe");
-
-  // 1) Prefer explicit cslol-manager.zip if present
-  if let Some(asset) = payload
-    .assets
-    .iter()
-    .find(|asset| asset.name == "cslol-manager.zip")
-  {
-    return Ok(ReleaseInfo {
-      version: payload.tag_name,
-      download_url: asset.browser_download_url.clone(),
-      size: asset.size,
-      asset_name: asset.name.clone(),
-    });
-  }
-
-  // 2) Try any ZIP/7z archive that looks like the manager package
-  // Prefer regular archives over SFX
-  if let Some(asset) = payload.assets.iter().find(|asset| {
-    let name_matches = asset.name.to_lowercase().contains("cslol-manager")
-      || asset.name.to_lowercase().contains("cslol");
-    name_matches && is_archive(&asset.name)
-  }) {
-    return Ok(ReleaseInfo {
-      version: payload.tag_name,
-      download_url: asset.browser_download_url.clone(),
-      size: asset.size,
-      asset_name: asset.name.clone(),
-    });
-  }
-
-  // 3) Fallback to 7z SFX (.exe) if no regular archives found
-  if let Some(asset) = payload.assets.iter().find(|asset| {
-    let name_matches = asset.name.to_lowercase().contains("cslol-manager")
-      || asset.name.to_lowercase().contains("cslol");
-    name_matches && is_sfx(&asset.name)
-  }) {
-    return Ok(ReleaseInfo {
-      version: payload.tag_name,
-      download_url: asset.browser_download_url.clone(),
-      size: asset.size,
-      asset_name: asset.name.clone(),
-    });
-  }
-
-  // Nothing matched - build informative error
-  let names = payload
-    .assets
-    .iter()
-    .map(|a| a.name.clone())
-    .collect::<Vec<_>>()
-    .join(", ");
-  Err(format!(
-    "Could not find a suitable cslol-manager archive (.zip, .7z, or .exe SFX) in latest release. Available assets: {}",
-    names
-  ))
-}
+// fetch_latest_release_info removed: no longer needed
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), io::Error> {
   if !dst.exists() {
@@ -662,216 +478,16 @@ fn try_extract_archive(archive_path: &Path, extract_path: &Path) -> Result<(), S
   ))
 }
 
-async fn download_and_install_tools(
-  app: &tauri::AppHandle,
-  paths: &LocalToolsPaths,
-  release: &ReleaseInfo,
-  source: &str,
-) -> Result<(), String> {
-  let temp_root = paths.app_data_dir.join("tmp");
-  async_fs::create_dir_all(&temp_root)
-    .await
-    .map_err(|e| format!("Failed to create temporary directory: {}", e))?;
+// download_and_install_tools removed: no longer needed
 
-  let temp_dir = temp_root.join(format!("cslol-tools-{}", Utc::now().timestamp()));
-  async_fs::create_dir_all(&temp_dir)
-    .await
-    .map_err(|e| format!("Failed to create temporary directory: {}", e))?;
-
-  // Use the actual asset name for the downloaded file (preserves extension)
-  let download_file = temp_dir.join(&release.asset_name);
-  let extract_path = temp_dir.join("extracted");
-
-  let client = build_http_client()?;
-
-  // Download with progress tracking
-  let version = release.version.clone();
-  let source_str = source.to_string();
-  let app_handle = app.clone();
-  let downloaded = download_file_with_progress(
-    &client,
-    &release.download_url,
-    &download_file,
-    release.size,
-    move |downloaded, total, speed| {
-      let progress = if total > 0 {
-        (downloaded as f64 / total as f64) * 100.0
-      } else {
-        0.0
-      };
-      emit_progress(
-        &app_handle,
-        ToolsProgressPayload {
-          phase: "downloading".to_string(),
-          progress,
-          downloaded: Some(downloaded),
-          total: Some(total),
-          speed: Some(speed),
-          message: None,
-          version: Some(version.clone()),
-          error: None,
-          source: source_str.clone(),
-        },
-      );
-    },
-  )
-  .await?;
-
-  emit_progress(
-    app,
-    ToolsProgressPayload {
-      phase: "installing".to_string(),
-      progress: 95.0,
-      downloaded: Some(downloaded),
-      total: Some(release.size),
-      speed: None,
-      message: None,
-      version: Some(release.version.clone()),
-      error: None,
-      source: source.to_string(),
-    },
-  );
-
-  // Attempt extraction using multiple strategies. This runs in blocking thread because extraction can be CPU/IO heavy.
-  let download_file_clone = download_file.clone();
-  let extract_path_clone = extract_path.clone();
-  tokio::task::spawn_blocking(move || -> Result<(), String> {
-    // Ensure extract path exists
-    if let Err(e) = fs::create_dir_all(&extract_path_clone) {
-      return Err(format!(
-        "Failed to create extract directory {}: {}",
-        extract_path_clone.display(),
-        e
-      ));
-    }
-
-    // try_extract_archive now handles: ZIP, 7z/SFX (.exe), external 7z, and tar
-    try_extract_archive(&download_file_clone, &extract_path_clone)
-      .map_err(|e| format!("Extraction failed: {}", e))
-  })
-  .await
-  .map_err(|e| format!("Extraction task failed: {}", e))??;
-
-  // After extraction, look for the tools folder in common locations
-  let mut candidates = vec![extract_path.join("cslol-manager").join(TOOLS_DIR_NAME)];
-  candidates.push(extract_path.join(TOOLS_DIR_NAME));
-
-  // Some self-extracting exes may produce a nested folder or produce contents at root
-  // add additional candidates: root of extracted, and any first-level directory that contains the TOOLS_DIR_NAME
-  candidates.push(extract_path.clone());
-  if let Ok(read_dir) = fs::read_dir(&extract_path) {
-    if let Ok(iter) = read_dir.into_iter().collect::<Result<Vec<_>, _>>() {
-      for entry in iter {
-        if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-          candidates.push(entry.path().join(TOOLS_DIR_NAME));
-          candidates.push(entry.path());
-        }
-      }
-    }
-  }
-
-  let tools_source = candidates
-    .into_iter()
-    .find(|path| path.exists())
-    .ok_or_else(|| "Extracted archive does not contain cslol-tools folder".to_string())?;
-
-  if async_fs::metadata(&paths.tools_dir).await.is_ok() {
-    async_fs::remove_dir_all(&paths.tools_dir)
-      .await
-      .map_err(|e| format!("Failed to remove existing CSLOL tools: {}", e))?;
-  }
-
-  let tools_dir_clone = paths.tools_dir.clone();
-  let tools_source_clone = tools_source.clone();
-  tokio::task::spawn_blocking(move || -> Result<(), String> {
-    copy_dir_recursive(&tools_source_clone, &tools_dir_clone)
-      .map_err(|e| format!("Failed to install CSLOL tools: {}", e))
-  })
-  .await
-  .map_err(|e| format!("Install task failed: {}", e))??;
-
-  if async_fs::metadata(paths.tools_dir.join("mod-tools.exe"))
-    .await
-    .is_err()
-  {
-    return Err("Installed CSLOL tools are missing mod-tools.exe".into());
-  }
-
-  // Write version to config.json
-  let config_dir = paths.app_data_dir.join("config");
-  async_fs::create_dir_all(&config_dir)
-    .await
-    .map_err(|e| format!("Failed to create config dir: {}", e))?;
-  let config_file = config_dir.join("config.json");
-  
-  let mut cfg: serde_json::Value = if async_fs::metadata(&config_file).await.is_ok() {
-    let content = async_fs::read_to_string(&config_file)
-      .await
-      .map_err(|e| format!("Failed to read config: {}", e))?;
-    serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
-  } else {
-    serde_json::json!({})
-  };
-  
-  cfg["cslol_tools_version"] = serde_json::json!(release.version.clone());
-  
-  let data = serde_json::to_string_pretty(&cfg)
-    .map_err(|e| format!("Failed to serialize config: {}", e))?;
-  async_fs::write(&config_file, data)
-    .await
-    .map_err(|e| format!("Failed to write config: {}", e))?;
-
-  // Clean up temporary directory (best effort)
-  let _ = async_fs::remove_dir_all(&temp_dir).await;
-
-  Ok(())
-}
-
-#[tauri::command]
-pub async fn get_cslol_manager_status(app: tauri::AppHandle) -> Result<CslolManagerStatus, String> {
-  let paths = resolve_paths(&app).await?;
-  let installed = mod_tools_exists(&paths).await;
-  let version = read_installed_version(&paths).await?;
-  let release_info = fetch_latest_release_info().await?;
-
-  let has_update = if installed {
-    match &version {
-      Some(current) => current != &release_info.version,
-      None => true,
-    }
-  } else {
-    true
-  };
-
-  Ok(CslolManagerStatus {
-    installed,
-    version,
-    latest_version: Some(release_info.version),
-    has_update,
-    path: if installed {
-      Some(
-        paths
-          .tools_dir
-          .join("mod-tools.exe")
-          .to_string_lossy()
-          .to_string(),
-      )
-    } else {
-      None
-    },
-    download_size: Some(release_info.size),
-  })
-}
+// get_cslol_manager_status removed: no longer needed
 
 #[tauri::command]
 pub async fn ensure_mod_tools(
   app: tauri::AppHandle,
-  force: Option<bool>,
+  _force: Option<bool>,
 ) -> Result<EnsureModToolsResult, String> {
-  let force_download = force.unwrap_or(false);
-  let source = if force_download { "manual" } else { "auto" };
-
-  ensure_mod_tools_internal(&app, force_download, source).await
+  ensure_mod_tools_internal(&app, false, "bundled").await
 }
 
 async fn warm_mod_tools_binary(mod_tools_path: &Path) -> Result<(), String> {
@@ -899,32 +515,7 @@ async fn warm_mod_tools_binary(mod_tools_path: &Path) -> Result<(), String> {
   .map_err(|e| format!("Warmup task failed: {}", e))?
 }
 
-#[tauri::command]
-pub async fn warmup_mod_tools(
-  app: tauri::AppHandle,
-) -> Result<EnsureModToolsResult, String> {
-  if WARMUP_DONE.load(Ordering::Relaxed) {
-    return ensure_mod_tools_internal(&app, false, "warmup").await;
-  }
-
-  let _guard = WARMUP_LOCK.lock().await;
-
-  if WARMUP_DONE.load(Ordering::Relaxed) {
-    return ensure_mod_tools_internal(&app, false, "warmup").await;
-  }
-
-  let ensured = ensure_mod_tools_internal(&app, false, "warmup").await?;
-
-  if let Some(path) = ensured.path.clone() {
-    let path_buf = PathBuf::from(path);
-    if let Err(err) = warm_mod_tools_binary(&path_buf).await {
-      println!("Warmup mod-tools.exe failed: {}", err);
-    }
-  }
-
-  WARMUP_DONE.store(true, Ordering::Relaxed);
-  Ok(ensured)
-}
+// warmup_mod_tools removed: no longer needed
 
 /// Manual SFX extraction command that can be called from JavaScript.
 /// Extracts a 7z SFX archive (.exe file) to the specified output directory.

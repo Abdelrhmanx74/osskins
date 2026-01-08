@@ -28,11 +28,28 @@ pub struct SkinInjector {
   #[allow(dead_code)]
   pub(crate) champion_names: HashMap<u32, String>, // Keep for compatibility but not used actively
   pub(crate) app_handle: Option<AppHandle>,
-  // Stored handle for the spawned overlay process so we can stop it cleanly
-  pub(crate) overlay_process: Option<std::process::Child>,
 }
 
 static INJECTION_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+// Keep the overlay process alive across command boundaries.
+// The injector instance used for an injection is often short-lived; if the Child is dropped,
+// mod-tools may interpret stdin closing as a stop signal and exit immediately.
+static OVERLAY_PROCESS: Lazy<Mutex<Option<std::process::Child>>> = Lazy::new(|| Mutex::new(None));
+
+pub(crate) fn set_global_overlay_process(child: std::process::Child) {
+  let mut guard = OVERLAY_PROCESS
+    .lock()
+    .expect("OVERLAY_PROCESS poisoned");
+  *guard = Some(child);
+}
+
+pub(crate) fn take_global_overlay_process() -> Option<std::process::Child> {
+  OVERLAY_PROCESS
+    .lock()
+    .expect("OVERLAY_PROCESS poisoned")
+    .take()
+}
 
 impl SkinInjector {
   pub fn new(app_handle: &AppHandle, root_path: &str) -> Result<Self, InjectionError> {
@@ -66,13 +83,28 @@ impl SkinInjector {
     // Look for mod-tools executable in multiple locations
     let mut mod_tools_path = None;
 
-    // Prefer tools downloaded/managed by the app in app data directories
+    // Prefer bundled resources shipped with the app first (force using packaged tools)
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+      let direct = resource_dir.join("mod-tools.exe");
+      if direct.exists() {
+        mod_tools_path = Some(direct);
+      }
+      if mod_tools_path.is_none() {
+        let bundled = resource_dir.join("cslol-tools").join("mod-tools.exe");
+        if bundled.exists() {
+          mod_tools_path = Some(bundled);
+        }
+      }
+    }
 
-    if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
-      let candidate = app_data_dir.join("cslol-tools").join("mod-tools.exe");
+    // Prefer tools downloaded/managed by the app in app data directories (fallback)
+    if mod_tools_path.is_none() {
+      if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
+        let candidate = app_data_dir.join("cslol-tools").join("mod-tools.exe");
 
-      if candidate.exists() {
-        mod_tools_path = Some(candidate);
+        if candidate.exists() {
+          mod_tools_path = Some(candidate);
+        }
       }
     }
 
@@ -93,22 +125,6 @@ impl SkinInjector {
         let legacy_single = app_local_dir.join("mod-tools.exe");
         if legacy_single.exists() {
           mod_tools_path = Some(legacy_single);
-        }
-      }
-    }
-
-    // Fall back to bundled resources shipped with the app
-    if mod_tools_path.is_none() {
-      if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let direct = resource_dir.join("mod-tools.exe");
-        if direct.exists() {
-          mod_tools_path = Some(direct);
-        }
-        if mod_tools_path.is_none() {
-          let bundled = resource_dir.join("cslol-tools").join("mod-tools.exe");
-          if bundled.exists() {
-            mod_tools_path = Some(bundled);
-          }
         }
       }
     }
@@ -181,7 +197,6 @@ impl SkinInjector {
       mod_tools_path,
       champion_names,
       app_handle: Some(app_handle.clone()),
-      overlay_process: None,
     })
   }
 
@@ -514,7 +529,7 @@ impl SkinInjector {
     
     // If we have an overlay process that we started, try to terminate it gracefully
     // cslol-manager sends a newline to stdin to signal graceful exit
-    if let Some(mut child) = self.overlay_process.take() {
+    if let Some(mut child) = take_global_overlay_process() {
       // First check if it already exited (game might have ended)
       match child.try_wait() {
         Ok(Some(status)) => {

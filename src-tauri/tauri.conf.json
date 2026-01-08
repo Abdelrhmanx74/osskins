@@ -4,9 +4,9 @@
   "version": "1.5.7",
   "identifier": "com.osskins.app",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "pnpm prepare:cslol-tools && pnpm dev",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm prepare:cslol-tools && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -39,7 +39,8 @@
     ],
     "createUpdaterArtifacts": true,
     "resources": [
-      "resources/fonts.zip"
+      "resources/fonts.zip",
+      "resources/cslol-tools"
     ]
   },
   "plugins": {

@@ -5,9 +5,7 @@ import Splash from "./Splash";
 import { useInitialization } from "@/lib/hooks/use-initialization";
 import { useConfigLoader } from "@/lib/hooks/use-config-loader";
 import { useGameStore } from "@/lib/store";
-import { ToolsPhase, ToolsSource, useToolsStore } from "@/lib/store/tools";
 import { useDownloadsStore } from "@/lib/store/downloads";
-import type { EnsureModToolsResult } from "@/lib/types";
 import { invoke } from "@tauri-apps/api/core";
 
 export function AppInitializer({ children }: { children: React.ReactNode }) {
@@ -21,125 +19,16 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  React.useEffect(() => {
-    let cancelled = false;
-
-    const warmupTools = async () => {
-      try {
-        const res = await invoke<EnsureModToolsResult>("warmup_mod_tools");
-        if (cancelled) return;
-
-        const hasUpdate = Boolean(
-          res.latestVersion &&
-          res.version &&
-          res.version !== res.latestVersion,
-        );
-
-        useToolsStore.getState().updateStatus({
-          installed: res.installed,
-          version: res.version ?? null,
-          latestVersion: res.latestVersion ?? null,
-          hasUpdate,
-          path: res.path ?? null,
-          lastChecked: Date.now(),
-        });
-      } catch (error) {
-        if (!cancelled) {
-          console.warn("[Init] CSLOL tools warmup failed", error);
-        }
-      }
-    };
-
-    warmupTools();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // CSLOL warmup removed: app uses bundled tools from resources
 
   React.useEffect(() => {
-    interface ToolsProgressPayload {
-      phase?: string;
-      progress?: number;
-      downloaded?: number;
-      total?: number;
-      speed?: number;
-      message?: string | null;
-      version?: string | null;
-      error?: string | null;
-      source?: string;
-    }
-
     if (typeof window === "undefined") {
       return;
     }
 
-    let cancelled = false;
-    let unlistenPromise: Promise<() => void> | null = null;
-
+    // Attach unified download-progress listener only
     import("@tauri-apps/api/event")
       .then(({ listen }) => {
-        if (cancelled) {
-          return;
-        }
-
-        unlistenPromise = listen<ToolsProgressPayload>(
-          "cslol-tools-progress",
-          (event) => {
-            const payload = event.payload;
-
-            const mergeProgress = useToolsStore.getState().mergeProgress;
-            const source = (
-              payload.source === "manual" ? "manual" : "auto"
-            ) as ToolsSource;
-            const phase = (payload.phase ?? "idle") as ToolsPhase;
-            const rawProgress =
-              typeof payload.progress === "number"
-                ? payload.progress
-                : undefined;
-            const clampedProgress =
-              typeof rawProgress === "number"
-                ? Math.min(100, Math.max(0, rawProgress))
-                : undefined;
-
-            mergeProgress(source, {
-              phase,
-              progress: clampedProgress,
-              message: payload.message ?? undefined,
-              downloaded: payload.downloaded ?? undefined,
-              total: payload.total ?? undefined,
-              speed: payload.speed ?? undefined,
-              version: payload.version ?? undefined,
-              error: payload.error ?? undefined,
-            });
-
-            // Mirror into unified downloads store
-            const upsert = useDownloadsStore.getState().upsert;
-            upsert({
-              id: `tools-${source}`,
-              url: "cslol-manager",
-              category: "tools",
-              status:
-                phase === "error"
-                  ? "failed"
-                  : phase === "completed"
-                    ? "completed"
-                    : phase === "skipped"
-                      ? "completed"
-                      : phase === "downloading" ||
-                        phase === "installing" ||
-                        phase === "checking"
-                        ? "downloading"
-                        : "queued",
-              downloaded: payload.downloaded ?? undefined,
-              total: payload.total ?? undefined,
-              speed: payload.speed ?? undefined,
-              fileName: payload.version ?? null,
-              error: payload.error ?? undefined,
-            });
-          },
-        );
-        // Unified download-progress listener
         void listen<any>("download-progress", (event) => {
           const p = event.payload as {
             id: string;
@@ -172,20 +61,12 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         });
       })
       .catch((error: unknown) => {
-        console.error("Failed to attach CSLOL tools progress listener", error);
+        console.error("Failed to attach download-progress listener", error);
       });
 
+    // No cleanup required for the simple listener attachment above
     return () => {
-      cancelled = true;
-      if (unlistenPromise) {
-        unlistenPromise
-          .then((unlisten) => {
-            unlisten();
-          })
-          .catch(() => {
-            /* ignore */
-          });
-      }
+      /* no-op cleanup */
     };
   }, []);
 

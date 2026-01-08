@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:admin": "powershell -Command \"Start-Process -FilePath pnpm -ArgumentList 'tauri dev' -Verb RunAs\"",
+    "prepare:cslol-tools": "node scripts/prepare-cslol-tools.mjs",
     "build": "npx next build",
     "start": "next start",
     "lint": "biome check src/ && next lint",
@@ -59,6 +60,7 @@
     "@typescript-eslint/eslint-plugin": "^8.46.4",
     "@typescript-eslint/parser": "^8.46.4",
     "@vitejs/plugin-react": "^4.7.0",
+    "adm-zip": "^0.5.16",
     "eslint": "^9.39.1",
     "eslint-config-next": "^15.5.6",
     "eslint-plugin-react-hooks": "^5.2.0",
