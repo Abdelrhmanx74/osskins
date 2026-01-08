@@ -694,9 +694,33 @@ pub async fn stop_manual_injection(app: AppHandle) -> Result<(), String> {
   Ok(())
 }
 
-// Check if manual injection is active
+// Check if manual injection mode is enabled (from config preference)
+// This is separate from is_manual_injection_active() which checks if a manual injection session is running
+pub fn is_manual_injection_mode_enabled(app: &AppHandle) -> bool {
+  let config_dir = match app.path().app_data_dir() {
+    Ok(dir) => dir.join("config"),
+    Err(_) => return false,
+  };
+  let cfg_file = config_dir.join("config.json");
+  if let Ok(data) = std::fs::read_to_string(&cfg_file) {
+    if let Ok(cfg) = serde_json::from_str::<serde_json::Value>(&data) {
+      if let Some(mode_val) = cfg.get("manual_injection_mode").and_then(|v| v.as_bool()) {
+        return mode_val;
+      }
+    }
+  }
+  false
+}
+
+// Check if manual injection is active (session is running)
 pub fn is_manual_injection_active() -> bool {
   MANUAL_INJECTION_ACTIVE.load(Ordering::Relaxed)
+}
+
+// Check if manual injection mode is enabled OR if a manual injection session is active
+// This is the main check to use when deciding whether to skip automatic injection
+pub fn should_skip_automatic_injection(app: &AppHandle) -> bool {
+  is_manual_injection_mode_enabled(app) || is_manual_injection_active()
 }
 
 // Check if manual injection has been triggered

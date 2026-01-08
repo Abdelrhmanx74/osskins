@@ -35,4 +35,19 @@ export const manualInjectionApi = {
   async stopManualInjection(): Promise<void> {
     await invoke("stop_manual_injection");
   },
+
+  /**
+   * Set manual injection mode preference (the toggle state).
+   * This is separate from starting/stopping a manual injection session.
+   */
+  async setManualInjectionMode(value: boolean): Promise<void> {
+    await invoke("set_manual_injection_mode", { value });
+  },
+
+  /**
+   * Get manual injection mode preference from backend.
+   */
+  async getManualInjectionMode(): Promise<boolean> {
+    return await invoke("get_manual_injection_mode");
+  },
 };

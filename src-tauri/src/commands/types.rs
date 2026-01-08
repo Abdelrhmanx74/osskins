@@ -78,6 +78,12 @@ pub struct SavedConfig {
   pub last_data_commit: Option<String>,
   #[serde(default)]
   pub cslol_tools_version: Option<String>,
+  #[serde(default = "default_manual_injection_mode")]
+  pub manual_injection_mode: bool,
+}
+
+fn default_manual_injection_mode() -> bool {
+  false
 }
 
 fn default_auto_update_data() -> bool {

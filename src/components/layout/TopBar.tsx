@@ -89,6 +89,24 @@ export function TopBar({
     }
   }, [setActiveTab]);
 
+  // Load manual injection mode from backend on mount
+  useEffect(() => {
+    const loadManualMode = async () => {
+      try {
+        const { manualInjectionApi } = await import("@/lib/api/manual-injection");
+        const backendMode = await manualInjectionApi.getManualInjectionMode();
+        // Only update if different to avoid unnecessary re-renders
+        if (backendMode !== manualInjectionMode) {
+          setManualInjectionMode(backendMode);
+        }
+      } catch (error) {
+        console.error("Failed to load manual injection mode from backend:", error);
+      }
+    };
+
+    void loadManualMode();
+  }, []); // Only on mount
+
   // Load paired friends count
   useEffect(() => {
     // Party mode is now handled by the provider, no need for manual loading
@@ -157,8 +175,14 @@ export function TopBar({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-40">
                   <DropdownMenuItem
-                    onSelect={() => {
+                    onSelect={async () => {
                       setManualInjectionMode(false);
+                      try {
+                        const { manualInjectionApi } = await import("@/lib/api/manual-injection");
+                        await manualInjectionApi.setManualInjectionMode(false);
+                      } catch (error) {
+                        console.error("Failed to sync manual injection mode to backend:", error);
+                      }
                     }}
                   >
                     <Zap className="h-4 w-4 mr-2" />
@@ -168,8 +192,14 @@ export function TopBar({
                     )}
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onSelect={() => {
+                    onSelect={async () => {
                       setManualInjectionMode(true);
+                      try {
+                        const { manualInjectionApi } = await import("@/lib/api/manual-injection");
+                        await manualInjectionApi.setManualInjectionMode(true);
+                      } catch (error) {
+                        console.error("Failed to sync manual injection mode to backend:", error);
+                      }
                     }}
                   >
                     <Hand className="h-4 w-4 mr-2" />

@@ -133,6 +133,7 @@ pub async fn set_party_mode_verbose_logging(
       start_hidden: false,
       last_data_commit: None,
       cslol_tools_version: None,
+      manual_injection_mode: false,
     }
   };
 
@@ -193,6 +194,7 @@ pub async fn set_party_mode_max_share_age(
       start_hidden: false,
       last_data_commit: None,
       cslol_tools_version: None,
+      manual_injection_mode: false,
     }
   };
 
@@ -329,6 +331,7 @@ pub async fn update_party_mode_settings(
       start_hidden: false,
       last_data_commit: None,
       cslol_tools_version: None,
+      manual_injection_mode: false,
     }
   };
 
@@ -617,6 +620,7 @@ async fn add_paired_friend(
       start_hidden: false,
       last_data_commit: None,
       cslol_tools_version: None,
+      manual_injection_mode: false,
     }
   };
 

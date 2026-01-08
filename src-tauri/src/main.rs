@@ -223,6 +223,8 @@ fn main() {
       get_injection_state,
       set_start_hidden,
       get_start_hidden,
+      set_manual_injection_mode,
+      get_manual_injection_mode,
     ])
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_opener::init())

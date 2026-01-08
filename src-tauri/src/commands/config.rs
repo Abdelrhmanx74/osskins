@@ -166,6 +166,7 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
       start_hidden: false,
       last_data_commit: None,
       cslol_tools_version: None,
+      manual_injection_mode: false,
     });
   }
   let content = match std::fs::read_to_string(&file) {
@@ -187,6 +188,7 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
         start_hidden: false,
         last_data_commit: None,
         cslol_tools_version: None,
+        manual_injection_mode: false,
       });
     }
   };
@@ -210,6 +212,7 @@ pub async fn load_config(app: tauri::AppHandle) -> Result<SavedConfig, String> {
         start_hidden: false,
         last_data_commit: None,
         cslol_tools_version: None,
+        manual_injection_mode: false,
       });
     }
   };
@@ -257,6 +260,7 @@ pub async fn select_skin_for_champion(
       start_hidden: false,
       last_data_commit: None,
       cslol_tools_version: None,
+      manual_injection_mode: false,
     }
   };
 
@@ -354,6 +358,7 @@ pub async fn save_custom_skin(
       start_hidden: false,
       last_data_commit: None,
       cslol_tools_version: None,
+      manual_injection_mode: false,
     }
   };
 
@@ -489,4 +494,57 @@ pub async fn get_start_hidden(app: tauri::AppHandle) -> Result<bool, String> {
     .unwrap_or(false);
 
   Ok(v)
+}
+
+// Command to set manual injection mode preference
+#[tauri::command]
+pub async fn set_manual_injection_mode(
+  app: tauri::AppHandle,
+  value: bool,
+) -> Result<(), String> {
+  println!("[Config] Setting manual_injection_mode to: {}", value);
+  
+  let config_dir = app
+    .path()
+    .app_data_dir()
+    .map_err(|e| format!("Failed to get app data dir: {}", e))?
+    .join("config");
+  std::fs::create_dir_all(&config_dir)
+    .map_err(|e| format!("Failed to create config dir: {}", e))?;
+  let file = config_dir.join("config.json");
+
+  let mut cfg: serde_json::Value = if file.exists() {
+    let content =
+      std::fs::read_to_string(&file).map_err(|e| format!("Failed to read config.json: {}", e))?;
+    serde_json::from_str(&content).map_err(|e| format!("Failed to parse config.json: {}", e))?
+  } else {
+    serde_json::json!({})
+  };
+
+  cfg["manual_injection_mode"] = serde_json::json!(value);
+
+  let data =
+    serde_json::to_string_pretty(&cfg).map_err(|e| format!("Failed to serialize config: {}", e))?;
+  std::fs::write(&file, data).map_err(|e| format!("Failed to write config.json: {}", e))?;
+
+  // If manual mode is being enabled, stop any active automatic injection
+  if value {
+    println!("[Config] Manual mode enabled - stopping automatic injection if active");
+    // The LCU watcher will check this flag and skip automatic injections
+  } else {
+    println!("[Config] Manual mode disabled - stopping manual injection if active");
+    // Stop any active manual injection
+    if crate::commands::skin_injection::is_manual_injection_active() {
+      let _ = crate::commands::skin_injection::stop_manual_injection(app.clone()).await;
+    }
+  }
+
+  Ok(())
+}
+
+// Command to get manual injection mode preference
+#[tauri::command]
+pub async fn get_manual_injection_mode(app: tauri::AppHandle) -> Result<bool, String> {
+  let config = load_config(app).await?;
+  Ok(config.manual_injection_mode)
 }

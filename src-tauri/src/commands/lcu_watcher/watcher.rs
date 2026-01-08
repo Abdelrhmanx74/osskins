@@ -293,7 +293,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
         // Poll ChampSelect session periodically to catch late skin selections that may not emit WS events
         if injection_mode == InjectionMode::ChampSelect
           && last_phase == "ChampSelect"
-          && !crate::commands::skin_injection::is_manual_injection_active()
+          && !crate::commands::skin_injection::should_skip_automatic_injection(&app_handle)
           && last_champselect_poll.elapsed().as_millis() >= 1000
         {
           last_champselect_poll = Instant::now();
@@ -389,7 +389,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
         // While in Matchmaking (instant-assign flow), detect new skin selections/misc changes and reinject
         if last_phase == "Matchmaking"
           && last_matchmaking_instant_assign_check.elapsed().as_millis() >= 1200
-          && !crate::commands::skin_injection::is_manual_injection_active()
+          && !crate::commands::skin_injection::should_skip_automatic_injection(&app_handle)
         {
           last_matchmaking_instant_assign_check = Instant::now();
 
@@ -463,7 +463,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                   // Handle Lobby->Matchmaking instant-assign via REST resolution (Swift Play/lobby injection)
                   // This fires when you click "Find Match" with champions already selected
                   if new_phase == "Matchmaking"
-                    && !crate::commands::skin_injection::is_manual_injection_active()
+                    && !crate::commands::skin_injection::should_skip_automatic_injection(&app_handle)
                   {
                     if old_phase == "Lobby" {
                       println!("[LCU Watcher][{}] Lobby->Matchmaking transition - triggering instant-assign injection", watcher_id);
@@ -501,7 +501,7 @@ pub fn start_lcu_watcher(app: AppHandle, league_path: String) -> Result<(), Stri
                 "/lol-champ-select/v1/session" => {
                   if injection_mode == InjectionMode::ChampSelect
                     && last_phase == "ChampSelect"
-                    && !crate::commands::skin_injection::is_manual_injection_active()
+                    && !crate::commands::skin_injection::should_skip_automatic_injection(&app_handle)
                   {
                     handle_champ_select_event_data(
                       &app_handle,
@@ -676,7 +676,7 @@ fn bootstrap_initial_state(
 
         if new_phase != old_phase {
           if new_phase == "Matchmaking"
-            && !crate::commands::skin_injection::is_manual_injection_active()
+            && !crate::commands::skin_injection::should_skip_automatic_injection(app_handle)
             && (old_phase == "Lobby" || old_phase == "None")
           {
             handle_instant_assign_injection(app_handle, league_path, port, token);
@@ -706,7 +706,7 @@ fn bootstrap_initial_state(
               });
             });
           } else if *injection_mode == InjectionMode::ChampSelect
-            && !crate::commands::skin_injection::is_manual_injection_active()
+            && !crate::commands::skin_injection::should_skip_automatic_injection(app_handle)
           {
             // Normal auto-injection mode
             let session_url = format!(
@@ -1051,7 +1051,7 @@ fn handle_champ_select_event_data(
 
     // Party mode trigger check
     if last_party_injection_check.elapsed().as_millis() >= 1000
-      && !crate::commands::skin_injection::is_manual_injection_active()
+      && !crate::commands::skin_injection::should_skip_automatic_injection(app_handle)
     {
       *last_party_injection_check = Instant::now();
 
@@ -1112,7 +1112,7 @@ fn handle_champ_select_event_data(
     }
 
     // Auto injection on skin change
-    if !crate::commands::skin_injection::is_manual_injection_active() {
+    if !crate::commands::skin_injection::should_skip_automatic_injection(app_handle) {
       let config_dir = app_handle
         .path()
         .app_data_dir()
@@ -1613,14 +1613,14 @@ fn run_polling_loop(
       // Auto/party instant-assign on Lobby->Matchmaking
       if last_phase == "Lobby"
         && phase == "Matchmaking"
-        && !crate::commands::skin_injection::is_manual_injection_active()
+        && !crate::commands::skin_injection::should_skip_automatic_injection(app_handle)
       {
         handle_instant_assign_injection(app_handle, league_path, port, token);
       }
     }
 
     // Champ Select polling only when needed
-    if phase == "ChampSelect" && !crate::commands::skin_injection::is_manual_injection_active() {
+    if phase == "ChampSelect" && !crate::commands::skin_injection::should_skip_automatic_injection(app_handle) {
       let session_url = format!("https://127.0.0.1:{}/lol-champ-select/v1/session", port);
       if let Ok(resp) = client
         .get(&session_url)
