@@ -55,6 +55,10 @@ impl crate::injection::core::SkinInjector {
 
   // Run the overlay process using mod-tools.exe
   pub(crate) fn run_overlay(&mut self) -> Result<(), InjectionError> {
+    // If a previous overlay is still alive, stop it first so we never end up with
+    // two runoverlay instances stacking windows.
+    crate::injection::core::stop_global_overlay_process("run_overlay_start");
+
     // Check if mod-tools.exe exists
     let mod_tools_path = match &self.mod_tools_path {
             Some(path) => {

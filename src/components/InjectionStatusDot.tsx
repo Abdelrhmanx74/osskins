@@ -190,7 +190,9 @@ export function InjectionStatusDot({
             status === "patching"
           ) {
             // These are backend states meaning the overlay is active / preparing / patching.
-            // Keep the UI in an active state (yellow dot) without showing a success toast.
+            // Keep the UI in an active state (yellow dot/green dot) without showing extra toasts.
+            // The backend may emit multiple "running" updates (e.g., when the game is detected),
+            // which previously caused duplicated success toasts right before game start.
             if (errorTimeoutRef.current) {
               clearTimeout(errorTimeoutRef.current);
               errorTimeoutRef.current = null;
@@ -198,13 +200,6 @@ export function InjectionStatusDot({
             setInjectionStatus(status);
             setLastInjectionError(null);
             persistSnapshot(status, null);
-            toastShownRef.current.success = false;
-
-            // Treat "running" (overlay alive, waiting for game) as a successful start.
-            if (status === "running" && now >= lastCleanupAtRef.current) {
-              toast.dismiss();
-              showSuccessToast();
-            }
           } else if (status === "error") {
             setInjectionStatus("error");
             persistSnapshot("error", lastErrorRef.current ?? null);

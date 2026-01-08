@@ -37,10 +37,89 @@ static INJECTION_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 // mod-tools may interpret stdin closing as a stop signal and exit immediately.
 static OVERLAY_PROCESS: Lazy<Mutex<Option<std::process::Child>>> = Lazy::new(|| Mutex::new(None));
 
+pub(crate) fn is_global_overlay_running() -> bool {
+  let mut guard = OVERLAY_PROCESS
+    .lock()
+    .expect("OVERLAY_PROCESS poisoned");
+
+  let Some(child) = guard.as_mut() else {
+    return false;
+  };
+
+  match child.try_wait() {
+    Ok(Some(_status)) => {
+      // Process exited; clear stale handle.
+      *guard = None;
+      false
+    }
+    Ok(None) => true,
+    Err(_e) => {
+      // If we can't query it, treat as not running and clear.
+      *guard = None;
+      false
+    }
+  }
+}
+
+pub(crate) fn stop_global_overlay_process(reason: &str) {
+  let Some(mut child) = take_global_overlay_process() else {
+    return;
+  };
+
+  // Best-effort graceful stop: cslol-manager sends a newline to stdin.
+  println!("[Injection][Overlay] Stopping existing overlay (reason: {})", reason);
+
+  match child.try_wait() {
+    Ok(Some(_)) => return,
+    Ok(None) => {
+      if let Some(ref mut stdin) = child.stdin {
+        let _ = stdin.write_all(b"\n");
+        let _ = stdin.flush();
+      }
+
+      std::thread::sleep(std::time::Duration::from_millis(400));
+
+      match child.try_wait() {
+        Ok(Some(_)) => return,
+        Ok(None) => {
+          let _ = child.kill();
+          let _ = child.wait();
+        }
+        Err(_) => {
+          let _ = child.kill();
+        }
+      }
+    }
+    Err(_) => {
+      let _ = child.kill();
+    }
+  }
+}
+
 pub(crate) fn set_global_overlay_process(child: std::process::Child) {
   let mut guard = OVERLAY_PROCESS
     .lock()
     .expect("OVERLAY_PROCESS poisoned");
+
+  if let Some(mut existing) = guard.take() {
+    // Avoid leaving a previous runoverlay alive if we are replacing the handle.
+    match existing.try_wait() {
+      Ok(Some(_)) => {}
+      Ok(None) => {
+        if let Some(ref mut stdin) = existing.stdin {
+          let _ = stdin.write_all(b"\n");
+          let _ = stdin.flush();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let _ = existing.kill();
+        let _ = existing.wait();
+      }
+      Err(_) => {
+        let _ = existing.kill();
+      }
+    }
+  }
+
   *guard = Some(child);
 }
 
@@ -694,6 +773,9 @@ impl SkinInjector {
   // Cleanup mod-tools processes specifically
   pub(crate) fn cleanup_mod_tools_processes(&mut self) -> Result<(), InjectionError> {
     self.log("Cleaning up mod-tools processes...");
+
+    // Prefer stopping the exact overlay child we spawned (if any) before falling back to taskkill.
+    crate::injection::core::stop_global_overlay_process("cleanup_mod_tools_processes");
 
     #[cfg(target_os = "windows")]
     {
